@@ -12,6 +12,7 @@ using Umbraco.Cms.Core.Services.OperationStatus;
 using Umbraco.Cms.Core.Strings;
 using Umbraco.Cms.Core.Models.Membership;
 using Umbraco.Cms.Core.Security;
+using OpenIddict.Abstractions;
 using Umbraco.Cms.Infrastructure.Examine;
 using Umbraco.Extensions;
 
@@ -47,6 +48,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
     private readonly IUserService _userService;
     private readonly IUserGroupService _userGroupService;
     private readonly IBackOfficeUserClientCredentialsManager _clientCredentialsManager;
+    private readonly IOpenIddictApplicationManager _oauthApplications;
     private readonly IConfiguration _configuration;
     private readonly ILogger<CityGuideSeeder> _logger;
 
@@ -68,6 +70,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         IUserService userService,
         IUserGroupService userGroupService,
         IBackOfficeUserClientCredentialsManager clientCredentialsManager,
+        IOpenIddictApplicationManager oauthApplications,
         IConfiguration configuration,
         ILogger<CityGuideSeeder> logger)
     {
@@ -88,6 +91,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         _userService = userService;
         _userGroupService = userGroupService;
         _clientCredentialsManager = clientCredentialsManager;
+        _oauthApplications = oauthApplications;
         _configuration = configuration;
         _logger = logger;
     }
@@ -801,8 +805,12 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
     /// Creates the API user the ingestion agent authenticates with, when
     /// CityGuide:AgentClientSecret is configured (in Azure: an App Service setting).
     /// Lets a freshly seeded database accept the agent without manual backoffice
-    /// setup. Runs every startup, guarded by user existence; rotating the secret
-    /// requires deleting the user (or updating it in the backoffice).
+    /// setup. Runs every startup: it also re-registers the client credentials when the
+    /// user is there but its OAuth client is not — the token endpoint then answers
+    /// "the specified 'client_id' is invalid" (OpenIddict ID2052) and no restart fixed
+    /// it, because the user existing was taken as proof the client existed too.
+    /// Rotating the secret still requires deleting the user (or updating it in the
+    /// backoffice): what is stored is a hash, so an existing client is left alone.
     /// </summary>
     private async Task EnsureAgentApiUserAsync()
     {
@@ -815,8 +823,9 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         const string clientId = "umbraco-back-office-cityguide-agent";
         const string username = "cityguide-agent@quehacerrd.com";
 
-        if (_userService.GetByUsername(username) is not null)
+        if (_userService.GetByUsername(username) is { } existing)
         {
+            await RepairAgentClientAsync(existing.Key, clientId, secret);
             return;
         }
 
@@ -849,6 +858,37 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         if (credentialsAttempt.Success is false)
         {
             _logger.LogError("CityGuide: agent client credentials save failed: {Status}", credentialsAttempt.Result);
+        }
+    }
+
+    /// <summary>
+    /// Re-registers the agent's OAuth client when the user still claims it but the
+    /// client itself is gone. Umbraco keeps the two apart — the user-to-client mapping
+    /// and the OpenIddict application — and when only the application is missing the
+    /// token endpoint answers "the specified 'client_id' is invalid" (ID2052) while
+    /// every restart looks healthy: the user exists, so nothing is rebuilt, and saving
+    /// the credentials again is refused as a duplicate. Dropping the stale mapping
+    /// first is what makes the save go through.
+    /// </summary>
+    private async Task RepairAgentClientAsync(Guid userKey, string clientId, string secret)
+    {
+        if (await _oauthApplications.FindByClientIdAsync(clientId) is not null)
+        {
+            return;
+        }
+
+        _logger.LogWarning(
+            "CityGuide: agent OAuth client '{ClientId}' is missing — registering it again", clientId);
+        IEnumerable<string> claimed = await _clientCredentialsManager.GetClientIdsAsync(userKey);
+        if (claimed.Contains(clientId, StringComparer.Ordinal))
+        {
+            await _clientCredentialsManager.DeleteAsync(userKey, clientId);
+        }
+
+        var repair = await _clientCredentialsManager.SaveAsync(userKey, clientId, secret);
+        if (repair.Success is false)
+        {
+            _logger.LogError("CityGuide: agent client credentials repair failed: {Status}", repair.Result);
         }
     }
 
