@@ -2,6 +2,7 @@ import Link from "next/link";
 import CityBadge from "@/components/CityBadge";
 import JsonLd from "@/components/JsonLd";
 import SiteLogo from "@/components/SiteLogo";
+import ThemeToggle from "@/components/ThemeToggle";
 import { itemListJsonLd } from "@/lib/seo";
 import { getCities, isComingSoon, slugOf } from "@/lib/umbraco";
 
@@ -13,7 +14,8 @@ export default async function HomePage() {
   return (
     <main className="flex-1">
       <JsonLd data={itemListJsonLd("Ciudades en QueHacerRD.com", cities)} />
-      <section className="bg-neutral-900 text-white">
+      <section className="relative bg-neutral-900 text-white">
+        <ThemeToggle className="absolute top-3 right-3" />
         <div className="mx-auto max-w-5xl px-6 py-20 text-center">
           <h1 className="flex justify-center">
             <SiteLogo className="text-4xl sm:text-5xl" tagline />

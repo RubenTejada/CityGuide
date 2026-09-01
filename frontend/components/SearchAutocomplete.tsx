@@ -16,7 +16,13 @@ interface IndexedEntry extends SearchEntry {
  * typing never waits on the network. Without JS it degrades to the plain
  * GET form against /[city]/buscar.
  */
-export default function SearchAutocomplete({ citySlug }: { citySlug: string }) {
+export default function SearchAutocomplete({
+  citySlug,
+  className,
+}: {
+  citySlug: string;
+  className?: string;
+}) {
   const router = useRouter();
   const [q, setQ] = useState("");
   const [index, setIndex] = useState<IndexedEntry[] | null>(null);
@@ -75,7 +81,9 @@ export default function SearchAutocomplete({ citySlug }: { citySlug: string }) {
   return (
     <form
       action={`/${citySlug}/buscar`}
-      className="order-last relative flex w-full min-w-0 flex-1 sm:order-none sm:w-auto"
+      className={`order-last relative flex w-full min-w-0 flex-1 sm:order-none sm:w-auto ${
+        className ?? ""
+      }`}
       role="search"
     >
       <input

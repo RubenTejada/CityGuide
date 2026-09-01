@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Oswald } from "next/font/google";
 import Analytics from "@/components/Analytics";
+import InlineScript from "@/components/InlineScript";
 import JsonLd from "@/components/JsonLd";
 import { SITE_LOCALE, SITE_NAME, SITE_URL, siteJsonLd } from "@/lib/seo";
 import "./globals.css";
@@ -78,7 +79,14 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html
       lang="es"
       className={`${geistSans.variable} ${geistMono.variable} ${oswald.variable} h-full antialiased`}
+      // El script de abajo añade class="dark" antes de hidratar.
+      suppressHydrationWarning
     >
+      <head>
+        {/* Aplica el tema antes del primer pintado: leerlo ya hidratado
+            mostraría la página clara y luego saltaría a oscura. */}
+        <InlineScript html={`(function(){try{var t=localStorage.getItem("theme");if(t==="dark"||(t!=="light"&&matchMedia("(prefers-color-scheme: dark)").matches))document.documentElement.classList.add("dark")}catch(e){}})()`} />
+      </head>
       <body className="min-h-full flex flex-col bg-neutral-100 text-neutral-900">
         <JsonLd data={siteJsonLd()} />
         <Analytics />

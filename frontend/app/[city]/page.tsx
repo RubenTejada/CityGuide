@@ -188,7 +188,7 @@ export default async function CityLandingPage({
           itemListJsonLd(`Secciones de ${city.name}`, sections),
         ]}
       />
-      <section className="bg-white/60">
+      <section className="bg-white">
         <div className="mx-auto max-w-6xl px-6 pt-8 pb-3">
           <h1 className="text-3xl font-bold sm:text-4xl">{city.name}</h1>
           <p className="mt-2 max-w-2xl text-neutral-600">{text(city, "intro")}</p>

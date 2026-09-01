@@ -32,7 +32,7 @@ export default function PlaceCard({
     >
       <div
         className={`relative h-24 w-24 flex-none overflow-hidden rounded-lg ${
-          isLogo ? "border border-neutral-200 bg-white" : "bg-neutral-200"
+          isLogo ? "logo-plate border border-neutral-200 bg-white" : "bg-neutral-200"
         }`}
       >
         <Image

@@ -9,6 +9,7 @@ import SearchAutocomplete from "@/components/SearchAutocomplete";
 import { CityEmblem } from "@/components/CityBadge";
 import SiteLogo from "@/components/SiteLogo";
 import { getChildren, getItem, isComingSoon } from "@/lib/umbraco";
+import ThemeToggle from "@/components/ThemeToggle";
 
 // Etiquetas cortas solo para la barra de navegación (el nombre real en el CMS
 // no cambia); clave = slug de la sección.
@@ -46,12 +47,17 @@ export default async function CityLayout({
     <PendingNavProvider scroll>
       <div className="flex min-h-screen flex-col">
         {/* El mapa se desvanece a negro hacia la derecha del logo */}
-        <header className="bg-neutral-900 bg-[linear-gradient(to_right,rgba(23,23,23,0),#171717_60%),url(/header-map.svg)] text-white">
-          <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-8 gap-y-4 px-6 py-6">
-            <Link href={`/${citySlug}`} aria-label="QueHacerRD.com">
+        <header className="relative bg-neutral-900 bg-[linear-gradient(to_right,rgba(23,23,23,0),#171717_60%),url(/header-map.svg)] text-white">
+          {/* Esquina de la cabecera: no cabe en la fila del logo sin empujar
+              el emblema de ciudad a otra línea. */}
+          <ThemeToggle className="absolute top-3 right-3" />
+          <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-8 gap-y-4 px-6 pt-9 pb-6">
+            <Link href={`/${citySlug}`} aria-label="QueHacerRD.com" className="mt-3">
               <SiteLogo className="text-[28px] sm:text-[44px]" tagline glyph={false} />
             </Link>
-            {!comingSoon && <SearchAutocomplete citySlug={citySlug} />}
+            {!comingSoon && (
+              <SearchAutocomplete citySlug={citySlug} className="mt-3" />
+            )}
             {/* El emblema de la ciudad es el selector: dice dónde estás y
                 lleva al portal para cambiar de ciudad. */}
             <Link

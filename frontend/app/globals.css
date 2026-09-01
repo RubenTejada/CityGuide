@@ -29,15 +29,154 @@
   --color-palm-500: #3faa4c;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* ---------------------------------------------------------------------------
+   Modo oscuro
+   El tema vive en <html class="dark">: el script del layout lo aplica antes
+   del primer pintado y ThemeToggle lo cambia.
+
+   La UI no usa variantes `dark:` sino los tonos claros de Tailwind, así que
+   aquí se redefine lo que esas utilidades significan cuando la página está en
+   oscuro: las superficies claras se oscurecen y los grises de texto se
+   aclaran. Los cromos ya oscuros (cabecera, pie, botones `bg-neutral-900` con
+   `text-white`) se dejan intactos: en oscuro siguen leyéndose igual. Las
+   reglas van fuera de `@layer`, así ganan a las utilidades de Tailwind sin
+   depender de `!important`.
+   --------------------------------------------------------------------------- */
+html.dark {
+  --background: #0e0e0e;
+  --foreground: #ededed;
+
+  --surface-page: #0e0e0e;
+  --surface-card: #1a1a1a;
+  --surface-raised: #232323;
+  --surface-sunken: #151515;
+  --line: #2f2f2f;
+  --line-strong: #3d3d3d;
+
+  color-scheme: dark;
+}
+
+/* Superficies claras */
+html.dark .bg-white,
+html.dark .hover\:bg-white:hover {
+  background-color: var(--surface-card);
+}
+/* Los logotipos vienen dibujados para fondo blanco: la placa que los sostiene
+   no se oscurece (tarjetas, pines del mapa y su ficha). */
+html.dark .logo-plate {
+  background-color: #ffffff;
+}
+html.dark .bg-neutral-50,
+html.dark .hover\:bg-neutral-50:hover {
+  background-color: var(--surface-raised);
+}
+html.dark .bg-neutral-100 {
+  background-color: var(--surface-page);
+}
+html.dark .bg-neutral-200 {
+  background-color: var(--surface-raised);
+}
+html.dark .bg-brand-50,
+html.dark .hover\:bg-brand-50:hover {
+  background-color: #10293a;
+}
+html.dark .bg-brand-100 {
+  background-color: #16394f;
+}
+
+/* Texto sobre superficies claras */
+html.dark .text-neutral-900,
+html.dark .text-neutral-800 {
+  color: #ededed;
+}
+html.dark .text-neutral-700 {
+  color: #c9c9c9;
+}
+html.dark .text-neutral-600 {
+  color: #b0b0b0;
+}
+html.dark .text-neutral-500 {
+  color: #949494;
+}
+html.dark .placeholder\:text-neutral-400::placeholder {
+  color: #7a7a7a;
+}
+
+/* El azul de marca no contrasta sobre fondo oscuro: se sube de tono */
+html.dark .text-brand-600,
+html.dark .text-brand-700,
+html.dark .text-brand-800,
+html.dark .hover\:text-brand-600:hover,
+html.dark .hover\:text-brand-700:hover,
+html.dark .group:hover .group-hover\:text-brand-600 {
+  color: var(--color-brand-300);
+}
+
+/* Bordes y separadores */
+html.dark .border-neutral-200 {
+  border-color: var(--line);
+}
+html.dark .border-neutral-300 {
+  border-color: var(--line-strong);
+}
+html.dark .divide-neutral-200 > :not(:last-child) {
+  border-color: var(--line);
+}
+
+/* Las sombras de tarjeta se pierden en oscuro; el borde hace de relieve */
+html.dark .shadow-sm,
+html.dark .shadow,
+html.dark .shadow-md,
+html.dark .shadow-lg {
+  --tw-shadow-color: rgba(0, 0, 0, 0.6);
+}
+
+/* La burbuja del mapa la dibuja Google y siempre es blanca: dentro de ella
+   los tonos claros valen tal cual, o el azul de marca aclarado quedaría casi
+   ilegible sobre blanco. */
+html.dark .gm-style-iw .text-brand-600,
+html.dark .gm-style-iw .text-brand-700,
+html.dark .gm-style-iw .text-brand-800,
+html.dark .gm-style-iw .group:hover .group-hover\:text-brand-600 {
+  color: var(--color-brand-700);
+}
+html.dark .gm-style-iw .text-neutral-900,
+html.dark .gm-style-iw .text-neutral-800 {
+  color: var(--color-neutral-900);
+}
+html.dark .gm-style-iw .text-neutral-700 {
+  color: var(--color-neutral-700);
+}
+html.dark .gm-style-iw .text-neutral-600 {
+  color: var(--color-neutral-600);
+}
+html.dark .gm-style-iw .text-neutral-500 {
+  color: var(--color-neutral-500);
+}
+html.dark .gm-style-iw .bg-white {
+  background-color: var(--color-white);
+}
+html.dark .gm-style-iw .hover\:bg-neutral-50:hover {
+  background-color: var(--color-neutral-50);
+}
+html.dark .gm-style-iw .border-neutral-200 {
+  border-color: var(--color-neutral-200);
+}
+
+/* El botón de tema lleva los dos iconos: el que se ve lo decide la clase de
+   <html>, que ya está puesta antes del primer pintado. */
+.theme-icon-dark {
+  display: none;
+}
+html.dark .theme-icon-dark {
+  display: block;
+}
+html.dark .theme-icon-light {
+  display: none;
 }
