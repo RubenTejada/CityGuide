@@ -400,143 +400,128 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
     }
 
     /// <summary>
+    /// Name, publication state and every stored value of a document. A PUT replaces
+    /// the document, so every partial update has to read the rest and send it back.
+    /// </summary>
+    private async Task<(string Name, string State, Dictionary<string, object?> Values)> ReadDocumentAsync(Guid id)
+    {
+        HttpRequestMessage request = await AuthorizedRequestAsync(
+            HttpMethod.Get, $"/umbraco/management/api/v1/document/{id}");
+        HttpResponseMessage response = await http.SendAsync(request);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException(
+                $"Read document {id} failed ({(int)response.StatusCode}): {await response.Content.ReadAsStringAsync()}");
+        }
+
+        using JsonDocument doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        JsonElement root = doc.RootElement;
+        JsonElement variant = root.GetProperty("variants")[0];
+
+        var values = new Dictionary<string, object?>();
+        foreach (JsonElement v in root.GetProperty("values").EnumerateArray())
+        {
+            values[v.GetProperty("alias").GetString()!] = v.GetProperty("value").Clone();
+        }
+
+        return (variant.GetProperty("name").GetString() ?? "",
+            variant.GetProperty("state").GetString() ?? "",
+            values);
+    }
+
+    /// <summary>
+    /// Writes a document's name and values back. Republishes only documents that were
+    /// already published, so the agent's drafts stay drafts until someone reviews them.
+    /// </summary>
+    private async Task WriteDocumentAsync(
+        Guid id, string name, Dictionary<string, object?> values, string state)
+    {
+        HttpRequestMessage request = await AuthorizedRequestAsync(
+            HttpMethod.Put, $"/umbraco/management/api/v1/document/{id}");
+        request.Content = JsonContent.Create(new
+        {
+            template = (object?)null,
+            values = values.Select(v => new { alias = v.Key, value = v.Value }),
+            variants = new[] { new { culture = (string?)null, segment = (string?)null, name } },
+        });
+        HttpResponseMessage response = await http.SendAsync(request);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException(
+                $"Update '{name}' failed ({(int)response.StatusCode}): {await response.Content.ReadAsStringAsync()}");
+        }
+
+        if (state.StartsWith("Published", StringComparison.Ordinal))
+        {
+            await PublishAsync(id);
+        }
+    }
+
+    private static double? Number(Dictionary<string, object?> values, string alias) =>
+        values.TryGetValue(alias, out object? v) && v is JsonElement { ValueKind: JsonValueKind.Number } e
+            ? e.GetDouble()
+            : null;
+
+    private static string? Text(Dictionary<string, object?> values, string alias) =>
+        values.TryGetValue(alias, out object? v) && v is JsonElement { ValueKind: JsonValueKind.String } e
+            ? e.GetString()
+            : null;
+
+    /// <summary>
     /// Updates only the Google rating properties (and optionally the place id) of an
-    /// existing place, preserving every other value. Republishes only documents that
-    /// were already published. Returns false when the stored values already match.
+    /// existing place, preserving every other value. Returns false when the stored
+    /// values already match.
     /// </summary>
     public async Task<bool> UpdatePlaceRatingAsync(
         Guid id, double rating, int ratingCount, string? googlePlaceId = null)
     {
-        HttpRequestMessage getRequest = await AuthorizedRequestAsync(
-            HttpMethod.Get, $"/umbraco/management/api/v1/document/{id}");
-        HttpResponseMessage getResponse = await http.SendAsync(getRequest);
-        if (!getResponse.IsSuccessStatusCode)
-        {
-            throw new InvalidOperationException(
-                $"Read document {id} failed ({(int)getResponse.StatusCode}): {await getResponse.Content.ReadAsStringAsync()}");
-        }
+        (string name, string state, Dictionary<string, object?> values) = await ReadDocumentAsync(id);
 
-        using JsonDocument doc = JsonDocument.Parse(await getResponse.Content.ReadAsStringAsync());
-        JsonElement root = doc.RootElement;
-        JsonElement variant = root.GetProperty("variants")[0];
-        string name = variant.GetProperty("name").GetString() ?? "";
-        string state = variant.GetProperty("state").GetString() ?? "";
-
-        double? currentRating = null;
-        int? currentCount = null;
-        string? currentPlaceId = null;
-        var values = new List<object>();
-        foreach (JsonElement v in root.GetProperty("values").EnumerateArray())
-        {
-            string alias = v.GetProperty("alias").GetString()!;
-            JsonElement value = v.GetProperty("value");
-            switch (alias)
-            {
-                case "googleRating" when value.ValueKind == JsonValueKind.Number:
-                    currentRating = value.GetDouble();
-                    break;
-                case "googleRatingCount" when value.ValueKind == JsonValueKind.Number:
-                    currentCount = value.GetInt32();
-                    break;
-                case "googlePlaceId" when googlePlaceId is not null:
-                    currentPlaceId = value.ValueKind == JsonValueKind.String ? value.GetString() : null;
-                    break;
-                case "googleRating":
-                case "googleRatingCount":
-                    break;
-                default:
-                    values.Add(new { alias, value = (object?)value.Clone() });
-                    break;
-            }
-        }
-
-        if (currentRating == rating && currentCount == ratingCount
-            && (googlePlaceId is null || currentPlaceId == googlePlaceId))
+        if (Number(values, "googleRating") == rating
+            && Number(values, "googleRatingCount") == ratingCount
+            && (googlePlaceId is null || Text(values, "googlePlaceId") == googlePlaceId))
         {
             return false;
         }
 
-        values.Add(new { alias = "googleRating", value = rating });
-        values.Add(new { alias = "googleRatingCount", value = ratingCount });
+        values["googleRating"] = rating;
+        values["googleRatingCount"] = ratingCount;
         if (googlePlaceId is not null)
         {
-            values.Add(new { alias = "googlePlaceId", value = googlePlaceId });
+            values["googlePlaceId"] = googlePlaceId;
         }
 
-        HttpRequestMessage putRequest = await AuthorizedRequestAsync(
-            HttpMethod.Put, $"/umbraco/management/api/v1/document/{id}");
-        putRequest.Content = JsonContent.Create(new
-        {
-            template = (object?)null,
-            values,
-            variants = new[] { new { culture = (string?)null, segment = (string?)null, name } },
-        });
-        HttpResponseMessage putResponse = await http.SendAsync(putRequest);
-        if (!putResponse.IsSuccessStatusCode)
-        {
-            throw new InvalidOperationException(
-                $"Update rating for '{name}' failed ({(int)putResponse.StatusCode}): {await putResponse.Content.ReadAsStringAsync()}");
-        }
-
-        if (state.StartsWith("Published", StringComparison.Ordinal))
-        {
-            await PublishAsync(id);
-        }
-
+        await WriteDocumentAsync(id, name, values, state);
         return true;
     }
 
     /// <summary>
-    /// Sets the "photo" MediaPicker3 value of an existing document, preserving
-    /// every other value. Republishes only documents that were already published.
+    /// Sets the "photo" MediaPicker3 value of an existing document, preserving every
+    /// other value.
     /// </summary>
     public async Task SetPhotoAsync(Guid id, Guid mediaKey)
     {
-        HttpRequestMessage getRequest = await AuthorizedRequestAsync(
-            HttpMethod.Get, $"/umbraco/management/api/v1/document/{id}");
-        HttpResponseMessage getResponse = await http.SendAsync(getRequest);
-        getResponse.EnsureSuccessStatusCode();
+        (string name, string state, Dictionary<string, object?> values) = await ReadDocumentAsync(id);
+        values["photo"] = $"[{{\"key\":\"{Guid.NewGuid()}\",\"mediaKey\":\"{mediaKey}\"}}]";
+        await WriteDocumentAsync(id, name, values, state);
+    }
 
-        using JsonDocument doc = JsonDocument.Parse(await getResponse.Content.ReadAsStringAsync());
-        JsonElement root = doc.RootElement;
-        JsonElement variant = root.GetProperty("variants")[0];
-        string name = variant.GetProperty("name").GetString() ?? "";
-        string state = variant.GetProperty("state").GetString() ?? "";
+    /// <summary>
+    /// Renames a document, preserving every value. Used when a second place turns up
+    /// with a name already taken by a sibling: both are renamed to say where they are,
+    /// instead of letting Umbraco number one of them.
+    /// </summary>
+    public async Task RenameDocumentAsync(Guid id, string name)
+    {
+        (_, string state, Dictionary<string, object?> values) = await ReadDocumentAsync(id);
+        await WriteDocumentAsync(id, name, values, state);
+    }
 
-        var values = new List<object>();
-        foreach (JsonElement v in root.GetProperty("values").EnumerateArray())
-        {
-            if (v.GetProperty("alias").GetString() != "photo")
-            {
-                values.Add(new { alias = v.GetProperty("alias").GetString()!, value = (object?)v.GetProperty("value").Clone() });
-            }
-        }
-
-        values.Add(new
-        {
-            alias = "photo",
-            value = (object?)$"[{{\"key\":\"{Guid.NewGuid()}\",\"mediaKey\":\"{mediaKey}\"}}]",
-        });
-
-        HttpRequestMessage putRequest = await AuthorizedRequestAsync(
-            HttpMethod.Put, $"/umbraco/management/api/v1/document/{id}");
-        putRequest.Content = JsonContent.Create(new
-        {
-            template = (object?)null,
-            values,
-            variants = new[] { new { culture = (string?)null, segment = (string?)null, name } },
-        });
-        HttpResponseMessage putResponse = await http.SendAsync(putRequest);
-        if (!putResponse.IsSuccessStatusCode)
-        {
-            throw new InvalidOperationException(
-                $"Set photo for '{name}' failed ({(int)putResponse.StatusCode}): {await putResponse.Content.ReadAsStringAsync()}");
-        }
-
-        if (state.StartsWith("Published", StringComparison.Ordinal))
-        {
-            await PublishAsync(id);
-        }
+    /// <summary>The address stored on a place, or null when it has none.</summary>
+    public async Task<string?> GetPlaceAddressAsync(Guid id)
+    {
+        (_, _, Dictionary<string, object?> values) = await ReadDocumentAsync(id);
+        return Text(values, "address");
     }
 
     public async Task PublishAsync(Guid id)
@@ -687,16 +672,17 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
     /// </summary>
     public async Task<Guid> CreatePlaceAsync(
         Guid parentId, DiscoveredPlace place, Enrichment? enrichment, Guid? photoMediaKey = null,
-        string? companyName = null)
+        string? companyName = null, string? documentName = null)
     {
         Guid docTypeId = await GetPlaceDocumentTypeIdAsync();
         var documentId = Guid.NewGuid();
         bool branchOfCompany = companyName is not null;
 
         // Siblings under a company would otherwise all carry the chain's own name.
-        string name = branchOfCompany
+        // The caller passes documentName when it had to settle a clash with a sibling.
+        string name = documentName ?? (branchOfCompany
             ? BranchNaming.For(place.Name, place.Address, companyName!)
-            : place.Name;
+            : place.Name);
 
         object?[] values =
         [

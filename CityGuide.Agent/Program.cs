@@ -120,6 +120,28 @@ var created = 0;
 // parent path walk it once between them.
 var scannedParents = new HashSet<Guid>();
 
+// Umbraco numbers same-named siblings ("CachArepa (1)"), a name that says which one
+// arrived second and nothing about which one it is. Chains reuse one name across
+// locations, so the names already taken under each parent are kept here to catch the
+// clash while both places can still be told apart by their address.
+var siblingsByParent = new Dictionary<Guid, Dictionary<string, Guid>>();
+
+async Task<Dictionary<string, Guid>> SiblingsAsync(Guid parentId)
+{
+    if (!siblingsByParent.TryGetValue(parentId, out Dictionary<string, Guid>? names))
+    {
+        names = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
+        foreach (UmbracoClient.ChildDocument child in await umbraco.GetChildrenAsync(parentId))
+        {
+            names[child.Name] = child.Id;
+        }
+
+        siblingsByParent[parentId] = names;
+    }
+
+    return names;
+}
+
 foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelected(r.ParentPath)) : [])
 {
     // /santo-domingo/bares-y-clubes → city slug "santo-domingo", category slug "bares-y-clubes".
@@ -292,8 +314,48 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelec
             string? companyName = companyId is null
                 ? null
                 : companies.First(c => c.Value == companyId).Key;
+
+            string baseName = companyName is null
+                ? place.Name
+                : BranchNaming.For(place.Name, place.Address, companyName);
+            string name = baseName;
+            Dictionary<string, Guid> siblings = await SiblingsAsync(targetParentId);
+            if (siblings.TryGetValue(baseName, out Guid twinId))
+            {
+                // The one already there was named before this twin existed, so it
+                // carries the bare name — qualify it too, or the pair still reads
+                // as one place with a number stuck on it.
+                try
+                {
+                    string qualified = PlaceNaming.Qualified(baseName, place.Address);
+                    string twinName = PlaceNaming.Qualified(
+                        baseName, await umbraco.GetPlaceAddressAsync(twinId));
+
+                    // Two branches on one corner can share an address line, and then
+                    // the qualifier tells them apart no better than the bare name
+                    // does. Leave both alone rather than repeat one name twice.
+                    if (qualified != twinName)
+                    {
+                        name = qualified;
+                    }
+
+                    if (twinName != baseName && twinName != name && !siblings.ContainsKey(twinName))
+                    {
+                        await umbraco.RenameDocumentAsync(twinId, twinName);
+                        siblings.Remove(baseName);
+                        siblings[twinName] = twinId;
+                        Console.WriteLine($"  ~ '{baseName}' -> '{twinName}' (nombre repetido)");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"  ! renombrar '{baseName}' existente: {ex.Message}");
+                }
+            }
+
             Guid id = await umbraco.CreatePlaceAsync(
-                targetParentId, place, enrichment, photoKey, companyName);
+                targetParentId, place, enrichment, photoKey, companyName, name);
+            siblings[name] = id;
             knownPlaceIds[place.GooglePlaceId] = id;
             created++;
             runCreated++;

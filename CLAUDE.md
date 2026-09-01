@@ -57,7 +57,15 @@ when nothing distinguishing is left, the street line of the address is used
 ("Banreservas — Av. Winston Churchill 1099"). That is the same shape `branchDisplayName`
 produces in the frontend, which leaves such a name alone rather than prefixing the chain
 twice; seeded branches still store the bare local name ("Sucursal Naco") and get prefixed
-there. The rating/photo backfill also covers `mall`
+there. Any two places that would share a name under one parent are named apart by their
+address instead of by Umbraco's "(n)" suffix (`PlaceNaming`): the newcomer and the twin
+already stored both get the first line of their address appended ("Sonoma Bistro — Ágora
+Mall", "Sonoma Bistro — Calle Federico Geraldino 96"), which is the plaza, the sector or
+the street, whichever Google puts first. When both addresses yield the same line — two
+branches on one corner — neither is renamed and the number stays, since the qualifier
+would say no more than the bare name does. `PlaceNaming` also owns the connector trimming
+both callers need: Google's street line often ends on a dangling cross-street word
+("Av. John F. Kennedy esq"), and "y Ureña" opens on one. The rating/photo backfill also covers `mall`
 nodes (plazas comerciales), which have coordinates and a photo but no rating properties.
 The agent reads per-city config from the city node's "Agente" tab (`agentCityName` replaces the `{city}` placeholder in Run queries; `agentPrompts` holds one `categoria-slug: instrucciones` line per category, appended to the description prompt; `agentArea` is the `lat,lng;lat,lng` rectangle — southwest corner, then northeast — that every Google query for that city is restricted to). Without `agentArea` Google answers a city query with the whole country: "bares en Santo Domingo" returns Punta Cana. Text Search takes only a rectangle there, never a radius, and an unparseable value means no restriction rather than an empty run. It is meant to run daily — `deploy/schedule-agent-job.sh` creates the Azure Container Apps Job (cron 10:00 UTC) once the CMS is in Azure; `deploy/provision-azure-openai.sh` documents the model resource. The agent also runs `CinemaSync` (config section `Cinemas`): upserts the "Caribbean Cinemas" company + branch places from the Caribbean Cinemas GraphQL API and maintains the `movie` catalog under `/santo-domingo/cines` (synopsis, poster, YouTube trailer in Latino Spanish via search) — this content is published immediately, not drafted, and stale movies are deleted. Every event gets a main image: the one the source declares, else the `og:image` of its
 ticket page, else a Google photo of its venue. `EventSync` (config section `Events`) fills `/santo-domingo/eventos` from public event portals (TodoTickets and TicketExpress detail pages, Eventbrite listings) via per-source strategies ("jsonld-listing", "jsonld-detail", "ticketexpress"); events publish immediately, dedupe by ticket URL and name+date, and only agent-created (`source` = `agent:*`) past events are deleted — TuBoleta (JS-loaded dates) and Uepa Tickets (Cloudflare) are deliberately not scraped. `dotnet run -- --scrape-events` prints what each source yields without touching the CMS. Every external request goes through `ThrottlingHandler` (min interval + jitter per host, `Throttle:SecondsBetweenRequests`) so the agent is slow on purpose and never trips rate limiters.
