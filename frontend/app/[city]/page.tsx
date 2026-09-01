@@ -7,6 +7,7 @@ import HeroCarousel, { type HeroSlide } from "@/components/HeroCarousel";
 import JsonLd from "@/components/JsonLd";
 import PlaceCard from "@/components/PlaceCard";
 import {
+  byRating,
   getChildren,
   getDescendantsOfType,
   getItem,
@@ -114,7 +115,11 @@ export default async function CityLandingPage({
     photo: sectionImage(section, allPlaces),
   }));
 
-  const featured = allPlaces.filter((p) => photoUrl(p)).slice(0, 6);
+  // Best rated first, so the home page leads with the strongest places.
+  const featured = allPlaces
+    .filter((p) => photoUrl(p))
+    .sort(byRating)
+    .slice(0, 6);
 
   return (
     <main>

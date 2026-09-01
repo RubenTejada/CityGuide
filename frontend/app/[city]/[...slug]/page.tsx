@@ -34,6 +34,7 @@ import {
   seoTitle,
 } from "@/lib/seo";
 import {
+  byRating,
   facilities,
   getChildren,
   getDescendantsOfType,
@@ -359,6 +360,29 @@ async function listingEntries(path: string): Promise<UmbracoItem[]> {
     (p) => !under(companies, p) && !under(malls, p),
   );
   return [...malls, ...standaloneCompanies, ...standalonePlaces];
+}
+
+/**
+ * Listing entries ordered best rated first. Companies and malls carry no rating
+ * of their own, so they rank by their best-rated nested place — the same
+ * parent/branch inheritance listingFacilities uses.
+ */
+async function listingEntriesByRating(path: string): Promise<UmbracoItem[]> {
+  const [entries, allPlaces] = await Promise.all([
+    listingEntries(path),
+    getDescendantsOfType(path, "place"),
+  ]);
+  const ratedBy = new Map(
+    entries.map((entry) => {
+      if (entry.contentType === "place") return [entry.id, entry] as const;
+      const prefix = `${entry.route.path.replace(/\/+$/, "")}/`;
+      const nested = allPlaces.filter((p) => p.route.path.startsWith(prefix));
+      return [entry.id, [entry, ...nested].sort(byRating)[0]] as const;
+    }),
+  );
+  return [...entries].sort((a, b) =>
+    byRating(ratedBy.get(a.id)!, ratedBy.get(b.id)!),
+  );
 }
 
 /** Category pages that offer the "Facilidades" dropdown filter. */
@@ -1297,8 +1321,8 @@ async function ThingsToDoView({
     (s) => s.contentType === "categoryPage" && slugOf(s) === "atracciones",
   );
   const attractions = attractionsSection
-    ? (await listingEntries(attractionsSection.route.path)).filter((entry) =>
-        openToday(text(entry, "hours")),
+    ? (await listingEntriesByRating(attractionsSection.route.path)).filter(
+        (entry) => openToday(text(entry, "hours")),
       )
     : [];
 
@@ -1311,7 +1335,7 @@ async function ThingsToDoView({
       name: section.name,
       slug: slugOf(section),
       href: section.route.path,
-      entries: (await listingEntries(section.route.path)).slice(0, 4),
+      entries: (await listingEntriesByRating(section.route.path)).slice(0, 4),
     })),
   );
 

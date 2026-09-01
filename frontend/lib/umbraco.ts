@@ -132,3 +132,15 @@ export function slugOf(item: UmbracoItem): string {
   const segments = item.route.path.split("/").filter(Boolean);
   return segments[segments.length - 1] ?? "";
 }
+
+/**
+ * Comparator: best rated first (Google rating, then number of reviews).
+ * Items without a rating score 0, so they sort last and, `Array#sort` being
+ * stable, keep their relative order.
+ */
+export function byRating(a: UmbracoItem, b: UmbracoItem): number {
+  return (
+    num(b, "googleRating") - num(a, "googleRating") ||
+    num(b, "googleRatingCount") - num(a, "googleRatingCount")
+  );
+}

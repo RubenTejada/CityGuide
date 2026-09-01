@@ -14,7 +14,8 @@ public record DiscoveredPlace(
     double Longitude,
     string[] Types,
     double? Rating,
-    int? UserRatingCount);
+    int? UserRatingCount,
+    string? PhotoName);
 
 /// <summary>Google Places API (New) — Text Search.</summary>
 public class GooglePlacesClient(HttpClient http, string apiKey)
@@ -30,7 +31,7 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
             "places.id", "places.displayName", "places.formattedAddress", "places.location",
             "places.nationalPhoneNumber", "places.websiteUri",
             "places.regularOpeningHours.weekdayDescriptions", "places.types",
-            "places.rating", "places.userRatingCount"));
+            "places.rating", "places.userRatingCount", "places.photos"));
 
         HttpResponseMessage response = await http.SendAsync(request);
         if (!response.IsSuccessStatusCode)
@@ -47,12 +48,35 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
                 p.Id!, p.DisplayName!.Text!, p.FormattedAddress, p.NationalPhoneNumber, p.WebsiteUri,
                 p.RegularOpeningHours?.WeekdayDescriptions ?? [],
                 p.Location!.Latitude, p.Location.Longitude, p.Types ?? [],
-                p.Rating, p.UserRatingCount))
+                p.Rating, p.UserRatingCount, p.Photos?.FirstOrDefault()?.Name))
             .ToList();
     }
 
+    /// <summary>
+    /// Downloads a place photo (Photo Media endpoint; follows Google's redirect
+    /// to the image bytes). Null when the photo is gone or the request fails —
+    /// a missing photo must never block creating the place.
+    /// </summary>
+    public async Task<(byte[] Bytes, string ContentType)?> DownloadPhotoAsync(string photoName, int maxWidthPx = 1200)
+    {
+        var request = new HttpRequestMessage(
+            HttpMethod.Get, $"https://places.googleapis.com/v1/{photoName}/media?maxWidthPx={maxWidthPx}");
+        request.Headers.Add("X-Goog-Api-Key", apiKey);
+
+        HttpResponseMessage response = await http.SendAsync(request);
+        if (!response.IsSuccessStatusCode)
+        {
+            return null;
+        }
+
+        byte[] bytes = await response.Content.ReadAsByteArrayAsync();
+        return bytes.Length == 0
+            ? null
+            : (bytes, response.Content.Headers.ContentType?.MediaType ?? "image/jpeg");
+    }
+
     public record RatingLookup(
-        string GooglePlaceId, string Name, double? Rating, int? UserRatingCount);
+        string GooglePlaceId, string Name, double? Rating, int? UserRatingCount, string? PhotoName = null);
 
     /// <summary>Current rating of a known place — Place Details by id. Null when the place is gone.</summary>
     public async Task<RatingLookup?> GetRatingByIdAsync(string placeId)
@@ -60,7 +84,7 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
         var request = new HttpRequestMessage(
             HttpMethod.Get, $"https://places.googleapis.com/v1/places/{placeId}");
         request.Headers.Add("X-Goog-Api-Key", apiKey);
-        request.Headers.Add("X-Goog-FieldMask", "id,displayName,rating,userRatingCount");
+        request.Headers.Add("X-Goog-FieldMask", "id,displayName,rating,userRatingCount,photos");
 
         HttpResponseMessage response = await http.SendAsync(request);
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
@@ -77,7 +101,8 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
         PlaceModel? place = await response.Content.ReadFromJsonAsync<PlaceModel>();
         return place?.Id is null
             ? null
-            : new RatingLookup(place.Id, place.DisplayName?.Text ?? "", place.Rating, place.UserRatingCount);
+            : new RatingLookup(place.Id, place.DisplayName?.Text ?? "", place.Rating, place.UserRatingCount,
+                place.Photos?.FirstOrDefault()?.Name);
     }
 
     /// <summary>
@@ -110,7 +135,7 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
         request.Headers.Add("X-Goog-Api-Key", apiKey);
         request.Headers.Add("X-Goog-FieldMask", string.Join(",",
             "places.id", "places.displayName", "places.location",
-            "places.rating", "places.userRatingCount"));
+            "places.rating", "places.userRatingCount", "places.photos"));
 
         HttpResponseMessage response = await http.SendAsync(request);
         if (!response.IsSuccessStatusCode)
@@ -131,7 +156,8 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
             .FirstOrDefault();
         return best is null
             ? null
-            : new RatingLookup(best.Id!, best.DisplayName?.Text ?? "", best.Rating, best.UserRatingCount);
+            : new RatingLookup(best.Id!, best.DisplayName?.Text ?? "", best.Rating, best.UserRatingCount,
+                best.Photos?.FirstOrDefault()?.Name);
     }
 
     /// <summary>True when most significant tokens of the stored name appear in Google's name.</summary>
@@ -187,7 +213,10 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
         [property: JsonPropertyName("location")] Location? Location,
         [property: JsonPropertyName("types")] string[]? Types,
         [property: JsonPropertyName("rating")] double? Rating,
-        [property: JsonPropertyName("userRatingCount")] int? UserRatingCount);
+        [property: JsonPropertyName("userRatingCount")] int? UserRatingCount,
+        [property: JsonPropertyName("photos")] List<PhotoModel>? Photos);
+
+    private record PhotoModel([property: JsonPropertyName("name")] string? Name);
 
     private record DisplayName([property: JsonPropertyName("text")] string? Text);
 

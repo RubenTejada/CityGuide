@@ -78,8 +78,9 @@ public class CinemaSync(
                 continue;
             }
 
-            decimal latitude = site.Latitude ?? siteConfig.Lat;
-            decimal longitude = site.Longitude ?? siteConfig.Lng;
+            // Coordinate data type stores decimal(_,6); more decimals fail publish.
+            decimal latitude = Math.Round(site.Latitude ?? siteConfig.Lat, 6);
+            decimal longitude = Math.Round(site.Longitude ?? siteConfig.Lng, 6);
             object[] values =
             [
                 new { alias = "address", value = (object)(site.Address ?? "") },

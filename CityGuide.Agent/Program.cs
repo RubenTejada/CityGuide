@@ -29,7 +29,12 @@ if (string.IsNullOrEmpty(config.Umbraco.ClientSecret))
 // per host, so no portal or API ever sees a burst. Slow but never blocked.
 using var http = new HttpClient(new ThrottlingHandler(
     TimeSpan.FromSeconds(config.Throttle.SecondsBetweenRequests),
-    new Uri(config.Umbraco.BaseUrl).Host));
+    new Uri(config.Umbraco.BaseUrl).Host))
+{
+    // Azure OpenAI stalls requests well past the 100s default when the
+    // deployment is over its tokens-per-minute quota; give them room.
+    Timeout = TimeSpan.FromMinutes(5),
+};
 var google = new GooglePlacesClient(http, config.Google.ApiKey);
 var umbraco = new UmbracoClient(http, config.Umbraco);
 
@@ -162,6 +167,26 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs : [])
         {
             Enrichment enrichment = await enricher!.EnrichAsync(place, categoryPrompt);
 
+            // Main image: first Google photo, uploaded to the Media library.
+            // Photo failures never block creating the place.
+            Guid? photoKey = null;
+            if (place.PhotoName is not null)
+            {
+                try
+                {
+                    (byte[] Bytes, string ContentType)? image = await google.DownloadPhotoAsync(place.PhotoName);
+                    if (image is not null)
+                    {
+                        photoKey = await umbraco.CreateMediaImageAsync(
+                            place.Name, image.Value.Bytes, image.Value.ContentType);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"  ! foto de {place.Name}: {ex.Message}");
+                }
+            }
+
             Guid targetParentId = parent.Value.Id;
             string? cuisine = subcategories is null ? null : CuisineMap.SubcategoryFor(place.Types);
             if (cuisine is not null)
@@ -177,7 +202,7 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs : [])
                 targetParentId = subcategoryId;
             }
 
-            Guid id = await umbraco.CreatePlaceAsync(targetParentId, place, enrichment);
+            Guid id = await umbraco.CreatePlaceAsync(targetParentId, place, enrichment, photoKey);
             knownPlaceIds[place.GooglePlaceId] = id;
             created++;
             string state = config.Umbraco.PublishImmediately ? "published" : "draft";
@@ -221,8 +246,32 @@ if (!string.IsNullOrEmpty(config.Google.ApiKey))
             bool updated = await umbraco.UpdatePlaceRatingAsync(
                 place.Id, foundRating, found.UserRatingCount ?? 0,
                 place.GooglePlaceId is null ? found.GooglePlaceId : null);
+
+            // Photo backfill: places without a main image (e.g. seeded
+            // atracciones/bares) get their first Google photo.
+            bool photoAdded = false;
+            if (!place.HasPhoto && found.PhotoName is not null)
+            {
+                try
+                {
+                    (byte[] Bytes, string ContentType)? image = await google.DownloadPhotoAsync(found.PhotoName);
+                    if (image is not null)
+                    {
+                        Guid mediaKey = await umbraco.CreateMediaImageAsync(
+                            place.Name, image.Value.Bytes, image.Value.ContentType);
+                        await umbraco.SetPhotoAsync(place.Id, mediaKey);
+                        photoAdded = true;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"  ! foto de {place.Name}: {ex.Message}");
+                }
+            }
+
             Console.WriteLine(
                 $"  {(updated ? "*" : "=")} {place.Name}: ★ {foundRating:0.0} ({found.UserRatingCount ?? 0})"
+                + (photoAdded ? " +foto" : "")
                 + (place.GooglePlaceId is null ? $" ← \"{found.Name}\"" : ""));
         }
         catch (Exception ex)

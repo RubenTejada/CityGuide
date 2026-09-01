@@ -5,7 +5,7 @@ namespace CityGuide.Agent;
 
 public record ScrapedEvent(
     string Name, string Url, DateTime Start, DateTime? End,
-    string? Venue, string? Address, string? Description);
+    string? Venue, string? Address, string? Description, string? ImageUrl = null);
 
 /// <summary>
 /// Keeps the "Eventos" section in sync with public event portals. Sources are
@@ -99,8 +99,32 @@ public partial class EventSync(HttpClient http, UmbracoClient umbraco, EventsCon
                     continue; // already in CMS, or same event seen via another portal
                 }
 
+                // Main image: the event's JSON-LD image, uploaded to the Media
+                // library. Image failures never block creating the event.
+                string? photoValue = null;
+                if (ev.ImageUrl is not null)
+                {
+                    try
+                    {
+                        (byte[] Bytes, string ContentType)? image = await FetchImageAsync(ev.ImageUrl);
+                        if (image is not null)
+                        {
+                            Guid mediaKey = await umbraco.CreateMediaImageAsync(
+                                ev.Name, image.Value.Bytes, image.Value.ContentType);
+                            photoValue = $"[{{\"key\":\"{Guid.NewGuid()}\",\"mediaKey\":\"{mediaKey}\"}}]";
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Error.WriteLine($"  ! imagen de {ev.Name}: {ex.Message}");
+                    }
+                }
+
                 object[] values =
                 [
+                    .. photoValue is null
+                        ? Array.Empty<object>()
+                        : [new { alias = "photo", value = (object)photoValue }],
                     new { alias = "description", value = (object)(ev.Description ?? "") },
                     new { alias = "startDate", value = (object)ev.Start.ToString("yyyy-MM-dd HH:mm:ss") },
                     new { alias = "endDate", value = (object?)(ev.End?.ToString("yyyy-MM-dd HH:mm:ss") ?? "") },
@@ -161,7 +185,10 @@ public partial class EventSync(HttpClient http, UmbracoClient umbraco, EventsCon
         {
             try
             {
-                events.AddRange(ExtractJsonLdEvents(await FetchAsync(link)));
+                string html = await FetchAsync(link);
+                string? ogImage = OgContent(html, "og:image");
+                events.AddRange(ExtractJsonLdEvents(html)
+                    .Select(ev => ev.ImageUrl is null ? ev with { ImageUrl = ogImage } : ev));
             }
             catch (Exception ex)
             {
@@ -186,16 +213,15 @@ public partial class EventSync(HttpClient http, UmbracoClient umbraco, EventsCon
             try
             {
                 string html = await FetchAsync(link);
-                string? name = Regex.Match(html,
-                        """<meta property="og:title"\s+content="([^"]+)" """.TrimEnd())
-                    .Groups[1].Value is { Length: > 0 } t ? System.Net.WebUtility.HtmlDecode(t) : null;
+                string? name = OgContent(html, "og:title");
                 DateTime? date = ParseSpanishProseDate(HtmlTags().Replace(html, " "));
                 if (name is null || date is null || date.Value.Date < DateTime.Today)
                 {
                     continue;
                 }
 
-                events.Add(new ScrapedEvent(name, link, date.Value, null, null, null, ""));
+                events.Add(new ScrapedEvent(
+                    name, link, date.Value, null, null, null, "", OgContent(html, "og:image")));
             }
             catch (Exception ex)
             {
@@ -207,6 +233,30 @@ public partial class EventSync(HttpClient http, UmbracoClient umbraco, EventsCon
     }
 
     // ---- Parsing helpers ----
+
+    /// <summary>Content of an og: meta tag, HTML-decoded; null when absent.</summary>
+    private static string? OgContent(string html, string property)
+    {
+        Match m = Regex.Match(html, "<meta property=\"" + Regex.Escape(property) + "\"\\s+content=\"([^\"]+)\"");
+        return m.Success ? System.Net.WebUtility.HtmlDecode(m.Groups[1].Value).Trim() : null;
+    }
+
+    /// <summary>Downloads an image URL; null unless the response is an image.</summary>
+    private async Task<(byte[] Bytes, string ContentType)?> FetchImageAsync(string url)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Add("user-agent",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36");
+        HttpResponseMessage response = await http.SendAsync(request);
+        string contentType = response.Content.Headers.ContentType?.MediaType ?? "";
+        if (!response.IsSuccessStatusCode || !contentType.StartsWith("image/", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        byte[] bytes = await response.Content.ReadAsByteArrayAsync();
+        return bytes.Length == 0 ? null : (bytes, contentType);
+    }
 
     private async Task<string> FetchAsync(string url)
     {
@@ -317,8 +367,22 @@ public partial class EventSync(HttpClient http, UmbracoClient umbraco, EventsCon
             description = description[..500];
         }
 
+        // "image" can be a URL string, an array of URLs, or an ImageObject.
+        string? imageUrl = null;
+        if (e.TryGetProperty("image", out JsonElement img))
+        {
+            imageUrl = img.ValueKind switch
+            {
+                JsonValueKind.String => img.GetString(),
+                JsonValueKind.Array when img.GetArrayLength() > 0 && img[0].ValueKind == JsonValueKind.String
+                    => img[0].GetString(),
+                JsonValueKind.Object => Text(img, "url"),
+                _ => null,
+            };
+        }
+
         return new ScrapedEvent(
-            System.Net.WebUtility.HtmlDecode(name).Trim(), url, start, end, venue, address, description);
+            System.Net.WebUtility.HtmlDecode(name).Trim(), url, start, end, venue, address, description, imageUrl);
     }
 
     private static readonly string[] SpanishMonths =

@@ -56,22 +56,45 @@ public class AzureOpenAiClient(HttpClient http, AzureOpenAiConfig config) : IEnr
 
         string url = $"{config.Endpoint.TrimEnd('/')}/openai/deployments/{config.Deployment}"
             + $"/chat/completions?api-version={config.ApiVersion}";
-        var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = JsonContent.Create(payload) };
-        if (!string.IsNullOrEmpty(config.ApiKey))
-        {
-            request.Headers.Add("api-key", config.ApiKey);
-        }
-        else
-        {
-            request.Headers.Authorization =
-                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", await GetTokenAsync());
-        }
 
-        HttpResponseMessage response = await http.SendAsync(request);
-        if (!response.IsSuccessStatusCode)
+        // Over-quota deployments stall or 429 for up to a minute; retry with
+        // backoff instead of failing the place.
+        HttpResponseMessage? response = null;
+        for (int attempt = 1; ; attempt++)
         {
-            throw new InvalidOperationException(
-                $"Azure OpenAI failed ({(int)response.StatusCode}): {await response.Content.ReadAsStringAsync()}");
+            var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = JsonContent.Create(payload) };
+            if (!string.IsNullOrEmpty(config.ApiKey))
+            {
+                request.Headers.Add("api-key", config.ApiKey);
+            }
+            else
+            {
+                request.Headers.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", await GetTokenAsync());
+            }
+
+            try
+            {
+                response = await http.SendAsync(request);
+                if (response.IsSuccessStatusCode)
+                {
+                    break;
+                }
+
+                bool retryable = (int)response.StatusCode is 429 or >= 500;
+                if (!retryable || attempt == 3)
+                {
+                    throw new InvalidOperationException(
+                        $"Azure OpenAI failed ({(int)response.StatusCode}): {await response.Content.ReadAsStringAsync()}");
+                }
+
+                TimeSpan delay = response.Headers.RetryAfter?.Delta ?? TimeSpan.FromSeconds(30 * attempt);
+                await Task.Delay(delay);
+            }
+            catch (TaskCanceledException) when (attempt < 3)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(30 * attempt));
+            }
         }
 
         using JsonDocument doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());

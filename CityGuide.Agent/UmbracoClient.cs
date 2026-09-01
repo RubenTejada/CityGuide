@@ -245,7 +245,7 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
 
     public record PublishedPlace(
         Guid Id, string Name, string Path, double Latitude, double Longitude,
-        string? Address, string? GooglePlaceId);
+        string? Address, string? GooglePlaceId, bool HasPhoto);
 
     /// <summary>Every published place with its coordinates — used by the rating backfill.</summary>
     public async Task<List<PublishedPlace>> GetPublishedPlacesAsync()
@@ -267,11 +267,13 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
                 props.TryGetProperty(alias, out JsonElement v) && v.ValueKind == JsonValueKind.String
                     ? v.GetString()
                     : null;
+            bool hasPhoto = props.TryGetProperty("photo", out JsonElement photo)
+                && photo.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined);
             places.Add(new PublishedPlace(
                 item.GetProperty("id").GetGuid(),
                 item.GetProperty("name").GetString()!,
                 item.GetProperty("route").GetProperty("path").GetString()!,
-                Coord("latitude"), Coord("longitude"), Text("address"), Text("googlePlaceId")));
+                Coord("latitude"), Coord("longitude"), Text("address"), Text("googlePlaceId"), hasPhoto));
         }
 
         return places;
@@ -419,6 +421,59 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         return true;
     }
 
+    /// <summary>
+    /// Sets the "photo" MediaPicker3 value of an existing document, preserving
+    /// every other value. Republishes only documents that were already published.
+    /// </summary>
+    public async Task SetPhotoAsync(Guid id, Guid mediaKey)
+    {
+        HttpRequestMessage getRequest = await AuthorizedRequestAsync(
+            HttpMethod.Get, $"/umbraco/management/api/v1/document/{id}");
+        HttpResponseMessage getResponse = await http.SendAsync(getRequest);
+        getResponse.EnsureSuccessStatusCode();
+
+        using JsonDocument doc = JsonDocument.Parse(await getResponse.Content.ReadAsStringAsync());
+        JsonElement root = doc.RootElement;
+        JsonElement variant = root.GetProperty("variants")[0];
+        string name = variant.GetProperty("name").GetString() ?? "";
+        string state = variant.GetProperty("state").GetString() ?? "";
+
+        var values = new List<object>();
+        foreach (JsonElement v in root.GetProperty("values").EnumerateArray())
+        {
+            if (v.GetProperty("alias").GetString() != "photo")
+            {
+                values.Add(new { alias = v.GetProperty("alias").GetString()!, value = (object?)v.GetProperty("value").Clone() });
+            }
+        }
+
+        values.Add(new
+        {
+            alias = "photo",
+            value = (object?)$"[{{\"key\":\"{Guid.NewGuid()}\",\"mediaKey\":\"{mediaKey}\"}}]",
+        });
+
+        HttpRequestMessage putRequest = await AuthorizedRequestAsync(
+            HttpMethod.Put, $"/umbraco/management/api/v1/document/{id}");
+        putRequest.Content = JsonContent.Create(new
+        {
+            template = (object?)null,
+            values,
+            variants = new[] { new { culture = (string?)null, segment = (string?)null, name } },
+        });
+        HttpResponseMessage putResponse = await http.SendAsync(putRequest);
+        if (!putResponse.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException(
+                $"Set photo for '{name}' failed ({(int)putResponse.StatusCode}): {await putResponse.Content.ReadAsStringAsync()}");
+        }
+
+        if (state.StartsWith("Published", StringComparison.Ordinal))
+        {
+            await PublishAsync(id);
+        }
+    }
+
     public async Task PublishAsync(Guid id)
     {
         HttpRequestMessage request = await AuthorizedRequestAsync(
@@ -447,8 +502,121 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         }
     }
 
+    // ---- Media (place photos) ----
+
+    // Well-known Umbraco media type keys (stable across installs).
+    private static readonly Guid ImageMediaTypeKey = Guid.Parse("cc07b313-0843-4aa8-bbda-871c8da728c8");
+    private static readonly Guid FolderMediaTypeKey = Guid.Parse("f38bd2d7-65d0-48e6-95dc-87ce06ec2d3d");
+    private Guid? _agentMediaFolderId;
+
+    /// <summary>Root media folder "Lugares (agente)" that groups agent-downloaded photos.</summary>
+    private async Task<Guid> EnsureAgentMediaFolderAsync()
+    {
+        if (_agentMediaFolderId is Guid cached)
+        {
+            return cached;
+        }
+
+        const string folderName = "Agente";
+        HttpRequestMessage request = await AuthorizedRequestAsync(
+            HttpMethod.Get, "/umbraco/management/api/v1/tree/media/root?skip=0&take=100");
+        HttpResponseMessage response = await http.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+        using (JsonDocument doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync()))
+        {
+            foreach (JsonElement item in doc.RootElement.GetProperty("items").EnumerateArray())
+            {
+                if (string.Equals(item.GetProperty("variants")[0].GetProperty("name").GetString(),
+                        folderName, StringComparison.OrdinalIgnoreCase))
+                {
+                    _agentMediaFolderId = item.GetProperty("id").GetGuid();
+                    return _agentMediaFolderId.Value;
+                }
+            }
+        }
+
+        var folderId = Guid.NewGuid();
+        HttpRequestMessage create = await AuthorizedRequestAsync(HttpMethod.Post, "/umbraco/management/api/v1/media");
+        create.Content = JsonContent.Create(new
+        {
+            id = folderId,
+            parent = (object?)null,
+            mediaType = new { id = FolderMediaTypeKey },
+            values = Array.Empty<object>(),
+            variants = new[] { new { culture = (string?)null, segment = (string?)null, name = folderName } },
+        });
+        HttpResponseMessage createResponse = await http.SendAsync(create);
+        if (!createResponse.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException(
+                $"Create media folder failed ({(int)createResponse.StatusCode}): {await createResponse.Content.ReadAsStringAsync()}");
+        }
+
+        _agentMediaFolderId = folderId;
+        return folderId;
+    }
+
+    /// <summary>Uploads image bytes as a Media item (temporary file → media). Returns the media key.</summary>
+    public async Task<Guid> CreateMediaImageAsync(string name, byte[] bytes, string contentType)
+    {
+        Guid folderId = await EnsureAgentMediaFolderAsync();
+
+        string extension = contentType switch
+        {
+            "image/png" => ".png",
+            "image/webp" => ".webp",
+            "image/gif" => ".gif",
+            _ => ".jpg",
+        };
+        var temporaryFileId = Guid.NewGuid();
+        HttpRequestMessage upload = await AuthorizedRequestAsync(
+            HttpMethod.Post, "/umbraco/management/api/v1/temporary-file");
+        var file = new ByteArrayContent(bytes);
+        file.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);
+        upload.Content = new MultipartFormDataContent
+        {
+            { new StringContent(temporaryFileId.ToString()), "Id" },
+            { file, "File", SafeFileName(name) + extension },
+        };
+        HttpResponseMessage uploadResponse = await http.SendAsync(upload);
+        if (!uploadResponse.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException(
+                $"Temporary file upload failed ({(int)uploadResponse.StatusCode}): {await uploadResponse.Content.ReadAsStringAsync()}");
+        }
+
+        var mediaId = Guid.NewGuid();
+        HttpRequestMessage create = await AuthorizedRequestAsync(HttpMethod.Post, "/umbraco/management/api/v1/media");
+        create.Content = JsonContent.Create(new
+        {
+            id = mediaId,
+            parent = new { id = folderId },
+            mediaType = new { id = ImageMediaTypeKey },
+            values = new object[]
+            {
+                new { alias = "umbracoFile", value = new { temporaryFileId } },
+            },
+            variants = new[] { new { culture = (string?)null, segment = (string?)null, name } },
+        });
+        HttpResponseMessage createResponse = await http.SendAsync(create);
+        if (!createResponse.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException(
+                $"Create media '{name}' failed ({(int)createResponse.StatusCode}): {await createResponse.Content.ReadAsStringAsync()}");
+        }
+
+        return mediaId;
+    }
+
+    private static string SafeFileName(string name)
+    {
+        string cleaned = new([.. name.Select(c => char.IsLetterOrDigit(c) ? char.ToLowerInvariant(c) : '-')]);
+        return string.IsNullOrWhiteSpace(cleaned.Trim('-')) ? "foto" : cleaned.Trim('-');
+    }
+
     /// <summary>Creates a place document (draft), optionally publishing it. Returns the new document id.</summary>
-    public async Task<Guid> CreatePlaceAsync(Guid parentId, DiscoveredPlace place, Enrichment enrichment)
+    public async Task<Guid> CreatePlaceAsync(
+        Guid parentId, DiscoveredPlace place, Enrichment enrichment, Guid? photoMediaKey = null)
     {
         Guid docTypeId = await GetPlaceDocumentTypeIdAsync();
         var documentId = Guid.NewGuid();
@@ -460,14 +628,24 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
             new { alias = "phone", value = place.Phone },
             new { alias = "website", value = place.Website },
             new { alias = "hours", value = string.Join("\n", place.Hours) },
-            new { alias = "latitude", value = place.Latitude },
-            new { alias = "longitude", value = place.Longitude },
+            // The CMS coordinate data type stores decimal(_,6); more decimals
+            // fail publish validation ("ContentInvalid").
+            new { alias = "latitude", value = Math.Round(place.Latitude, 6) },
+            new { alias = "longitude", value = Math.Round(place.Longitude, 6) },
             new { alias = "facilities", value = enrichment.Facilities },
             new { alias = "googlePlaceId", value = place.GooglePlaceId },
             new { alias = "googleRating", value = place.Rating },
             new { alias = "googleRatingCount", value = place.UserRatingCount },
             new { alias = "source", value = "agent" },
+            photoMediaKey is Guid mediaKey
+                ? (object?)new
+                {
+                    alias = "photo",
+                    value = $"[{{\"key\":\"{Guid.NewGuid()}\",\"mediaKey\":\"{mediaKey}\"}}]",
+                }
+                : null,
         ];
+        values = [.. values.Where(v => v is not null)];
 
         HttpRequestMessage request = await AuthorizedRequestAsync(HttpMethod.Post, "/umbraco/management/api/v1/document");
         request.Content = JsonContent.Create(new
