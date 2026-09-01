@@ -22,8 +22,17 @@ const FALLBACK_PHOTOS: Record<string, string> = {
     "https://upload.wikimedia.org/wikipedia/commons/thumb/4/46/Calle_las_Damas%2C_Santo_Domingo%2C_Zona_Colonial.jpg/1280px-Calle_las_Damas%2C_Santo_Domingo%2C_Zona_Colonial.jpg",
 };
 
-/** Large-photo card for attractions, same layout as the events section cards. */
-export default function AttractionCard({ place }: { place: UmbracoItem }) {
+/**
+ * Large-photo card for attractions, same layout as the events section cards.
+ * `compact` shrinks the photo and the copy so three fit across a wide screen.
+ */
+export default function AttractionCard({
+  place,
+  compact = false,
+}: {
+  place: UmbracoItem;
+  compact?: boolean;
+}) {
   const photo =
     photoUrl(place) ??
     FALLBACK_PHOTOS[slugOf(place)] ??
@@ -33,26 +42,48 @@ export default function AttractionCard({ place }: { place: UmbracoItem }) {
       href={place.route.path}
       className="group overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm transition hover:shadow-md"
     >
-      <div className="relative aspect-[2/1] bg-neutral-200">
+      <div
+        className={`relative bg-neutral-200 ${
+          compact ? "aspect-[16/7]" : "aspect-[2/1]"
+        }`}
+      >
         <Image
           src={photo}
           alt={place.name}
           fill
           unoptimized={photo.endsWith(".svg")}
           className="object-cover"
-          sizes="(min-width: 768px) 50vw, 100vw"
+          sizes={
+            compact
+              ? "(min-width: 1280px) 33vw, (min-width: 640px) 50vw, 100vw"
+              : "(min-width: 768px) 50vw, 100vw"
+          }
         />
       </div>
-      <div className="p-5">
-        <h3 className="font-semibold group-hover:text-brand-600">{place.name}</h3>
+      <div className={compact ? "p-3" : "p-5"}>
+        <h3
+          className={`font-semibold group-hover:text-brand-600 ${
+            compact ? "truncate text-sm" : ""
+          }`}
+        >
+          {place.name}
+        </h3>
         <Rating place={place} />
-        <p className="mt-1 truncate text-sm text-neutral-500">
+        <p
+          className={`truncate text-neutral-500 ${
+            compact ? "mt-0.5 text-xs" : "mt-1 text-sm"
+          }`}
+        >
           {text(place, "address")}
         </p>
-        <p className="mt-2 line-clamp-3 text-sm text-neutral-600">
+        <p
+          className={`text-neutral-600 ${
+            compact ? "mt-1 line-clamp-2 text-xs" : "mt-2 line-clamp-3 text-sm"
+          }`}
+        >
           {text(place, "description")}
         </p>
-        <div className="mt-3">
+        <div className={compact ? "mt-2" : "mt-3"}>
           <FacilityBadges facilities={facilities(place).slice(0, 3)} />
         </div>
       </div>

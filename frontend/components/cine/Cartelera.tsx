@@ -1,16 +1,14 @@
 import { PendingArea, PendingLink } from "@/components/LoadingOverlay";
-import MovieCard, { type MovieCardProps } from "@/components/cine/MovieCard";
+import MovieCard from "@/components/cine/MovieCard";
 import {
-  bookingUrl,
   CINEMAS_BY_CITY,
-  cinemaPortalPath,
   getAvailableDates,
+  getKnownTrailers,
   getMovieBillboard,
-  posterUrl,
   todayInDR,
+  toMovieCards,
   type Cinema,
 } from "@/lib/cinema";
-import { getDescendantsOfType, text } from "@/lib/umbraco";
 
 function dateLabel(date: string, today: string): string {
   if (date === today) return "Hoy";
@@ -47,16 +45,11 @@ export default async function Cartelera({
   const siteIds = cinema
     ? [cinema.id]
     : (CINEMAS_BY_CITY[citySlug] ?? []).map((c) => c.id);
-  const [dates, cmsMovies] = await Promise.all([
+  const [dates, knownTrailers] = await Promise.all([
     getAvailableDates(siteIds),
     // Agent-maintained movie catalog: stable trailer picks live in the CMS.
-    getDescendantsOfType(`/${citySlug}/cines`, "movie"),
+    getKnownTrailers(citySlug),
   ]);
-  const knownTrailers: Record<string, string> = {};
-  for (const movie of cmsMovies) {
-    const id = text(movie, "trailerYoutubeId");
-    if (id) knownTrailers[movie.name.toLowerCase()] = id;
-  }
   const date =
     selectedDate && dates.includes(selectedDate)
       ? selectedDate
@@ -77,29 +70,7 @@ export default async function Cartelera({
       );
   }
 
-  const cards: MovieCardProps[] = billboard.map((movie) => ({
-    name: movie.name,
-    poster: posterUrl(movie.posterImage),
-    rating: movie.rating,
-    duration: movie.duration,
-    genre: movie.genre,
-    synopsis: movie.synopsis?.replace(/<[^>]+>/g, "") ?? null,
-    trailerYoutubeId: movie.trailerYoutubeId,
-    cinemas: movie.cinemas.map(({ cinema, showtimes }) => ({
-      id: cinema.id,
-      name: cinema.name,
-      address: cinema.address,
-      lat: cinema.lat,
-      lng: cinema.lng,
-      portalPath: cinemaPortalPath(citySlug, cinema),
-      showtimes: showtimes.map((showtime) => ({
-        id: showtime.id,
-        time: showtime.time,
-        badge: showtime.badges[0] ?? null,
-        bookingUrl: bookingUrl(cinema, showtime.id),
-      })),
-    })),
-  }));
+  const cards = toMovieCards(citySlug, billboard);
 
   return (
     <PendingArea className="mt-10" label="Actualizando cartelera…">

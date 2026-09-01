@@ -22,7 +22,7 @@ export interface EventEntry {
 }
 
 /** The events that carry coordinates, as map pins. */
-function eventMarkers(events: EventEntry[]): MapMarker[] {
+export function eventMarkers(events: EventEntry[]): MapMarker[] {
   return events
     .filter((event) => event.latitude !== 0 && event.longitude !== 0)
     .map((event) => ({
@@ -63,35 +63,71 @@ function isPast(event: EventEntry): boolean {
   return end.getTime() < Date.now();
 }
 
-export function EventCard({ event }: { event: EventEntry }) {
+/**
+ * `compact` trades the tall poster and the roomy padding for a denser card, so
+ * a listing fits three across and more of it lands above the fold.
+ */
+export function EventCard({
+  event,
+  compact = false,
+}: {
+  event: EventEntry;
+  compact?: boolean;
+}) {
   return (
     <Link
       href={event.href}
       className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm transition hover:shadow-md"
     >
       {event.photo && (
-        <div className="relative aspect-[2/1] bg-neutral-200">
+        <div
+          className={`relative bg-neutral-200 ${
+            compact ? "aspect-[16/7]" : "aspect-[2/1]"
+          }`}
+        >
           <Image
             src={event.photo}
             alt={event.name}
             fill
             className="object-cover"
-            sizes="(min-width: 768px) 50vw, 100vw"
+            sizes={
+              compact
+                ? "(min-width: 1280px) 33vw, (min-width: 640px) 50vw, 100vw"
+                : "(min-width: 768px) 50vw, 100vw"
+            }
           />
         </div>
       )}
-      <div className="p-5">
+      <div className={compact ? "p-3" : "p-5"}>
         <div className="flex items-start justify-between gap-3">
-          <h3 className="font-semibold">{event.name}</h3>
+          <h3 className={`font-semibold ${compact ? "text-sm" : ""}`}>
+            {event.name}
+          </h3>
           {event.category && (
             <span className="shrink-0 rounded-full bg-brand-100 px-2.5 py-0.5 text-xs font-medium text-brand-800">
               {event.category}
             </span>
           )}
         </div>
-        <p className="mt-1 text-sm text-brand-700">{formatDate(event.startDate)}</p>
-        <p className="mt-1 text-sm text-neutral-500">{event.venueName}</p>
-        <p className="mt-2 line-clamp-3 text-sm text-neutral-600">{event.description}</p>
+        <p
+          className={`text-brand-700 ${compact ? "mt-0.5 text-xs" : "mt-1 text-sm"}`}
+        >
+          {formatDate(event.startDate)}
+        </p>
+        <p
+          className={`truncate text-neutral-500 ${
+            compact ? "mt-0.5 text-xs" : "mt-1 text-sm"
+          }`}
+        >
+          {event.venueName}
+        </p>
+        <p
+          className={`text-neutral-600 ${
+            compact ? "mt-1 line-clamp-2 text-xs" : "mt-2 line-clamp-3 text-sm"
+          }`}
+        >
+          {event.description}
+        </p>
       </div>
     </Link>
   );

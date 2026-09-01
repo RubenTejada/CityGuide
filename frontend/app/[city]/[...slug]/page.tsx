@@ -23,7 +23,11 @@ import ThingsToDoExplorer, {
 } from "@/components/ThingsToDoExplorer";
 import TrailerModal from "@/components/cine/TrailerModal";
 import { branchDisplayName } from "@/lib/branches";
-import { CINEMAS_BY_CITY, cinemaByName } from "@/lib/cinema";
+import {
+  CINEMAS_BY_CITY,
+  cinemaByName,
+  getTopMoviesToday,
+} from "@/lib/cinema";
 import { cuisineIcon, mapPinIcon, sectionListImage } from "@/lib/sections";
 import {
   articleJsonLd,
@@ -1394,8 +1398,18 @@ function openToday(hours: string): boolean {
   return !sawDays;
 }
 
-/** Category sections shown as "ideas" (leisure only; excludes service listings). */
-const IDEAS_EXCLUDED_SLUGS = new Set(["empresas-y-servicios", "atracciones"]);
+/**
+ * Category sections shown as "ideas" (leisure only; excludes service listings).
+ * "Cines" is out too: its section is today's cartelera, not a list of theaters.
+ */
+const IDEAS_EXCLUDED_SLUGS = new Set([
+  "empresas-y-servicios",
+  "atracciones",
+  "cines",
+]);
+
+/** How many of today's most-shown movies the guide puts on screen. */
+const GUIDE_MOVIES = 6;
 
 async function ThingsToDoView({
   item,
@@ -1405,10 +1419,11 @@ async function ThingsToDoView({
   citySlug: string;
 }) {
   const cityPath = `/${citySlug}`;
-  const [cityItem, sections, events] = await Promise.all([
+  const [cityItem, sections, events, movies] = await Promise.all([
     getItem(cityPath),
     getChildren(cityPath),
     getDescendantsOfType(cityPath, "eventItem", 100),
+    getTopMoviesToday(citySlug, GUIDE_MOVIES),
   ]);
 
   const now = new Date();
@@ -1454,18 +1469,35 @@ async function ThingsToDoView({
         (entry) => openToday(text(entry, "hours")),
       )
     : [];
+  const attractionMarkers = attractionsSection
+    ? [
+        ...(
+          await listingMarkers(attractionsSection.route.path, attractions)
+        ).values(),
+      ].flat()
+    : [];
+
+  const cinemasSection = sections.find(
+    (s) => s.contentType === "categoryPage" && slugOf(s) === "cines",
+  );
 
   const ideaSections = sections.filter(
     (s) => s.contentType === "categoryPage" && !IDEAS_EXCLUDED_SLUGS.has(slugOf(s)),
   );
   const ideas: GuideSection[] = await Promise.all(
-    ideaSections.map(async (section) => ({
-      id: section.id,
-      name: section.name,
-      slug: slugOf(section),
-      href: section.route.path,
-      entries: (await listingEntriesOrdered(section.route.path)).slice(0, 4),
-    })),
+    ideaSections.map(async (section) => {
+      const entries = (await listingEntriesOrdered(section.route.path)).slice(0, 6);
+      return {
+        id: section.id,
+        name: section.name,
+        slug: slugOf(section),
+        href: section.route.path,
+        entries,
+        markers: [
+          ...(await listingMarkers(section.route.path, entries)).values(),
+        ].flat(),
+      };
+    }),
   );
 
   return (
@@ -1486,7 +1518,10 @@ async function ThingsToDoView({
       <ThingsToDoExplorer
         events={eventEntries}
         attractions={attractions}
+        attractionMarkers={attractionMarkers}
         attractionsHref={attractionsSection?.route.path ?? null}
+        movies={movies}
+        moviesHref={cinemasSection?.route.path ?? null}
         sections={ideas}
       />
     </PageShell>

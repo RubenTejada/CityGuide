@@ -4,6 +4,7 @@
 // requires the site-id/circuit-id/client-type headers the SPA sends.
 
 import { findYoutubeTrailer } from "@/lib/trailers";
+import { getDescendantsOfType, text } from "@/lib/umbraco";
 
 const CC_BASE = "https://rd.caribbeancinemas.com";
 const CIRCUIT_ID = "5"; // Caribbean Cinemas Dominican Republic
@@ -353,6 +354,8 @@ export async function getMovieBillboard(
   citySlug: string,
   date: string,
   knownTrailers?: Record<string, string>,
+  /** Keep only the richest N movies — cut before the trailer lookups. */
+  limit?: number,
 ): Promise<MovieBillboard[]> {
   const cinemas = CINEMAS_BY_CITY[citySlug];
   if (!cinemas) return [];
@@ -391,12 +394,13 @@ export async function getMovieBillboard(
     }
   }
 
-  const billboard = [...byName.values()].sort(
+  const sorted = [...byName.values()].sort(
     (a, b) =>
       b.cinemas.length - a.cinemas.length ||
       b.totalShowtimes - a.totalShowtimes ||
       a.name.localeCompare(b.name, "es"),
   );
+  const billboard = limit === undefined ? sorted : sorted.slice(0, limit);
 
   // Swap Caribbean Cinemas' watermarked trailer uploads for an official
   // YouTube trailer: the agent-maintained CMS catalog first (knownTrailers,
@@ -443,4 +447,96 @@ export function cinemaPortalPath(citySlug: string, cinema: Cinema): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
   return `/${citySlug}/cines/caribbean-cinemas/${slug}`;
+}
+
+// ---- cartelera cards ----
+
+export interface MovieCardShowtime {
+  id: string;
+  time: string;
+  badge: string | null;
+  bookingUrl: string;
+}
+
+export interface MovieCardCinema {
+  id: string;
+  name: string;
+  address: string;
+  lat: number;
+  lng: number;
+  /** The cinema's branch page inside this portal. */
+  portalPath: string;
+  showtimes: MovieCardShowtime[];
+}
+
+export interface MovieCardProps {
+  name: string;
+  poster: string | null;
+  rating: string | null;
+  duration: number | null;
+  genre: string | null;
+  synopsis: string | null;
+  trailerYoutubeId: string | null;
+  cinemas: MovieCardCinema[];
+}
+
+/**
+ * Trailers the agent curated in the CMS `movie` catalog, keyed by lowercased
+ * movie name — stable picks that beat a live YouTube search.
+ */
+export async function getKnownTrailers(
+  citySlug: string,
+): Promise<Record<string, string>> {
+  const movies = await getDescendantsOfType(`/${citySlug}/cines`, "movie");
+  const trailers: Record<string, string> = {};
+  for (const movie of movies) {
+    const id = text(movie, "trailerYoutubeId");
+    if (id) trailers[movie.name.toLowerCase()] = id;
+  }
+  return trailers;
+}
+
+/** Billboard rows as the props `MovieCard` renders. */
+export function toMovieCards(
+  citySlug: string,
+  billboard: MovieBillboard[],
+): MovieCardProps[] {
+  return billboard.map((movie) => ({
+    name: movie.name,
+    poster: posterUrl(movie.posterImage),
+    rating: movie.rating,
+    duration: movie.duration,
+    genre: movie.genre,
+    synopsis: movie.synopsis?.replace(/<[^>]+>/g, "") ?? null,
+    trailerYoutubeId: movie.trailerYoutubeId,
+    cinemas: movie.cinemas.map(({ cinema, showtimes }) => ({
+      id: cinema.id,
+      name: cinema.name,
+      address: cinema.address,
+      lat: cinema.lat,
+      lng: cinema.lng,
+      portalPath: cinemaPortalPath(citySlug, cinema),
+      showtimes: showtimes.map((showtime) => ({
+        id: showtime.id,
+        time: showtime.time,
+        badge: showtime.badges[0] ?? null,
+        bookingUrl: bookingUrl(cinema, showtime.id),
+      })),
+    })),
+  }));
+}
+
+/** Today's richest movies in a city, ready to render. */
+export async function getTopMoviesToday(
+  citySlug: string,
+  limit: number,
+): Promise<MovieCardProps[]> {
+  if (!CINEMAS_BY_CITY[citySlug]) return [];
+  const billboard = await getMovieBillboard(
+    citySlug,
+    todayInDR(),
+    await getKnownTrailers(citySlug),
+    limit,
+  );
+  return toMovieCards(citySlug, billboard);
 }
