@@ -20,29 +20,54 @@ public record DiscoveredPlace(
 /// <summary>Google Places API (New) — Text Search.</summary>
 public class GooglePlacesClient(HttpClient http, string apiKey)
 {
+    /// <summary>
+    /// Text Search, paged. Google returns at most 20 results per page and up to
+    /// three pages, so <paramref name="max"/> above 20 keeps paging until Google
+    /// runs out. Results are ranked by review count before being cut to
+    /// <paramref name="max"/>: the point of a bigger run is the best-known
+    /// places, not an arbitrary slice of relevance order.
+    /// </summary>
     public async Task<List<DiscoveredPlace>> SearchAsync(string query, int max)
     {
-        var request = new HttpRequestMessage(HttpMethod.Post, "https://places.googleapis.com/v1/places:searchText")
+        var collected = new List<PlaceModel>();
+        string? pageToken = null;
+        do
         {
-            Content = JsonContent.Create(new { textQuery = query, languageCode = "es", pageSize = Math.Clamp(max, 1, 20) }),
-        };
-        request.Headers.Add("X-Goog-Api-Key", apiKey);
-        request.Headers.Add("X-Goog-FieldMask", string.Join(",",
-            "places.id", "places.displayName", "places.formattedAddress", "places.location",
-            "places.nationalPhoneNumber", "places.websiteUri",
-            "places.regularOpeningHours.weekdayDescriptions", "places.types",
-            "places.rating", "places.userRatingCount", "places.photos"));
+            var request = new HttpRequestMessage(HttpMethod.Post, "https://places.googleapis.com/v1/places:searchText")
+            {
+                Content = JsonContent.Create(new
+                {
+                    textQuery = query,
+                    languageCode = "es",
+                    pageSize = Math.Clamp(max - collected.Count, 1, 20),
+                    pageToken,
+                }),
+            };
+            request.Headers.Add("X-Goog-Api-Key", apiKey);
+            request.Headers.Add("X-Goog-FieldMask", string.Join(",",
+                "nextPageToken",
+                "places.id", "places.displayName", "places.formattedAddress", "places.location",
+                "places.nationalPhoneNumber", "places.websiteUri",
+                "places.regularOpeningHours.weekdayDescriptions", "places.types",
+                "places.rating", "places.userRatingCount", "places.photos"));
 
-        HttpResponseMessage response = await http.SendAsync(request);
-        if (!response.IsSuccessStatusCode)
-        {
-            throw new InvalidOperationException(
-                $"Google Places search failed ({(int)response.StatusCode}): {await response.Content.ReadAsStringAsync()}");
+            HttpResponseMessage response = await http.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new InvalidOperationException(
+                    $"Google Places search failed ({(int)response.StatusCode}): {await response.Content.ReadAsStringAsync()}");
+            }
+
+            SearchResponse? data = await response.Content.ReadFromJsonAsync<SearchResponse>();
+            collected.AddRange(data?.Places ?? []);
+            pageToken = string.IsNullOrEmpty(data?.NextPageToken) ? null : data.NextPageToken;
         }
+        while (pageToken is not null && collected.Count < max);
 
-        SearchResponse? data = await response.Content.ReadFromJsonAsync<SearchResponse>();
-        return (data?.Places ?? [])
+        return collected
             .Where(p => p.Id is not null && p.DisplayName?.Text is not null && p.Location is not null)
+            .DistinctBy(p => p.Id)
+            .OrderByDescending(p => p.UserRatingCount ?? 0)
             .Take(max)
             .Select(p => new DiscoveredPlace(
                 p.Id!, p.DisplayName!.Text!, p.FormattedAddress, p.NationalPhoneNumber, p.WebsiteUri,
@@ -73,6 +98,17 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
         return bytes.Length == 0
             ? null
             : (bytes, response.Content.Headers.ContentType?.MediaType ?? "image/jpeg");
+    }
+
+    /// <summary>
+    /// First Google photo of the best text-search match for a free-text query
+    /// (used to illustrate an event by its venue). Null when nothing matches or
+    /// the match has no photo.
+    /// </summary>
+    public async Task<string?> FindPhotoAsync(string query)
+    {
+        List<DiscoveredPlace> matches = await SearchAsync(query, 1);
+        return matches.FirstOrDefault()?.PhotoName;
     }
 
     public record RatingLookup(
@@ -150,7 +186,7 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
             .Select(p => (Place: p, Distance: HaversineMeters(
                 latitude, longitude, p.Location!.Latitude, p.Location.Longitude)))
             .Where(x => x.Distance <= 200
-                || (x.Distance <= 2000 && NamesMatch(name, x.Place.DisplayName?.Text)))
+                || (x.Distance <= 2000 && TextMatch.Matches(name, x.Place.DisplayName?.Text)))
             .OrderBy(x => x.Distance)
             .Select(x => x.Place)
             .FirstOrDefault();
@@ -158,35 +194,6 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
             ? null
             : new RatingLookup(best.Id!, best.DisplayName?.Text ?? "", best.Rating, best.UserRatingCount,
                 best.Photos?.FirstOrDefault()?.Name);
-    }
-
-    /// <summary>True when most significant tokens of the stored name appear in Google's name.</summary>
-    private static bool NamesMatch(string stored, string? google)
-    {
-        if (string.IsNullOrEmpty(google))
-        {
-            return false;
-        }
-
-        static string Normalize(string s) => string.Concat(
-            s.Normalize(System.Text.NormalizationForm.FormD)
-                .Where(c => System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c)
-                    != System.Globalization.UnicodeCategory.NonSpacingMark))
-            .ToLowerInvariant();
-
-        string[] stopWords = ["de", "del", "la", "el", "los", "las", "y", "en"];
-        string[] tokens = Normalize(stored)
-            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
-            .Where(t => t.Length > 2 && !stopWords.Contains(t))
-            .ToArray();
-        if (tokens.Length == 0)
-        {
-            return false;
-        }
-
-        string haystack = Normalize(google);
-        int hits = tokens.Count(haystack.Contains);
-        return hits * 2 >= tokens.Length; // at least half the tokens
     }
 
     private static double HaversineMeters(double lat1, double lng1, double lat2, double lng2)
@@ -201,7 +208,9 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
         return earthRadius * 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
     }
 
-    private record SearchResponse([property: JsonPropertyName("places")] List<PlaceModel>? Places);
+    private record SearchResponse(
+        [property: JsonPropertyName("places")] List<PlaceModel>? Places,
+        [property: JsonPropertyName("nextPageToken")] string? NextPageToken);
 
     private record PlaceModel(
         [property: JsonPropertyName("id")] string? Id,

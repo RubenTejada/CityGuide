@@ -26,6 +26,9 @@ cd frontend && npm run lint
 # Enrichment model: Azure OpenAI gpt-4.1-mini, keyless via "az login" — requires the
 # "Cognitive Services OpenAI User" role on cityguide-openai; Anthropic:ApiKey is the fallback provider)
 cd CityGuide.Agent && dotnet run
+# One section only (shorter runs): matches any segment of a Run's ParentPath,
+# plus "cines"/"eventos" for those syncs. Comma-separated for several.
+cd CityGuide.Agent && dotnet run -- --section restaurantes
 
 # Build everything
 dotnet build CityGuide.slnx
@@ -35,7 +38,22 @@ There are no automated tests in this repo.
 
 ## Architecture
 
-Content flow: editors use the Umbraco backoffice → published content is read by the Next.js frontend through the **Content Delivery API v2** (anonymous read, ISR with 10-min revalidation, client in `frontend/lib/umbraco.ts`). The agent (`CityGuide.Agent/Program.cs`) discovers places via Google Places, writes Spanish descriptions with Azure OpenAI (`gpt-4.1-mini` on the `cityguide-openai` account, Central US; Anthropic is the fallback — see `IEnrichmentClient`), and creates them as **drafts** through the **Management API** using API-user client credentials; it dedupes by `googlePlaceId`. Enrichment is the agent's only LLM step; dedupe, rating backfill, cinema sync and trailer search are plain code. The agent reads per-city config from the city node's "Agente" tab (`agentCityName` replaces the `{city}` placeholder in Run queries; `agentPrompts` holds one `categoria-slug: instrucciones` line per category, appended to the description prompt). It is meant to run daily — `deploy/schedule-agent-job.sh` creates the Azure Container Apps Job (cron 10:00 UTC) once the CMS is in Azure; `deploy/provision-azure-openai.sh` documents the model resource. The agent also runs `CinemaSync` (config section `Cinemas`): upserts the "Caribbean Cinemas" company + branch places from the Caribbean Cinemas GraphQL API and maintains the `movie` catalog under `/santo-domingo/cines` (synopsis, poster, YouTube trailer in Latino Spanish via search) — this content is published immediately, not drafted, and stale movies are deleted. `EventSync` (config section `Events`) fills `/santo-domingo/eventos` from public event portals (TodoTickets and TicketExpress detail pages, Eventbrite listings) via per-source strategies ("jsonld-listing", "jsonld-detail", "ticketexpress"); events publish immediately, dedupe by ticket URL and name+date, and only agent-created (`source` = `agent:*`) past events are deleted — TuBoleta (JS-loaded dates) and Uepa Tickets (Cloudflare) are deliberately not scraped. `dotnet run -- --scrape-events` prints what each source yields without touching the CMS. Every external request goes through `ThrottlingHandler` (min interval + jitter per host, `Throttle:SecondsBetweenRequests`) so the agent is slow on purpose and never trips rate limiters.
+Content flow: editors use the Umbraco backoffice → published content is read by the Next.js frontend through the **Content Delivery API v2** (anonymous read, ISR with 10-min revalidation, client in `frontend/lib/umbraco.ts`). The agent (`CityGuide.Agent/Program.cs`) discovers places via Google Places, writes Spanish descriptions with Azure OpenAI (`gpt-4.1-mini` on the `cityguide-openai` account, Central US; Anthropic is the fallback — see `IEnrichmentClient`), and creates them as **drafts** through the **Management API** using API-user client credentials; it dedupes by `googlePlaceId`. Enrichment is the agent's only LLM step; dedupe, rating backfill, cinema sync and trailer search are plain code. Discovery queries are paged (Google returns 20 results per page, up to 60 per query) and
+ranked by review count before being cut to `MaxPlaces`, so a bigger run means the
+best-known places rather than a wider slice of relevance order. 60 is Google's hard
+ceiling per text query, so city-wide coverage comes from many overlapping queries — the
+restaurant runs are one broad query plus per-sector and per-cuisine ones — deduped
+globally by `googlePlaceId`. The first full pass over them is long (hundreds of new
+places, each one LLM call plus a throttled photo download); seed it once with
+`--section restaurantes` and the daily job then skips almost everything. A `Run` with a
+`CompanyName` creates its places as branches of that `company` node instead of flat under
+the category (and fails loudly when the company does not exist); without one, a place
+whose name contains an existing company's name is nested under it anyway. Branch places
+store only their own data — no description, phone, website or hours — so they inherit the
+company's, and they cost no LLM tokens. The rating/photo backfill also covers `mall`
+nodes (plazas comerciales), which have coordinates and a photo but no rating properties.
+The agent reads per-city config from the city node's "Agente" tab (`agentCityName` replaces the `{city}` placeholder in Run queries; `agentPrompts` holds one `categoria-slug: instrucciones` line per category, appended to the description prompt). It is meant to run daily — `deploy/schedule-agent-job.sh` creates the Azure Container Apps Job (cron 10:00 UTC) once the CMS is in Azure; `deploy/provision-azure-openai.sh` documents the model resource. The agent also runs `CinemaSync` (config section `Cinemas`): upserts the "Caribbean Cinemas" company + branch places from the Caribbean Cinemas GraphQL API and maintains the `movie` catalog under `/santo-domingo/cines` (synopsis, poster, YouTube trailer in Latino Spanish via search) — this content is published immediately, not drafted, and stale movies are deleted. Every event gets a main image: the one the source declares, else the `og:image` of its
+ticket page, else a Google photo of its venue. `EventSync` (config section `Events`) fills `/santo-domingo/eventos` from public event portals (TodoTickets and TicketExpress detail pages, Eventbrite listings) via per-source strategies ("jsonld-listing", "jsonld-detail", "ticketexpress"); events publish immediately, dedupe by ticket URL and name+date, and only agent-created (`source` = `agent:*`) past events are deleted — TuBoleta (JS-loaded dates) and Uepa Tickets (Cloudflare) are deliberately not scraped. `dotnet run -- --scrape-events` prints what each source yields without touching the CMS. Every external request goes through `ThrottlingHandler` (min interval + jitter per host, `Throttle:SecondsBetweenRequests`) so the agent is slow on purpose and never trips rate limiters.
 
 Content model (all created in code, not in the backoffice):
 `site` → `city` → `categoryPage` → `subcategory` → `place`, plus `eventsPage`/`eventItem` and `thingsToDoPage` (“Qué Hacer”: aggregation-only guide page — upcoming events by category, attractions open today, idea sections per category; no child content) under each city, and `movie` (agent-maintained cartelera catalog) under `categoryPage`. `categoryPage` accepts `subcategory`, `place`, and `company` children; `subcategory` accepts `place` and `company`; `company` (empresa: logo + general info) accepts only `place` (its branches/sucursales).
@@ -43,6 +61,12 @@ Content model (all created in code, not in the backoffice):
 Company inheritance: a `place` under a `company` stores only its own data (name, address, coordinates); empty fields (phone, website, hours, description, photo) fall back to the parent company **in the frontend** (`PlaceView` in the catch-all page). Category/subcategory listings show companies as single cards and never flatten their branch places (`listingEntries`); branches appear only inside the company page.
 
 Frontend routing is a single catch-all (`frontend/app/[city]/[...slug]/page.tsx`) that switches on the item's `contentType` — new document types need a new case there.
+
+Map pins never show a node's own photo: `mapPinIcon` (`frontend/lib/sections.ts`) draws the
+parent company's logo for a branch and the section glyph otherwise, so pins stay legible and
+say which section they belong to. Photos are for listing cards, detail headers and map popup
+cards — that is why `/api/nearby` returns `photo` (the real image) and `icon` (company logo
+or null) separately, and why `BranchMarker` has both.
 
 The "¿Qué está cerca?" map panel calls `GET /api/nearby` (`CityGuideWeb/CityGuide/NearbyController.cs`, haversine scan over the published-content cache). The frontend proxies it via a Next.js rewrite so the browser call is same-origin.
 

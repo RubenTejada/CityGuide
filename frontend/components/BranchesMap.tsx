@@ -10,7 +10,7 @@ import {
 } from "@vis.gl/react-google-maps";
 import LogoPin from "./LogoPin";
 import MapPopupCard from "./MapPopupCard";
-import { sectionMapIcon } from "@/lib/sections";
+import { mapPinIcon } from "@/lib/sections";
 
 export interface BranchMarker {
   id: string;
@@ -19,7 +19,10 @@ export interface BranchMarker {
   address: string | null;
   latitude: number;
   longitude: number;
+  /** Company logo, drawn inside the map pin. */
   logo: string | null;
+  /** Branch photo — popup card only; omitted, the card shows the pin icon. */
+  photo?: string | null;
   rating?: number | null;
   ratingCount?: number | null;
 }
@@ -72,7 +75,7 @@ export default function BranchesMap({ branches }: { branches: BranchMarker[] }) 
               onClick={() => setSelected(branch)}
             >
               <LogoPin
-                logo={branch.logo ?? sectionMapIcon(branch.url)}
+                logo={mapPinIcon(branch.url, branch.logo)}
                 name={branch.name}
               />
             </AdvancedMarker>
@@ -85,7 +88,7 @@ export default function BranchesMap({ branches }: { branches: BranchMarker[] }) 
               <MapPopupCard
                 url={selected.url}
                 name={selected.name}
-                photo={selected.logo ?? sectionMapIcon(selected.url)}
+                photo={selected.photo ?? mapPinIcon(selected.url, selected.logo)}
                 address={selected.address}
                 rating={selected.rating}
                 ratingCount={selected.ratingCount}

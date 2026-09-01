@@ -22,7 +22,8 @@ public record ScrapedEvent(
 /// touched. All fetches go through the throttled HttpClient: slow but never
 /// blocked. No LLM tokens are spent here.
 /// </summary>
-public partial class EventSync(HttpClient http, UmbracoClient umbraco, EventsConfig config)
+public partial class EventSync(
+    HttpClient http, UmbracoClient umbraco, EventsConfig config, GooglePlacesClient? google = null)
 {
     [GeneratedRegex("""<script type=.application/ld\+json.[^>]*>(.*?)</script>""", RegexOptions.Singleline)]
     private static partial Regex JsonLdBlocks();
@@ -105,25 +106,26 @@ public partial class EventSync(HttpClient http, UmbracoClient umbraco, EventsCon
                     continue; // already in CMS, or same event seen via another portal
                 }
 
-                // Main image: the event's JSON-LD image, uploaded to the Media
-                // library. Image failures never block creating the event.
+                // Main image, uploaded to the Media library. Image failures never
+                // block creating the event.
                 string? photoValue = null;
-                if (ev.ImageUrl is not null)
+                try
                 {
-                    try
+                    (byte[] Bytes, string ContentType)? image = await FindImageAsync(ev);
+                    if (image is not null)
                     {
-                        (byte[] Bytes, string ContentType)? image = await FetchImageAsync(ev.ImageUrl);
-                        if (image is not null)
-                        {
-                            Guid mediaKey = await umbraco.CreateMediaImageAsync(
-                                ev.Name, image.Value.Bytes, image.Value.ContentType);
-                            photoValue = $"[{{\"key\":\"{Guid.NewGuid()}\",\"mediaKey\":\"{mediaKey}\"}}]";
-                        }
+                        Guid mediaKey = await umbraco.CreateMediaImageAsync(
+                            ev.Name, image.Value.Bytes, image.Value.ContentType);
+                        photoValue = $"[{{\"key\":\"{Guid.NewGuid()}\",\"mediaKey\":\"{mediaKey}\"}}]";
                     }
-                    catch (Exception ex)
+                    else
                     {
-                        Console.Error.WriteLine($"  ! imagen de {ev.Name}: {ex.Message}");
+                        Console.Error.WriteLine($"  ? {ev.Name}: sin imagen principal");
                     }
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"  ! imagen de {ev.Name}: {ex.Message}");
                 }
 
                 object[] values =
@@ -245,6 +247,43 @@ public partial class EventSync(HttpClient http, UmbracoClient umbraco, EventsCon
     {
         Match m = Regex.Match(html, "<meta property=\"" + Regex.Escape(property) + "\"\\s+content=\"([^\"]+)\"");
         return m.Success ? System.Net.WebUtility.HtmlDecode(m.Groups[1].Value).Trim() : null;
+    }
+
+    /// <summary>
+    /// Main image of an event, in order of preference: the image the source
+    /// declared, the og:image of its ticket page, and finally a Google photo of
+    /// the venue. An event without any image falls back to the section picture in
+    /// the frontend, which looks the same for every event — worth two extra
+    /// requests to avoid.
+    /// </summary>
+    private async Task<(byte[] Bytes, string ContentType)?> FindImageAsync(ScrapedEvent ev)
+    {
+        if (ev.ImageUrl is not null && await FetchImageAsync(ev.ImageUrl) is { } declared)
+        {
+            return declared;
+        }
+
+        try
+        {
+            string? og = OgContent(await FetchAsync(ev.Url), "og:image");
+            if (og is not null && await FetchImageAsync(og) is { } fromPage)
+            {
+                return fromPage;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"  ! og:image de {ev.Name}: {ex.Message}");
+        }
+
+        if (google is null || string.IsNullOrWhiteSpace(ev.Venue))
+        {
+            return null;
+        }
+
+        string city = config.CityPath.Trim('/').Split('/').Last().Replace('-', ' ');
+        string? photoName = await google.FindPhotoAsync($"{ev.Venue}, {city}");
+        return photoName is null ? null : await google.DownloadPhotoAsync(photoName);
     }
 
     /// <summary>Downloads an image URL; null unless the response is an image.</summary>

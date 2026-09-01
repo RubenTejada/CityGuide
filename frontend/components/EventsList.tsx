@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import FilterPills from "./FilterPills";
 
 export interface EventEntry {
   id: string;
@@ -111,33 +112,12 @@ export default function EventsList({ events }: { events: EventEntry[] }) {
   return (
     <div>
       {categories.length > 1 && (
-        <div className="mt-6 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => setCategory(null)}
-            className={`rounded-full border px-3.5 py-1.5 text-sm transition ${
-              category === null
-                ? "border-brand-600 bg-brand-600 text-white"
-                : "border-neutral-300 bg-white text-neutral-700 hover:border-brand-600 hover:text-brand-700"
-            }`}
-          >
-            Todas
-          </button>
-          {categories.map((c) => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => setCategory(c)}
-              className={`rounded-full border px-3.5 py-1.5 text-sm transition ${
-                category === c
-                  ? "border-brand-600 bg-brand-600 text-white"
-                  : "border-neutral-300 bg-white text-neutral-700 hover:border-brand-600 hover:text-brand-700"
-              }`}
-            >
-              {c}
-            </button>
-          ))}
-        </div>
+        <FilterPills
+          options={categories.map((c) => ({ value: c, label: c }))}
+          value={category}
+          onChange={setCategory}
+          allLabel="Todas"
+        />
       )}
 
       {[...byMonth.entries()].map(([label, group]) => (

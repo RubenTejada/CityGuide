@@ -55,3 +55,16 @@ export function sectionMapIcon(routePath: string): string {
     ? `/sections/icons/${section}.svg`
     : "/sections/icons/default.svg";
 }
+
+/**
+ * Icon drawn inside a map pin: the logo of the company the place belongs to,
+ * otherwise the section glyph. A place's own photo is never used — a pin is a
+ * 40px badge, and a cropped storefront photo there reads as noise and hides
+ * which section the pin belongs to.
+ */
+export function mapPinIcon(
+  routePath: string,
+  companyLogo?: string | null,
+): string {
+  return companyLogo ?? sectionMapIcon(routePath);
+}

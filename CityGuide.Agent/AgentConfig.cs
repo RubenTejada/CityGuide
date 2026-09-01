@@ -112,6 +112,15 @@ public class RunConfig
 
     public int MaxPlaces { get; set; } = 5;
 
+    /// <summary>
+    /// Optional. Name of the "company" node under ParentPath that discovered places
+    /// belong to (e.g. "Banreservas"): branches are created under it instead of flat
+    /// under the category, so they inherit the company logo and general info. When
+    /// empty, a discovered place is still nested under an existing company whose name
+    /// its own name contains.
+    /// </summary>
+    public string CompanyName { get; set; } = "";
+
     /// <summary>Restaurant runs only: file each discovered place into a cuisine
     /// subcategory derived from its Google types (see CuisineMap), creating the
     /// subcategory under ParentPath when it does not exist yet.</summary>

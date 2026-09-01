@@ -247,11 +247,15 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         Guid Id, string Name, string Path, double Latitude, double Longitude,
         string? Address, string? GooglePlaceId, bool HasPhoto);
 
-    /// <summary>Every published place with its coordinates — used by the rating backfill.</summary>
-    public async Task<List<PublishedPlace>> GetPublishedPlacesAsync()
+    /// <summary>
+    /// Every published node of a document type with its coordinates — used by the
+    /// rating and photo backfill. "mall" nodes carry the same latitude/longitude/photo
+    /// properties as places, so plazas are backfilled through the same path.
+    /// </summary>
+    public async Task<List<PublishedPlace>> GetPublishedPlacesAsync(string contentType = "place")
     {
         HttpResponseMessage response = await http.GetAsync(
-            $"{config.BaseUrl}/umbraco/delivery/api/v2/content?filter=contentType%3Aplace&take=1000");
+            $"{config.BaseUrl}/umbraco/delivery/api/v2/content?filter=contentType%3A{contentType}&take=1000");
         response.EnsureSuccessStatusCode();
 
         var places = new List<PublishedPlace>();
@@ -614,25 +618,31 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         return string.IsNullOrWhiteSpace(cleaned.Trim('-')) ? "foto" : cleaned.Trim('-');
     }
 
-    /// <summary>Creates a place document (draft), optionally publishing it. Returns the new document id.</summary>
+    /// <summary>
+    /// Creates a place document (draft), optionally publishing it. Returns the new document id.
+    /// A branch of a company stores only its own data (name, address, coordinates, photo,
+    /// rating): description, phone, website and hours are inherited from the parent company
+    /// by the frontend, so writing them here would freeze a copy that goes stale.
+    /// </summary>
     public async Task<Guid> CreatePlaceAsync(
-        Guid parentId, DiscoveredPlace place, Enrichment enrichment, Guid? photoMediaKey = null)
+        Guid parentId, DiscoveredPlace place, Enrichment? enrichment, Guid? photoMediaKey = null,
+        bool branchOfCompany = false)
     {
         Guid docTypeId = await GetPlaceDocumentTypeIdAsync();
         var documentId = Guid.NewGuid();
 
         object?[] values =
         [
-            new { alias = "description", value = enrichment.Description },
+            branchOfCompany ? null : (object?)new { alias = "description", value = enrichment?.Description },
             new { alias = "address", value = place.Address },
-            new { alias = "phone", value = place.Phone },
-            new { alias = "website", value = place.Website },
-            new { alias = "hours", value = string.Join("\n", place.Hours) },
+            branchOfCompany ? null : (object?)new { alias = "phone", value = place.Phone },
+            branchOfCompany ? null : (object?)new { alias = "website", value = place.Website },
+            branchOfCompany ? null : (object?)new { alias = "hours", value = string.Join("\n", place.Hours) },
             // The CMS coordinate data type stores decimal(_,6); more decimals
             // fail publish validation ("ContentInvalid").
             new { alias = "latitude", value = Math.Round(place.Latitude, 6) },
             new { alias = "longitude", value = Math.Round(place.Longitude, 6) },
-            new { alias = "facilities", value = enrichment.Facilities },
+            branchOfCompany ? null : (object?)new { alias = "facilities", value = enrichment?.Facilities },
             new { alias = "googlePlaceId", value = place.GooglePlaceId },
             new { alias = "googleRating", value = place.Rating },
             new { alias = "googleRatingCount", value = place.UserRatingCount },

@@ -19,7 +19,7 @@ import ThingsToDoExplorer, {
 } from "@/components/ThingsToDoExplorer";
 import TrailerModal from "@/components/cine/TrailerModal";
 import { CINEMAS_BY_CITY, cinemaByName } from "@/lib/cinema";
-import { sectionListImage, sectionMapIcon } from "@/lib/sections";
+import { mapPinIcon, sectionListImage } from "@/lib/sections";
 import {
   articleJsonLd,
   breadcrumbJsonLd,
@@ -427,7 +427,10 @@ function mallMarkers(entries: UmbracoItem[]): BranchMarker[] {
       address: text(mall, "address") || null,
       latitude: num(mall, "latitude"),
       longitude: num(mall, "longitude"),
-      logo: photoUrl(mall),
+      // Plazas have no company logo: the pin shows the section glyph and the
+      // photo stays in the popup card.
+      logo: null,
+      photo: photoUrl(mall),
       rating: num(mall, "googleRating") || null,
       ratingCount: num(mall, "googleRatingCount") || null,
     }))
@@ -725,7 +728,7 @@ async function MallView({ item }: { item: UmbracoItem }) {
               name={item.name}
               latitude={latitude}
               longitude={longitude}
-              photo={photo ?? sectionMapIcon(item.route.path)}
+              photo={mapPinIcon(item.route.path)}
             />
           </div>
         </section>
@@ -747,7 +750,8 @@ async function CompanyView({ item }: { item: UmbracoItem }) {
       address: text(branch, "address") || null,
       latitude: num(branch, "latitude"),
       longitude: num(branch, "longitude"),
-      logo: photoUrl(branch) ?? logo,
+      logo,
+      photo: photoUrl(branch) ?? logo,
       rating: num(branch, "googleRating") || null,
       ratingCount: num(branch, "googleRatingCount") || null,
     }))
@@ -970,7 +974,7 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
               name={item.name}
               latitude={latitude}
               longitude={longitude}
-              photo={inheritedPhoto ?? sectionMapIcon(item.route.path)}
+              photo={mapPinIcon(item.route.path, company ? photoUrl(company) : null)}
             />
           </div>
         </section>
@@ -1112,7 +1116,7 @@ async function EventView({ item }: { item: UmbracoItem }) {
               name={item.name}
               latitude={latitude}
               longitude={longitude}
-              photo={photo ?? sectionMapIcon(item.route.path)}
+              photo={mapPinIcon(item.route.path)}
             />
           </div>
         </section>

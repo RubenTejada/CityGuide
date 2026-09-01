@@ -69,9 +69,7 @@ export default async function CityLayout({
           </div>
         </nav>
       </header>
-
-      {/* Patrón de mapa suave sobre el fondo claro del contenido */}
-      <div className="flex-1 bg-[url(/content-map.svg)]">{children}</div>
+      <div className="flex-1">{children}</div>
 
       <footer className="mt-12 bg-neutral-900 text-neutral-400">
         <div className="mx-auto max-w-6xl px-6 py-10">

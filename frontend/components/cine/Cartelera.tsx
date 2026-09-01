@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PendingArea, PendingLink } from "@/components/LoadingOverlay";
 import MovieCard, { type MovieCardProps } from "@/components/cine/MovieCard";
 import {
   bookingUrl,
@@ -102,7 +102,7 @@ export default async function Cartelera({
   }));
 
   return (
-    <section className="mt-10">
+    <PendingArea className="mt-10" label="Actualizando cartelera…">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-2xl font-bold">Cartelera</h2>
         <p className="text-sm text-neutral-500">
@@ -121,7 +121,7 @@ export default async function Cartelera({
       {dates.length > 0 && (
         <div className="mt-4 flex flex-wrap gap-2">
           {dates.map((d) => (
-            <Link
+            <PendingLink
               key={d}
               href={d === dates[0] ? basePath : `${basePath}?fecha=${d}`}
               className={
@@ -131,7 +131,7 @@ export default async function Cartelera({
               }
             >
               {dateLabel(d, today)}
-            </Link>
+            </PendingLink>
           ))}
         </div>
       )}
@@ -157,6 +157,6 @@ export default async function Cartelera({
           ))}
         </div>
       )}
-    </section>
+    </PendingArea>
   );
 }

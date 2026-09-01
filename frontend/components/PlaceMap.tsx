@@ -9,10 +9,11 @@ import {
   Map,
   Pin,
 } from "@vis.gl/react-google-maps";
+import LoadingOverlay from "./LoadingOverlay";
 import LogoPin from "./LogoPin";
 import MapPopupCard from "./MapPopupCard";
 import { RatingBadge } from "./Rating";
-import { sectionMapIcon } from "@/lib/sections";
+import { mapPinIcon, sectionMapIcon } from "@/lib/sections";
 
 interface NearbyPlace {
   id: string;
@@ -23,7 +24,10 @@ interface NearbyPlace {
   latitude: number;
   longitude: number;
   distanceMeters: number;
+  /** Real photo of the place — popup card only. */
   photo: string | null;
+  /** Company logo when the place is a branch; null otherwise. */
+  icon: string | null;
   rating: number | null;
   ratingCount: number | null;
 }
@@ -51,6 +55,11 @@ export default function PlaceMap({
 }: PlaceMapProps) {
   const [nearby, setNearby] = useState<NearbyPlace[]>([]);
   const [selected, setSelected] = useState<NearbyPlace | null>(null);
+  // Key of the request whose result is on screen: while it differs from the
+  // current one, the panel is still loading and stays covered.
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const nearbyKey = `${id}:${latitude}:${longitude}`;
+  const loadingNearby = showNearby && loadedKey !== nearbyKey;
 
   useEffect(() => {
     if (!showNearby) return;
@@ -60,10 +69,17 @@ export default function PlaceMap({
       { signal: controller.signal },
     )
       .then((res) => (res.ok ? res.json() : []))
-      .then(setNearby)
-      .catch(() => {});
+      .then((places: NearbyPlace[]) => {
+        setNearby(places);
+        setLoadedKey(nearbyKey);
+      })
+      .catch(() => {
+        // Aborted requests are superseded by the next one, which keeps the
+        // overlay up; a real failure ends it with the empty list showing.
+        if (!controller.signal.aborted) setLoadedKey(nearbyKey);
+      });
     return () => controller.abort();
-  }, [id, latitude, longitude, showNearby]);
+  }, [id, latitude, longitude, showNearby, nearbyKey]);
 
   if (!MAPS_KEY) {
     return (
@@ -76,7 +92,8 @@ export default function PlaceMap({
   return (
     <div className="grid gap-4 lg:grid-cols-[16rem_1fr]">
       {showNearby && (
-        <aside className="order-2 lg:order-1">
+        <aside className="relative order-2 lg:order-1">
+          <LoadingOverlay show={loadingNearby} label="Buscando cerca…" />
           <h3 className="font-semibold">¿Qué está cerca?</h3>
           <ul className="mt-2 divide-y divide-neutral-200 rounded-lg border border-neutral-200 bg-white">
             {nearby.length === 0 && (
@@ -128,7 +145,7 @@ export default function PlaceMap({
                 onClick={() => setSelected(place)}
               >
                 <LogoPin
-                  logo={place.photo ?? sectionMapIcon(place.url)}
+                  logo={mapPinIcon(place.url, place.icon)}
                   name={place.name}
                 />
               </AdvancedMarker>

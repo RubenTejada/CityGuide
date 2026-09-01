@@ -6,6 +6,7 @@ import { num, text, type UmbracoItem } from "@/lib/umbraco";
 import AttractionCard from "./AttractionCard";
 import BranchesMap, { type BranchMarker } from "./BranchesMap";
 import { EventCard, type EventEntry } from "./EventsList";
+import FilterPills from "./FilterPills";
 import PlaceCard from "./PlaceCard";
 
 export interface GuideSection {
@@ -14,57 +15,6 @@ export interface GuideSection {
   slug: string;
   href: string;
   entries: UmbracoItem[];
-}
-
-/** Emoji for each activity slot in the sentence filter. */
-const ACTIVITY_ICONS: Record<string, string> = {
-  eventos: "🎫",
-  atracciones: "🎡",
-  restaurantes: "🍽️",
-  "bares-y-clubes": "🍸",
-  cines: "🎬",
-  tiendas: "🛍️",
-};
-
-/** Compact filter chip with icon, label and optional result count. */
-function Chip({
-  active,
-  onClick,
-  icon,
-  label,
-  count,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: string;
-  label: string;
-  count?: number;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition ${
-        active
-          ? "border-sun-400 bg-sun-400 text-neutral-900 shadow-sm"
-          : "border-neutral-200 bg-white text-neutral-600 hover:border-sun-400 hover:bg-sun-300/15"
-      }`}
-    >
-      <span aria-hidden>{icon}</span>
-      {label}
-      {count !== undefined && (
-        <span
-          className={`rounded-full px-1.5 py-0.5 text-xs ${
-            active
-              ? "bg-white/60 text-neutral-800"
-              : "bg-neutral-100 text-neutral-500"
-          }`}
-        >
-          {count}
-        </span>
-      )}
-    </button>
-  );
 }
 
 export default function ThingsToDoExplorer({
@@ -105,44 +55,19 @@ export default function ThingsToDoExplorer({
 
   return (
     <div>
-      <div className="sticky top-3 z-[1000] mt-8">
-        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-neutral-200 bg-white/95 p-2 shadow-md backdrop-blur sm:flex-nowrap">
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 py-0.5">
-            <Chip
-              active={activity === null}
-              onClick={() => setActivity(null)}
-              icon="✨"
-              label="Todo"
-            />
-            <Chip
-              active={activity === "eventos"}
-              onClick={() => setActivity("eventos")}
-              icon={ACTIVITY_ICONS.eventos}
-              label="Eventos"
-              count={events.length}
-            />
-            <Chip
-              active={activity === "atracciones"}
-              onClick={() => setActivity("atracciones")}
-              icon={ACTIVITY_ICONS.atracciones}
-              label="Atracciones"
-              count={attractions.length}
-            />
-            {sections
-              .filter((s) => s.entries.length > 0)
-              .map((s) => (
-                <Chip
-                  key={s.id}
-                  active={activity === s.slug}
-                  onClick={() => setActivity(s.slug)}
-                  icon={ACTIVITY_ICONS[s.slug] ?? "📍"}
-                  label={s.name}
-                  count={s.entries.length}
-                />
-              ))}
-          </div>
-        </div>
-      </div>
+      <FilterPills
+        options={[
+          { value: "eventos", label: "Eventos" },
+          { value: "atracciones", label: "Atracciones" },
+          ...sections
+            .filter((s) => s.entries.length > 0)
+            .map((s) => ({ value: s.slug, label: s.name })),
+        ]}
+        value={activity}
+        onChange={setActivity}
+        allLabel="Todo"
+        className="mt-8 flex flex-wrap gap-2"
+      />
 
       {showEvents && (
         <section className="mt-10">

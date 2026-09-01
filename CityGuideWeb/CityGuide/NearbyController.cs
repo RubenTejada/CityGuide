@@ -29,10 +29,14 @@ public class NearbyController : ControllerBase
         _fallback = fallback;
     }
 
+    /// <summary><paramref name="Photo"/> illustrates the popup card; <paramref name="Icon"/>
+    /// is what the map pin draws — the company logo for a branch, null otherwise, so the
+    /// frontend falls back to the section glyph instead of cropping a storefront photo
+    /// into a 40px pin.</summary>
     public record NearbyPlace(
         Guid Id, string Name, string Url, string Category, string? Address,
         double Latitude, double Longitude, double DistanceMeters, string? Photo,
-        double? Rating, int? RatingCount);
+        string? Icon, double? Rating, int? RatingCount);
 
     [HttpGet]
     public async Task<IActionResult> Get(
@@ -79,6 +83,7 @@ public class NearbyController : ControllerBase
                 string categoryName = string.Empty;
                 string displayName = place.Name;
                 string? photo = PhotoUrl(place);
+                string? icon = null;
                 if (_navigation.TryGetAncestorsKeys(key, out IEnumerable<Guid> ancestorKeys))
                 {
                     foreach (Guid ancestorKey in ancestorKeys)
@@ -87,7 +92,8 @@ public class NearbyController : ControllerBase
                         if (ancestor?.ContentType.Alias == "company")
                         {
                             displayName = $"{ancestor.Name} — {place.Name}";
-                            photo ??= PhotoUrl(ancestor);
+                            icon = PhotoUrl(ancestor);
+                            photo ??= icon;
                         }
 
                         if (ancestor?.ContentType.Alias == "categoryPage")
@@ -113,7 +119,7 @@ public class NearbyController : ControllerBase
                 results.Add(new NearbyPlace(
                     place.Key, displayName, place.Url(), categoryName,
                     place.Value<string>(_fallback, "address"), placeLat, placeLng, Math.Round(distance), photo,
-                    rating > 0 ? rating : null, rating > 0 ? ratingCount : null));
+                    icon, rating > 0 ? rating : null, rating > 0 ? ratingCount : null));
             }
         }
 
