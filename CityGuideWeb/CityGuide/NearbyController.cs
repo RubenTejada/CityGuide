@@ -31,7 +31,8 @@ public class NearbyController : ControllerBase
 
     public record NearbyPlace(
         Guid Id, string Name, string Url, string Category, string? Address,
-        double Latitude, double Longitude, double DistanceMeters, string? Photo);
+        double Latitude, double Longitude, double DistanceMeters, string? Photo,
+        double? Rating, int? RatingCount);
 
     [HttpGet]
     public async Task<IActionResult> Get(
@@ -107,9 +108,12 @@ public class NearbyController : ControllerBase
                     continue;
                 }
 
+                var rating = (double)place.Value<decimal>(_fallback, "googleRating");
+                var ratingCount = place.Value<int>(_fallback, "googleRatingCount");
                 results.Add(new NearbyPlace(
                     place.Key, displayName, place.Url(), categoryName,
-                    place.Value<string>(_fallback, "address"), placeLat, placeLng, Math.Round(distance), photo));
+                    place.Value<string>(_fallback, "address"), placeLat, placeLng, Math.Round(distance), photo,
+                    rating > 0 ? rating : null, rating > 0 ? ratingCount : null));
             }
         }
 

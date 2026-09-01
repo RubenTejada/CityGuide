@@ -1,16 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import {
   APIProvider,
   AdvancedMarker,
   InfoWindow,
   Map,
-  Pin,
   useMap,
 } from "@vis.gl/react-google-maps";
 import LogoPin from "./LogoPin";
+import MapPopupCard from "./MapPopupCard";
+import { sectionMapIcon } from "@/lib/sections";
 
 export interface BranchMarker {
   id: string;
@@ -20,6 +20,8 @@ export interface BranchMarker {
   latitude: number;
   longitude: number;
   logo: string | null;
+  rating?: number | null;
+  ratingCount?: number | null;
 }
 
 const MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
@@ -69,11 +71,10 @@ export default function BranchesMap({ branches }: { branches: BranchMarker[] }) 
               title={branch.name}
               onClick={() => setSelected(branch)}
             >
-              {branch.logo ? (
-                <LogoPin logo={branch.logo} name={branch.name} />
-              ) : (
-                <Pin background="#f59e0b" borderColor="#b45309" glyphColor="#fff" />
-              )}
+              <LogoPin
+                logo={branch.logo ?? sectionMapIcon(branch.url)}
+                name={branch.name}
+              />
             </AdvancedMarker>
           ))}
           {selected && (
@@ -81,12 +82,14 @@ export default function BranchesMap({ branches }: { branches: BranchMarker[] }) 
               position={{ lat: selected.latitude, lng: selected.longitude }}
               onCloseClick={() => setSelected(null)}
             >
-              <div className="text-sm">
-                <Link href={selected.url} className="font-semibold text-brand-700">
-                  {selected.name}
-                </Link>
-                <p className="text-neutral-600">{selected.address}</p>
-              </div>
+              <MapPopupCard
+                url={selected.url}
+                name={selected.name}
+                photo={selected.logo ?? sectionMapIcon(selected.url)}
+                address={selected.address}
+                rating={selected.rating}
+                ratingCount={selected.ratingCount}
+              />
             </InfoWindow>
           )}
         </Map>

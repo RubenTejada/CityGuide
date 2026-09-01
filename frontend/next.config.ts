@@ -3,6 +3,8 @@ import type { NextConfig } from "next";
 const umbracoUrl = new URL(process.env.UMBRACO_BASE_URL ?? "http://localhost:54509");
 
 const nextConfig: NextConfig = {
+  // Azure App Service runs the self-contained server (node server.js).
+  output: "standalone",
   // Curated attraction fallback photos are hotlinked from Wikimedia Commons.
   images: {
     remotePatterns: [

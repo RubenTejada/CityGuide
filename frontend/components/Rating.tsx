@@ -8,16 +8,33 @@ export default function Rating({
   place: UmbracoItem;
   className?: string;
 }) {
-  const value = num(place, "googleRating");
+  return (
+    <RatingBadge
+      value={num(place, "googleRating")}
+      count={num(place, "googleRatingCount")}
+      className={className}
+    />
+  );
+}
+
+/** Same badge from plain numbers — for map popups and other non-Umbraco data. */
+export function RatingBadge({
+  value,
+  count,
+  className = "",
+}: {
+  value: number | null | undefined;
+  count?: number | null;
+  className?: string;
+}) {
   if (!value) return null;
-  const count = num(place, "googleRatingCount");
   return (
     <span className={`inline-flex items-center gap-1 text-sm ${className}`}>
       <span aria-hidden className="text-sun-500">
         ★
       </span>
       <span className="font-medium text-neutral-800">{value.toFixed(1)}</span>
-      {count > 0 && (
+      {!!count && count > 0 && (
         <span className="text-neutral-500">
           ({count.toLocaleString("es-DO")})
         </span>

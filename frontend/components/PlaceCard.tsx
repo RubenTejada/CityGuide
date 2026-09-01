@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { facilities, photoUrl, text, type UmbracoItem } from "@/lib/umbraco";
+import { sectionListImage } from "@/lib/sections";
 import FacilityBadges from "./FacilityBadges";
 import Rating from "./Rating";
 
@@ -12,10 +13,13 @@ export default function PlaceCard({
   fallbackPhoto?: string | null;
 }) {
   const ownPhoto = photoUrl(place);
-  const photo = ownPhoto ?? fallbackPhoto ?? null;
+  const inherited = ownPhoto ?? fallbackPhoto ?? null;
+  // No photo and no inheritable logo: fall back to the section's image.
+  const photo = inherited ?? sectionListImage(place.route.path);
   // Company logos (company cards, or branches inheriting the parent logo) are
   // arbitrary aspect ratios: letterbox them instead of cropping to the square.
-  const isLogo = place.contentType === "company" || ownPhoto === null;
+  const isLogo =
+    inherited !== null && (place.contentType === "company" || ownPhoto === null);
   return (
     <Link
       href={place.route.path}
@@ -23,22 +27,17 @@ export default function PlaceCard({
     >
       <div
         className={`relative h-24 w-24 flex-none overflow-hidden rounded-lg ${
-          photo && isLogo ? "border border-neutral-200 bg-white" : "bg-neutral-200"
+          isLogo ? "border border-neutral-200 bg-white" : "bg-neutral-200"
         }`}
       >
-        {photo ? (
-          <Image
-            src={photo}
-            alt={place.name}
-            fill
-            className={isLogo ? "object-contain p-2" : "object-cover"}
-            sizes="96px"
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center text-3xl" aria-hidden>
-            📍
-          </div>
-        )}
+        <Image
+          src={photo}
+          alt={place.name}
+          fill
+          unoptimized={photo.endsWith(".svg")}
+          className={isLogo ? "object-contain p-2" : "object-cover"}
+          sizes="96px"
+        />
       </div>
       <div className="min-w-0">
         <h3 className="truncate font-semibold group-hover:text-brand-600">

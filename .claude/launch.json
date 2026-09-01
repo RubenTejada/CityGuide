@@ -2,26 +2,12 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "cms",
-      "runtimeExecutable": "dotnet",
-      "runtimeArgs": [
-        "run",
-        "--project",
-        "CityGuideWeb"
-      ],
-      "port": 54509
-    },
-    {
       "name": "frontend",
       "runtimeExecutable": "npm",
-      "runtimeArgs": [
-        "run",
-        "dev",
-        "--prefix",
-        "frontend"
-      ],
-      "port": 3000,
-      "autoPort": true
+      "runtimeArgs": ["run", "dev"],
+      "port": 3001,
+      "autoPort": true,
+      "cwd": "frontend"
     }
   ]
 }

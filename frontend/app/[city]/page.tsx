@@ -1,7 +1,10 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import ArticleCard from "@/components/ArticleCard";
 import HeroCarousel, { type HeroSlide } from "@/components/HeroCarousel";
+import JsonLd from "@/components/JsonLd";
 import PlaceCard from "@/components/PlaceCard";
 import {
   getChildren,
@@ -11,33 +14,50 @@ import {
   text,
   type UmbracoItem,
 } from "@/lib/umbraco";
+import { sectionListImage } from "@/lib/sections";
+import {
+  absoluteImage,
+  absoluteUrl,
+  breadcrumbJsonLd,
+  isNoIndex,
+  itemListJsonLd,
+  pageMetadata,
+  prune,
+  seoDescription,
+  seoTitle,
+} from "@/lib/seo";
 
 export const revalidate = 600;
 
-/** Curated real photos (Wikimedia Commons) per section slug. */
-const SECTION_PHOTOS: Record<string, string> = {
-  restaurantes:
-    "https://upload.wikimedia.org/wikipedia/commons/thumb/2/25/Sancocho_Dominicano.jpg/1280px-Sancocho_Dominicano.jpg",
-  "bares-y-clubes":
-    "https://upload.wikimedia.org/wikipedia/commons/thumb/5/56/DFC_4574_Late-night_drinks_in_Pattaya_-_a_chilled_cocktail_with_a_slice_of_lime_and_neon_reflections.jpg/1280px-DFC_4574_Late-night_drinks_in_Pattaya_-_a_chilled_cocktail_with_a_slice_of_lime_and_neon_reflections.jpg",
-  tiendas:
-    "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cc/Agora_Mall_EV_SDQ_07_20_4341.jpg/1280px-Agora_Mall_EV_SDQ_07_20_4341.jpg",
-  cines:
-    "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2a/Columbia_City_Cinema_main_hall.jpg/1280px-Columbia_City_Cinema_main_hall.jpg",
-  "empresas-y-servicios":
-    "https://upload.wikimedia.org/wikipedia/commons/9/9e/View_of_Santo_Domingo_Skyline.jpg",
-  atracciones:
-    "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9e/Santo_Domingo_-_Alcazar_de_Colon_01.JPG/1280px-Santo_Domingo_-_Alcazar_de_Colon_01.JPG",
-  eventos:
-    "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cc/Heritage_Live_concert_crowd_and_stage_at_Sandringham_2023_-_geograph.org.uk_-_7586057.jpg/1280px-Heritage_Live_concert_crowd_and_stage_at_Sandringham_2023_-_geograph.org.uk_-_7586057.jpg",
-  "que-hacer":
-    "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d7/Zona_Colonial%2C_Santo_Domingo%2C_Dominican_Republic_-_panoramio_%2811%29.jpg/1280px-Zona_Colonial%2C_Santo_Domingo%2C_Dominican_Republic_-_panoramio_%2811%29.jpg",
-};
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ city: string }>;
+}): Promise<Metadata> {
+  const { city: citySlug } = await params;
+  const city = await getItem(`/${citySlug}`);
+  if (!city) return {};
+  return pageMetadata({
+    title: seoTitle(
+      city,
+      `${city.name}: qué hacer, dónde comer y salir`,
+      `Qué hacer en ${city.name}`,
+    ),
+    description: seoDescription(
+      city,
+      text(city, "intro"),
+      `Guía de ${city.name}: restaurantes, bares, tiendas, cines, atracciones y eventos, con mapas, horarios y contactos.`,
+    ),
+    path: city.route.path,
+    image: photoUrl(city),
+    noIndex: isNoIndex(city),
+  });
+}
 
 /**
  * Image for a section's slide/card: the section's own photo (set in the
- * backoffice) wins; then the first place photo found under it, then a curated
- * real photo for the section, then bundled artwork.
+ * backoffice) wins; then the first place photo found under it, then the
+ * section's curated list image, then bundled artwork.
  */
 function sectionImage(section: UmbracoItem, places: UmbracoItem[]): string {
   const own = photoUrl(section);
@@ -47,8 +67,7 @@ function sectionImage(section: UmbracoItem, places: UmbracoItem[]): string {
     const photo = photoUrl(place);
     if (photo) return photo;
   }
-  const slug = section.route.path.split("/").filter(Boolean).pop() ?? "";
-  return SECTION_PHOTOS[slug] ?? "/sections/default.svg";
+  return sectionListImage(section.route.path);
 }
 
 function formatDate(value: unknown): string {
@@ -67,14 +86,26 @@ export default async function CityLandingPage({
   const city = await getItem(`/${citySlug}`);
   if (!city || city.contentType !== "city") notFound();
 
-  const [sections, allPlaces, events] = await Promise.all([
+  const [sections, allPlaces, events, allArticles] = await Promise.all([
     getChildren(city.route.path),
     getDescendantsOfType(city.route.path, "place", 200),
     getDescendantsOfType(city.route.path, "eventItem", 4),
+    getDescendantsOfType(city.route.path, "article", 20),
   ]);
 
   const categories = sections.filter((s) => s.contentType === "categoryPage");
   const eventsSection = sections.find((s) => s.contentType === "eventsPage");
+  const articlesSection = sections.find((s) => s.contentType === "articlesPage");
+  const articles = allArticles
+    .sort((a, b) => {
+      const time = (item: UmbracoItem) => {
+        const value = item.properties["publishDate"];
+        const t = typeof value === "string" ? new Date(value).getTime() : NaN;
+        return Number.isNaN(t) ? 0 : t;
+      };
+      return time(b) - time(a);
+    })
+    .slice(0, 3);
 
   const slides: HeroSlide[] = categories.slice(0, 6).map((section) => ({
     href: section.route.path,
@@ -87,7 +118,37 @@ export default async function CityLandingPage({
 
   return (
     <main>
-      <section className="border-b border-neutral-200 bg-white">
+      <JsonLd
+        data={[
+          breadcrumbJsonLd([
+            { name: "Inicio", path: "/" },
+            { name: city.name, path: city.route.path },
+          ]),
+          prune({
+            "@context": "https://schema.org",
+            "@type": "City",
+            "@id": absoluteUrl(city.route.path),
+            name: city.name,
+            url: absoluteUrl(city.route.path),
+            description: text(city, "intro") || undefined,
+            image: absoluteImage(photoUrl(city)),
+            containedInPlace: text(city, "country")
+              ? { "@type": "Country", name: text(city, "country") }
+              : undefined,
+            geo:
+              typeof city.properties["latitude"] === "number" &&
+              typeof city.properties["longitude"] === "number"
+                ? {
+                    "@type": "GeoCoordinates",
+                    latitude: city.properties["latitude"],
+                    longitude: city.properties["longitude"],
+                  }
+                : undefined,
+          }),
+          itemListJsonLd(`Secciones de ${city.name}`, sections),
+        ]}
+      />
+      <section className="border-b border-neutral-200 bg-white/60">
         <div className="mx-auto max-w-6xl px-6 py-8">
           <h1 className="text-3xl font-bold sm:text-4xl">{city.name}</h1>
           <p className="mt-2 max-w-2xl text-neutral-600">{text(city, "intro")}</p>
@@ -170,8 +231,29 @@ export default async function CityLandingPage({
         </aside>
       </section>
 
+      {articles.length > 0 && (
+        <section className="mx-auto max-w-6xl px-6 pb-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-semibold">Últimos artículos</h2>
+            {articlesSection && (
+              <Link
+                href={articlesSection.route.path}
+                className="rounded bg-neutral-900 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-neutral-700"
+              >
+                Ver todos
+              </Link>
+            )}
+          </div>
+          <div className="mt-5 space-y-5">
+            {articles.map((article) => (
+              <ArticleCard key={article.id} article={article} />
+            ))}
+          </div>
+        </section>
+      )}
+
       {featured.length > 0 && (
-        <section className="mx-auto max-w-6xl px-6 pb-12">
+        <section className="mx-auto max-w-6xl px-6 py-12">
           <h2 className="text-xl font-semibold">Lugares destacados</h2>
           <div className="mt-5 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {featured.map((place) => (

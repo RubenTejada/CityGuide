@@ -13,6 +13,9 @@ export interface UmbracoItem {
   id: string;
   contentType: string;
   name: string;
+  /** ISO timestamps; `updateDate` feeds sitemap <lastmod> and article dateModified. */
+  createDate: string;
+  updateDate: string;
   route: { path: string };
   properties: Record<string, unknown>;
 }
@@ -59,6 +62,26 @@ export async function getDescendantsOfType(
   if (!res.ok) return [];
   const data: UmbracoList = await res.json();
   return data.items;
+}
+
+/**
+ * Every descendant of a content item, whatever its type, paged through the
+ * Delivery API. Used by the sitemap, which must cover content types nobody
+ * enumerated explicitly.
+ */
+export async function getDescendants(path: string, max = 5000): Promise<UmbracoItem[]> {
+  const pageSize = 100;
+  const items: UmbracoItem[] = [];
+  for (let skip = 0; skip < max; skip += pageSize) {
+    const res = await api(
+      `/content?fetch=${encodeURIComponent(`descendants:${path}`)}&skip=${skip}&take=${pageSize}`,
+    );
+    if (!res.ok) break;
+    const data: UmbracoList = await res.json();
+    items.push(...data.items);
+    if (items.length >= data.total || data.items.length === 0) break;
+  }
+  return items;
 }
 
 /** All cities in the portal (children of the site root). */

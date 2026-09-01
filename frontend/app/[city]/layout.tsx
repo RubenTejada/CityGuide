@@ -1,7 +1,19 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import SearchAutocomplete from "@/components/SearchAutocomplete";
 import SiteLogo from "@/components/SiteLogo";
 import { getChildren, getItem } from "@/lib/umbraco";
+
+// Etiquetas cortas solo para la barra de navegación (el nombre real en el CMS
+// no cambia); clave = slug de la sección.
+const NAV_LABELS: Record<string, string> = {
+  "empresas-y-servicios": "Empresas",
+};
+
+function navLabel(section: { name: string; route: { path: string } }) {
+  const slug = section.route.path.split("/").filter(Boolean)[1] ?? "";
+  return NAV_LABELS[slug] ?? section.name;
+}
 
 export default async function CityLayout({
   children,
@@ -23,29 +35,13 @@ export default async function CityLayout({
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="bg-neutral-900 text-white">
+      {/* El mapa se desvanece a negro hacia la derecha del logo */}
+      <header className="bg-neutral-900 bg-[linear-gradient(to_right,rgba(23,23,23,0),#171717_60%),url(/header-map.svg)] text-white">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-8 gap-y-4 px-6 py-10">
           <Link href={`/${citySlug}`} aria-label="QueHacerRD.com">
-            <SiteLogo className="text-[44px]" />
+            <SiteLogo className="text-[44px]" tagline />
           </Link>
-          <form
-            action={`/${citySlug}/buscar`}
-            className="order-last flex w-full min-w-0 flex-1 sm:order-none sm:w-auto"
-            role="search"
-          >
-            <input
-              type="search"
-              name="q"
-              placeholder="Busca por nombre, sector, calle o categoría"
-              className="w-full min-w-0 rounded-l-lg border border-neutral-700 bg-neutral-800 px-4 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-sun-400 focus:outline-none"
-            />
-            <button
-              type="submit"
-              className="rounded-r-lg bg-sun-400 px-4 py-2 text-sm font-semibold text-neutral-900 transition hover:bg-sun-300"
-            >
-              Buscar
-            </button>
-          </form>
+          <SearchAutocomplete citySlug={citySlug} />
           <Link
             href="/"
             className="ml-auto text-sm text-neutral-400 hover:text-white sm:ml-0"
@@ -67,14 +63,15 @@ export default async function CityLayout({
                 href={section.route.path}
                 className="px-3 py-3 text-sm font-medium uppercase tracking-wide text-neutral-300 hover:bg-neutral-800 hover:text-white"
               >
-                {section.name}
+                {navLabel(section)}
               </Link>
             ))}
           </div>
         </nav>
       </header>
 
-      <div className="flex-1">{children}</div>
+      {/* Patrón de mapa suave sobre el fondo claro del contenido */}
+      <div className="flex-1 bg-[url(/content-map.svg)]">{children}</div>
 
       <footer className="mt-12 bg-neutral-900 text-neutral-400">
         <div className="mx-auto max-w-6xl px-6 py-10">
@@ -97,14 +94,4 @@ export default async function CityLayout({
       </footer>
     </div>
   );
-}
-
-export async function generateMetadata({
-  params,
-}: {
-  params: Promise<{ city: string }>;
-}) {
-  const { city: citySlug } = await params;
-  const city = await getItem(`/${citySlug}`);
-  return { title: city?.name ?? "Ciudad" };
 }

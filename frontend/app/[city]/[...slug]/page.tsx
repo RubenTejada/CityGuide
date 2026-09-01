@@ -1,9 +1,14 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
 import { notFound } from "next/navigation";
+import ArticleBody from "@/components/ArticleBody";
+import JsonLd from "@/components/JsonLd";
+import ArticleCard, { articleDate } from "@/components/ArticleCard";
 import BranchesMap, { type BranchMarker } from "@/components/BranchesMap";
 import FacilityBadges from "@/components/FacilityBadges";
 import AttractionCard from "@/components/AttractionCard";
+import FacilityFilterGrid from "@/components/FacilityFilterGrid";
 import PlaceCard from "@/components/PlaceCard";
 import PlaceMap from "@/components/PlaceMap";
 import Rating from "@/components/Rating";
@@ -14,6 +19,20 @@ import ThingsToDoExplorer, {
 } from "@/components/ThingsToDoExplorer";
 import TrailerModal from "@/components/cine/TrailerModal";
 import { CINEMAS_BY_CITY, cinemaByName } from "@/lib/cinema";
+import { sectionListImage, sectionMapIcon } from "@/lib/sections";
+import {
+  articleJsonLd,
+  breadcrumbJsonLd,
+  eventJsonLd,
+  isNoIndex,
+  itemListJsonLd,
+  movieJsonLd,
+  organizationJsonLd,
+  pageMetadata,
+  placeJsonLd,
+  seoDescription,
+  seoTitle,
+} from "@/lib/seo";
 import {
   facilities,
   getChildren,
@@ -88,22 +107,172 @@ export default async function ContentPage({
       return <EventView item={item} />;
     case "thingsToDoPage":
       return <ThingsToDoView item={item} citySlug={city} />;
+    case "articlesPage":
+      return <ArticlesView item={item} />;
+    case "article":
+      return <ArticleView item={item} />;
     default:
       notFound();
   }
 }
 
+/** The city node a content path belongs to (its first path segment). */
+async function cityOf(item: UmbracoItem): Promise<UmbracoItem | null> {
+  const citySlug = item.route.path.split("/").filter(Boolean)[0] ?? "";
+  return citySlug ? getItem(`/${citySlug}`) : null;
+}
+
+/** The item one level up, or null at the city level. */
+async function parentOf(item: UmbracoItem): Promise<UmbracoItem | null> {
+  const segments = item.route.path.split("/").filter(Boolean);
+  if (segments.length < 2) return null;
+  return getItem(`/${segments.slice(0, -1).join("/")}`);
+}
+
+/**
+ * Title/description per document type. Everything is derived from the item and
+ * its ancestors, so a new place or article is optimised the moment it is
+ * published; editors can still override any of it from the SEO tab.
+ */
 export async function generateMetadata({
   params,
 }: {
   params: Promise<{ city: string; slug: string[] }>;
-}) {
-  const { city, slug } = await params;
-  const item = await getItem(`/${city}/${slug.join("/")}`);
-  return {
-    title: item?.name,
-    description: text(item ?? ({ properties: {} } as UmbracoItem), "description") || undefined,
-  };
+}): Promise<Metadata> {
+  const { city: citySlug, slug } = await params;
+  const item = await getItem(`/${citySlug}/${slug.join("/")}`);
+  if (!item) return {};
+
+  const [cityItem, parent] = await Promise.all([cityOf(item), parentOf(item)]);
+  const cityName = cityItem?.name ?? "";
+  const inCity = cityName ? ` en ${cityName}` : "";
+  // The company/subcategory/category a place hangs from, used to qualify titles.
+  const parentName = parent && parent.contentType !== "city" ? parent.name : "";
+  const qualified = parentName ? `${item.name} — ${parentName}${inCity}` : `${item.name}${inCity}`;
+
+  let title = `${item.name}${inCity}`;
+  let description = "";
+  let image = photoUrl(item);
+  let type: "website" | "article" = "website";
+  let publishedTime: string | undefined;
+  let modifiedTime: string | undefined;
+
+  switch (item.contentType) {
+    case "categoryPage":
+      title = `${item.name}${inCity}`;
+      description = seoDescription(
+        item,
+        text(item, "intro"),
+        `${item.name}${inCity}: direcciones, teléfonos, horarios, valoraciones y mapa.`,
+      );
+      image = image ?? sectionListImage(item.route.path);
+      break;
+    case "subcategory":
+      title = seoTitle(item, qualified, `${item.name}${inCity}`);
+      description = seoDescription(
+        item,
+        `${item.name} ${parentName ? `— ${parentName} ` : ""}${inCity}: los lugares recomendados con dirección, horario, teléfono y mapa.`,
+      );
+      image = image ?? sectionListImage(item.route.path);
+      break;
+    case "place":
+    case "mall": {
+      const company = parent?.contentType === "company" ? parent : null;
+      const inherited = (alias: string) =>
+        text(item, alias) || (company ? text(company, alias) : "");
+      title = seoTitle(item, qualified, `${item.name}${inCity}`);
+      description = seoDescription(
+        item,
+        inherited("description"),
+        `${item.name}${text(item, "address") ? `, ${text(item, "address")}` : ""}${inCity}. Horario, teléfono, ubicación y cómo llegar.`,
+      );
+      image = image ?? (company ? photoUrl(company) : null) ?? sectionListImage(item.route.path);
+      break;
+    }
+    case "company":
+      title = seoTitle(item, `${item.name} — sucursales${inCity}`, `${item.name}${inCity}`);
+      description = seoDescription(
+        item,
+        text(item, "description"),
+        `Sucursales de ${item.name}${inCity}: direcciones, teléfonos, horarios y mapa.`,
+      );
+      image = image ?? sectionListImage(item.route.path);
+      break;
+    case "movie":
+      title = seoTitle(item, `${item.name} — cartelera${inCity}`, `${item.name} — cartelera`);
+      description = seoDescription(
+        item,
+        text(item, "synopsis"),
+        `Horarios, sinopsis y trailer de ${item.name} en los cines${inCity}.`,
+      );
+      image = text(item, "posterUrl") || image;
+      break;
+    case "eventsPage":
+      title = seoTitle(item, `Eventos${inCity}`);
+      description = seoDescription(
+        item,
+        text(item, "intro"),
+        `Agenda de eventos${inCity}: conciertos, festivales, ferias y actividades con fecha, lugar y entradas.`,
+      );
+      image = image ?? sectionListImage(item.route.path);
+      break;
+    case "eventItem": {
+      const dates = formatDate(item.properties["startDate"]);
+      title = seoTitle(
+        item,
+        dates ? `${item.name} — ${dates}${inCity}` : `${item.name}${inCity}`,
+        `${item.name}${inCity}`,
+      );
+      description = seoDescription(
+        item,
+        text(item, "description"),
+        `${item.name}${dates ? `, ${dates}` : ""}${text(item, "venueName") ? ` en ${text(item, "venueName")}` : inCity}. Fecha, lugar y entradas.`,
+      );
+      break;
+    }
+    case "thingsToDoPage":
+      title = seoTitle(item, `Qué hacer${inCity}`);
+      description = seoDescription(
+        item,
+        text(item, "intro"),
+        `Ideas de planes${inCity}: eventos de los próximos días, atracciones abiertas hoy y lugares para comer y salir.`,
+      );
+      image = image ?? sectionListImage(item.route.path);
+      break;
+    case "articlesPage":
+      title = seoTitle(item, `${item.name}${inCity}`);
+      description = seoDescription(
+        item,
+        text(item, "intro"),
+        `Artículos, guías y recomendaciones${inCity}.`,
+      );
+      image = image ?? sectionListImage(item.route.path);
+      break;
+    case "article":
+      title = seoTitle(item, item.name);
+      description = seoDescription(item, text(item, "summary"), text(item, "body"));
+      image = text(item, "heroImageUrl") || image;
+      type = "article";
+      publishedTime =
+        typeof item.properties["publishDate"] === "string"
+          ? item.properties["publishDate"]
+          : item.createDate;
+      modifiedTime = item.updateDate;
+      break;
+    default:
+      description = seoDescription(item, text(item, "description"));
+  }
+
+  return pageMetadata({
+    title,
+    description,
+    path: item.route.path,
+    image,
+    type,
+    publishedTime,
+    modifiedTime,
+    noIndex: isNoIndex(item),
+  });
 }
 
 async function Breadcrumb({ item }: { item: UmbracoItem }) {
@@ -115,8 +284,14 @@ async function Breadcrumb({ item }: { item: UmbracoItem }) {
       return ancestor ? { name: ancestor.name, path: ancestor.route.path } : null;
     }),
   );
+  const trail = [
+    { name: "Inicio", path: "/" },
+    ...crumbs.filter((crumb) => crumb !== null),
+    { name: item.name, path: item.route.path },
+  ];
   return (
-    <nav className="text-sm text-neutral-500">
+    <nav className="text-sm text-neutral-500" aria-label="Ruta de navegación">
+      <JsonLd data={breadcrumbJsonLd(trail)} />
       <ol className="flex flex-wrap items-center gap-1">
         {crumbs.filter(Boolean).map((crumb) => (
           <li key={crumb!.path} className="flex items-center gap-1">
@@ -170,6 +345,37 @@ async function listingEntries(path: string): Promise<UmbracoItem[]> {
   return [...malls, ...standaloneCompanies, ...standalonePlaces];
 }
 
+/** Category pages that offer the "Facilidades" dropdown filter. */
+const FACILITY_FILTER_SLUGS = new Set([
+  "restaurantes",
+  "bares-y-clubes",
+  "tiendas",
+  "empresas-y-servicios",
+]);
+
+/**
+ * Facilities each listing entry can be filtered by: a place's own facilities;
+ * for companies and malls, the union with those of every place nested under
+ * them (branches, establishments).
+ */
+async function listingFacilities(
+  path: string,
+  entries: UmbracoItem[],
+): Promise<Record<string, string[]>> {
+  const allPlaces = await getDescendantsOfType(path, "place");
+  return Object.fromEntries(
+    entries.map((entry) => {
+      const own = facilities(entry);
+      if (entry.contentType === "place") return [entry.id, own];
+      const prefix = `${entry.route.path.replace(/\/+$/, "")}/`;
+      const nested = allPlaces
+        .filter((p) => p.route.path.startsWith(prefix))
+        .flatMap(facilities);
+      return [entry.id, [...new Set([...own, ...nested])]];
+    }),
+  );
+}
+
 /** Map markers for the malls in a listing (used at the bottom of the page). */
 function mallMarkers(entries: UmbracoItem[]): BranchMarker[] {
   return entries
@@ -182,8 +388,22 @@ function mallMarkers(entries: UmbracoItem[]): BranchMarker[] {
       latitude: num(mall, "latitude"),
       longitude: num(mall, "longitude"),
       logo: photoUrl(mall),
+      rating: num(mall, "googleRating") || null,
+      ratingCount: num(mall, "googleRatingCount") || null,
     }))
     .filter((m) => m.latitude !== 0 && m.longitude !== 0);
+}
+
+function SubcategoryPills({ subcategories }: { subcategories: UmbracoItem[] }) {
+  return subcategories.map((sub) => (
+    <Link
+      key={sub.id}
+      href={sub.route.path}
+      className="rounded-full border border-neutral-300 bg-white px-4 py-1.5 text-sm font-medium hover:border-brand-500 hover:text-brand-600"
+    >
+      {sub.name}
+    </Link>
+  ));
 }
 
 async function CategoryView({
@@ -203,24 +423,20 @@ async function CategoryView({
   const categorySlug = item.route.path.split("/").filter(Boolean).pop();
   const showCartelera =
     categorySlug === "cines" && !!citySlug && citySlug in CINEMAS_BY_CITY;
+  const facilitiesByEntry = FACILITY_FILTER_SLUGS.has(categorySlug ?? "")
+    ? await listingFacilities(item.route.path, entries)
+    : null;
 
   return (
     <PageShell item={item}>
+      <JsonLd data={itemListJsonLd(item.name, entries)} />
       <h1 className="mt-4 text-3xl font-bold">{item.name}</h1>
       {text(item, "intro") && (
         <p className="mt-2 max-w-2xl text-neutral-600">{text(item, "intro")}</p>
       )}
-      {subcategories.length > 0 && (
+      {!facilitiesByEntry && subcategories.length > 0 && (
         <div className="mt-6 flex flex-wrap gap-2">
-          {subcategories.map((sub) => (
-            <Link
-              key={sub.id}
-              href={sub.route.path}
-              className="rounded-full border border-neutral-300 bg-white px-4 py-1.5 text-sm font-medium hover:border-brand-500 hover:text-brand-600"
-            >
-              {sub.name}
-            </Link>
-          ))}
+          <SubcategoryPills subcategories={subcategories} />
         </div>
       )}
       {showCartelera && (
@@ -230,22 +446,28 @@ async function CategoryView({
           selectedDate={fecha}
         />
       )}
-      {(entries.length > 0 || !showCartelera) && (
-        <div className="mt-8 grid gap-4 md:grid-cols-2">
-          {entries.map((entry) =>
-            // Attractions use the large-photo layout, same as the events listing.
-            categorySlug === "atracciones" ? (
-              <AttractionCard key={entry.id} place={entry} />
-            ) : (
-              <PlaceCard key={entry.id} place={entry} />
-            ),
-          )}
-          {entries.length === 0 && (
-            <p className="text-neutral-500">
-              No hay lugares publicados todavía.
-            </p>
-          )}
-        </div>
+      {facilitiesByEntry ? (
+        <FacilityFilterGrid entries={entries} facilitiesByEntry={facilitiesByEntry}>
+          <SubcategoryPills subcategories={subcategories} />
+        </FacilityFilterGrid>
+      ) : (
+        (entries.length > 0 || !showCartelera) && (
+          <div className="mt-8 grid gap-4 md:grid-cols-2">
+            {entries.map((entry) =>
+              // Attractions use the large-photo layout, same as the events listing.
+              categorySlug === "atracciones" ? (
+                <AttractionCard key={entry.id} place={entry} />
+              ) : (
+                <PlaceCard key={entry.id} place={entry} />
+              ),
+            )}
+            {entries.length === 0 && (
+              <p className="text-neutral-500">
+                No hay lugares publicados todavía.
+              </p>
+            )}
+          </div>
+        )
       )}
       <MallsMapSection markers={mallMarkers(entries)} />
     </PageShell>
@@ -277,6 +499,7 @@ function MovieView({ item, citySlug }: { item: UmbracoItem; citySlug: string }) 
 
   return (
     <PageShell item={item}>
+      <JsonLd data={movieJsonLd(item)} />
       <div className="mt-6 flex flex-col gap-6 sm:flex-row sm:items-start">
         {poster && (
           // eslint-disable-next-line @next/next/no-img-element
@@ -317,6 +540,7 @@ async function SubcategoryView({ item }: { item: UmbracoItem }) {
   const entries = await listingEntries(item.route.path);
   return (
     <PageShell item={item}>
+      <JsonLd data={itemListJsonLd(item.name, entries)} />
       <h1 className="mt-4 text-3xl font-bold">{item.name}</h1>
       <div className="mt-8 grid gap-4 md:grid-cols-2">
         {entries.map((entry) => (
@@ -348,24 +572,28 @@ async function MallView({ item }: { item: UmbracoItem }) {
   const website = text(item, "website");
   const latitude = num(item, "latitude");
   const longitude = num(item, "longitude");
+  const cityItem = await cityOf(item);
 
   return (
     <PageShell item={item}>
+      <JsonLd
+        data={placeJsonLd({
+          item,
+          cityName: cityItem?.name ?? "",
+          country: text(cityItem ?? item, "country"),
+          image: photo,
+          type: "ShoppingCenter",
+        })}
+      />
       <div className="mt-6 flex flex-col gap-6 sm:flex-row sm:items-start">
         <div className="relative h-32 w-32 flex-none overflow-hidden rounded-xl border border-neutral-200 bg-white">
-          {photo ? (
-            <Image
-              src={photo}
-              alt={item.name}
-              fill
-              className="object-cover"
-              sizes="128px"
-            />
-          ) : (
-            <div className="flex h-full items-center justify-center text-5xl" aria-hidden>
-              🛍️
-            </div>
-          )}
+          <Image
+            src={photo ?? sectionListImage(item.route.path)}
+            alt={item.name}
+            fill
+            className="object-cover"
+            sizes="128px"
+          />
         </div>
         <div className="min-w-0">
           <h1 className="text-3xl font-bold">{item.name}</h1>
@@ -457,7 +685,7 @@ async function MallView({ item }: { item: UmbracoItem }) {
               name={item.name}
               latitude={latitude}
               longitude={longitude}
-              photo={photo}
+              photo={photo ?? sectionMapIcon(item.route.path)}
             />
           </div>
         </section>
@@ -480,26 +708,31 @@ async function CompanyView({ item }: { item: UmbracoItem }) {
       latitude: num(branch, "latitude"),
       longitude: num(branch, "longitude"),
       logo: photoUrl(branch) ?? logo,
+      rating: num(branch, "googleRating") || null,
+      ratingCount: num(branch, "googleRatingCount") || null,
     }))
     .filter((b) => b.latitude !== 0 && b.longitude !== 0);
+  const cityItem = await cityOf(item);
 
   return (
     <PageShell item={item}>
+      <JsonLd
+        data={organizationJsonLd(
+          item,
+          branches,
+          cityItem?.name ?? "",
+          text(cityItem ?? item, "country"),
+        )}
+      />
       <div className="mt-6 flex flex-col gap-6 sm:flex-row sm:items-start">
         <div className="relative h-32 w-32 flex-none overflow-hidden rounded-xl border border-neutral-200 bg-white">
-          {logo ? (
-            <Image
-              src={logo}
-              alt={`Logo ${item.name}`}
-              fill
-              className="object-contain p-2"
-              sizes="128px"
-            />
-          ) : (
-            <div className="flex h-full items-center justify-center text-5xl" aria-hidden>
-              🏢
-            </div>
-          )}
+          <Image
+            src={logo ?? sectionListImage(item.route.path)}
+            alt={`Logo ${item.name}`}
+            fill
+            className={logo ? "object-contain p-2" : "object-cover"}
+            sizes="128px"
+          />
         </div>
         <div className="min-w-0">
           <h1 className="text-3xl font-bold">{item.name}</h1>
@@ -577,14 +810,29 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
   const inherited = (alias: string) =>
     text(item, alias) || (company ? text(company, alias) : "");
   const ownPhoto = photoUrl(item);
-  const photo = ownPhoto ?? (company ? photoUrl(company) : null);
+  const inheritedPhoto = ownPhoto ?? (company ? photoUrl(company) : null);
+  // No photo and no company logo: fall back to the section's image.
+  const photo = inheritedPhoto ?? sectionListImage(item.route.path);
   // An inherited company logo is letterboxed with a soft border instead of
   // being cropped to the square like a real photo.
-  const isLogo = ownPhoto === null && photo !== null;
+  const isLogo = inheritedPhoto !== null && ownPhoto === null;
   const website = inherited("website");
+  const cityItem = await cityOf(item);
 
   return (
     <PageShell item={item}>
+      <JsonLd
+        data={placeJsonLd({
+          item,
+          cityName: cityItem?.name ?? "",
+          country: text(cityItem ?? item, "country"),
+          description: inherited("description"),
+          phone: inherited("phone"),
+          website,
+          hours: inherited("hours"),
+          image: inheritedPhoto,
+        })}
+      />
       <h1 className="mt-4 text-3xl font-bold">{item.name}</h1>
       <div className="mt-1">
         <Rating place={item} />
@@ -596,19 +844,14 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
               isLogo ? "border border-neutral-200 bg-white" : "bg-neutral-200"
             }`}
           >
-            {photo ? (
-              <Image
-                src={photo}
-                alt={item.name}
-                fill
-                className={isLogo ? "object-contain p-6" : "object-cover"}
-                sizes="(min-width: 1024px) 20rem, 100vw"
-              />
-            ) : (
-              <div className="flex h-full items-center justify-center text-6xl" aria-hidden>
-                📍
-              </div>
-            )}
+            <Image
+              src={photo}
+              alt={item.name}
+              fill
+              unoptimized={photo.endsWith(".svg")}
+              className={isLogo ? "object-contain p-6" : "object-cover"}
+              sizes="(min-width: 1024px) 20rem, 100vw"
+            />
           </div>
           {inherited("hours") && (
             <div className="mt-4 rounded-xl border border-neutral-200 bg-white p-4">
@@ -686,7 +929,7 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
               name={item.name}
               latitude={latitude}
               longitude={longitude}
-              photo={photo}
+              photo={inheritedPhoto ?? sectionMapIcon(item.route.path)}
             />
           </div>
         </section>
@@ -717,6 +960,7 @@ async function EventsView({ item }: { item: UmbracoItem }) {
   }));
   return (
     <PageShell item={item}>
+      <JsonLd data={itemListJsonLd(item.name, events)} />
       <h1 className="mt-4 text-3xl font-bold">Eventos</h1>
       <EventsList events={entries} />
     </PageShell>
@@ -732,9 +976,13 @@ async function EventView({ item }: { item: UmbracoItem }) {
   const dates = `${formatDate(item.properties["startDate"])}${
     item.properties["endDate"] ? ` — ${formatDate(item.properties["endDate"])}` : ""
   }`;
+  const cityItem = await cityOf(item);
 
   return (
     <PageShell item={item}>
+      <JsonLd
+        data={eventJsonLd(item, cityItem?.name ?? "", text(cityItem ?? item, "country"))}
+      />
       <h1 className="mt-4 text-3xl font-bold">{item.name}</h1>
       {text(item, "category") && (
         <span className="mt-3 inline-block rounded-full bg-brand-100 px-3 py-1 text-sm font-medium text-brand-800">
@@ -822,8 +1070,117 @@ async function EventView({ item }: { item: UmbracoItem }) {
               name={item.name}
               latitude={latitude}
               longitude={longitude}
-              photo={photo}
+              photo={photo ?? sectionMapIcon(item.route.path)}
             />
+          </div>
+        </section>
+      )}
+    </PageShell>
+  );
+}
+
+// ---- Artículos (blog) ----
+
+/** Newest first by publish date (missing dates sink to the end). */
+function byPublishDateDesc(a: UmbracoItem, b: UmbracoItem): number {
+  const time = (item: UmbracoItem) => {
+    const value = item.properties["publishDate"];
+    const t = typeof value === "string" ? new Date(value).getTime() : NaN;
+    return Number.isNaN(t) ? 0 : t;
+  };
+  return time(b) - time(a);
+}
+
+async function ArticlesView({ item }: { item: UmbracoItem }) {
+  const articles = (await getChildren(item.route.path))
+    .filter((c) => c.contentType === "article")
+    .sort(byPublishDateDesc);
+  return (
+    <PageShell item={item}>
+      <JsonLd data={itemListJsonLd(item.name, articles)} />
+      <h1 className="mt-4 text-3xl font-bold">{item.name}</h1>
+      {text(item, "intro") && (
+        <p className="mt-2 max-w-2xl text-neutral-600">{text(item, "intro")}</p>
+      )}
+      <div className="mt-8 space-y-5">
+        {articles.map((article) => (
+          <ArticleCard key={article.id} article={article} />
+        ))}
+        {articles.length === 0 && (
+          <p className="text-neutral-500">No hay artículos publicados todavía.</p>
+        )}
+      </div>
+    </PageShell>
+  );
+}
+
+async function ArticleView({ item }: { item: UmbracoItem }) {
+  const hero = text(item, "heroImageUrl");
+  const category = text(item, "category");
+  const author = text(item, "author");
+  const date = articleDate(item);
+  const parentPath = `/${item.route.path.split("/").filter(Boolean).slice(0, -1).join("/")}`;
+  const others = (await getChildren(parentPath))
+    .filter((c) => c.contentType === "article" && c.id !== item.id)
+    .sort(byPublishDateDesc)
+    .slice(0, 3);
+
+  return (
+    <PageShell item={item}>
+      <JsonLd data={articleJsonLd(item, text(item, "summary"))} />
+      <article className="mt-4">
+        {category && (
+          <span className="inline-block rounded-full bg-brand-100 px-3 py-1 text-sm font-medium text-brand-800">
+            {category}
+          </span>
+        )}
+        <h1 className="mt-3 max-w-3xl text-3xl font-bold sm:text-4xl">
+          {item.name}
+        </h1>
+        <p className="mt-2 text-sm text-neutral-500">
+          {date && (
+            <time
+              dateTime={
+                typeof item.properties["publishDate"] === "string"
+                  ? item.properties["publishDate"]
+                  : undefined
+              }
+            >
+              {date}
+            </time>
+          )}
+          {date && author ? " · " : ""}
+          {author}
+        </p>
+        {text(item, "summary") && (
+          <p className="mt-4 max-w-3xl text-lg text-neutral-600">
+            {text(item, "summary")}
+          </p>
+        )}
+        {hero && (
+          <div className="relative mt-6 h-64 overflow-hidden rounded-2xl bg-neutral-200 sm:h-96">
+            <Image
+              src={hero}
+              alt={item.name}
+              fill
+              className="object-cover"
+              sizes="(min-width: 1152px) 1104px, 100vw"
+              priority
+            />
+          </div>
+        )}
+        <div className="mt-8">
+          <ArticleBody markdown={text(item, "body")} />
+        </div>
+      </article>
+
+      {others.length > 0 && (
+        <section className="mt-12 border-t border-neutral-200 pt-8">
+          <h2 className="text-xl font-semibold">Más artículos</h2>
+          <div className="mt-5 space-y-5">
+            {others.map((article) => (
+              <ArticleCard key={article.id} article={article} />
+            ))}
           </div>
         </section>
       )}
@@ -887,10 +1244,19 @@ async function ThingsToDoView({
 
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  // Only events happening within the next 15 days.
+  const horizon = new Date(todayStart);
+  horizon.setDate(horizon.getDate() + 15);
   const upcoming = events
     .filter((event) => {
+      const start = new Date(text(event, "startDate"));
       const end = new Date(text(event, "endDate") || text(event, "startDate"));
-      return !Number.isNaN(end.getTime()) && end >= todayStart;
+      return (
+        !Number.isNaN(end.getTime()) &&
+        end >= todayStart &&
+        !Number.isNaN(start.getTime()) &&
+        start <= horizon
+      );
     })
     .sort(
       (a, b) =>
@@ -933,6 +1299,12 @@ async function ThingsToDoView({
 
   return (
     <PageShell item={item}>
+      <JsonLd
+        data={itemListJsonLd(
+          `Qué hacer en ${cityItem?.name ?? item.name}`,
+          ideaSections,
+        )}
+      />
       <h1 className="mt-4 text-3xl font-bold">
         Qué Hacer en {cityItem?.name ?? item.name}
       </h1>

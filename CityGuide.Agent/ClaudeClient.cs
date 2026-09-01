@@ -3,21 +3,13 @@ using System.Text.Json;
 
 namespace CityGuide.Agent;
 
-public record Enrichment(string Description, string[] Facilities);
-
 /// <summary>
-/// Claude API client: writes the Spanish description and maps Google data to the
-/// portal's facility list via a forced tool call (structured output).
+/// Claude API enrichment client (forced tool call). Fallback provider — the
+/// agent prefers AzureOpenAiClient when an Azure OpenAI endpoint is configured.
 /// </summary>
-public class ClaudeClient(HttpClient http, string apiKey, string model)
+public class ClaudeClient(HttpClient http, string apiKey, string model) : IEnrichmentClient
 {
-    private static readonly string[] FacilityOptions =
-    [
-        "Romántico", "Aire Acondicionado", "Horario Extendido", "Restaurante en el Lugar",
-        "Parqueo", "WiFi", "Delivery", "Terraza", "Música en Vivo", "Apto para Niños",
-    ];
-
-    public async Task<Enrichment> EnrichAsync(DiscoveredPlace place)
+    public async Task<Enrichment> EnrichAsync(DiscoveredPlace place, string? categoryPrompt = null)
     {
         var payload = new
         {
@@ -27,46 +19,15 @@ public class ClaudeClient(HttpClient http, string apiKey, string model)
             {
                 new
                 {
-                    name = "save_place",
-                    description = "Save the enriched place information for the city guide portal.",
-                    input_schema = new
-                    {
-                        type = "object",
-                        properties = new
-                        {
-                            description = new
-                            {
-                                type = "string",
-                                description = "Descripción atractiva del lugar en español, 2-3 frases, tono de guía de ciudad. Sin inventar datos específicos (premios, años, platos exactos) que no estén en la información dada.",
-                            },
-                            facilities = new
-                            {
-                                type = "array",
-                                items = new { type = "string", @enum = FacilityOptions },
-                                description = "Facilidades que muy probablemente aplican según el tipo de lugar y sus horarios.",
-                            },
-                        },
-                        required = new[] { "description", "facilities" },
-                    },
+                    name = EnrichmentPrompt.ToolName,
+                    description = EnrichmentPrompt.ToolDescription,
+                    input_schema = EnrichmentPrompt.Schema,
                 },
             },
-            tool_choice = new { type = "tool", name = "save_place" },
+            tool_choice = new { type = "tool", name = EnrichmentPrompt.ToolName },
             messages = new object[]
             {
-                new
-                {
-                    role = "user",
-                    content = $"""
-                        Lugar para la guía de ciudad:
-                        Nombre: {place.Name}
-                        Dirección: {place.Address}
-                        Tipos (Google): {string.Join(", ", place.Types)}
-                        Horario: {string.Join(" | ", place.Hours)}
-                        Sitio web: {place.Website ?? "n/a"}
-
-                        Escribe la descripción y selecciona las facilidades.
-                        """,
-                },
+                new { role = "user", content = EnrichmentPrompt.UserMessage(place, categoryPrompt) },
             },
         };
 
@@ -92,12 +53,7 @@ public class ClaudeClient(HttpClient http, string apiKey, string model)
                 continue;
             }
 
-            JsonElement input = block.GetProperty("input");
-            string description = input.GetProperty("description").GetString() ?? "";
-            string[] facilities = input.TryGetProperty("facilities", out JsonElement facilitiesElement)
-                ? [.. facilitiesElement.EnumerateArray().Select(f => f.GetString()!).Where(FacilityOptions.Contains)]
-                : [];
-            return new Enrichment(description, facilities);
+            return EnrichmentPrompt.Parse(block.GetProperty("input"));
         }
 
         throw new InvalidOperationException("Claude response contained no tool_use block.");

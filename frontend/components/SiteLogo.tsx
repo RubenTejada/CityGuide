@@ -53,14 +53,14 @@ export default function SiteLogo({
     <span className={`flex items-center gap-3 ${className ?? ""}`}>
       <LogoIcon className="h-[2.6em] w-[2.6em] shrink-0" />
       <span className="flex flex-col">
-        <span className="text-[1em] leading-none font-bold tracking-tight text-white">
-          QueHacer<span className="text-brand-500">RD</span>
-          <span className="align-baseline text-[0.55em] font-semibold text-neutral-400">
+        <span className="font-logo text-[1.15em] leading-none font-semibold tracking-wide text-white">
+          QuéHacer<span className="text-brand-500">RD</span>
+          <span className="align-baseline text-[0.5em] font-medium text-neutral-400">
             .com
           </span>
         </span>
         {tagline && (
-          <span className="mt-[0.45em] text-[0.34em] font-medium uppercase tracking-[0.35em] text-neutral-400">
+          <span className="mt-[0.4em] text-center text-[max(0.36em,11px)] font-normal text-neutral-400">
             Planes, lugares y experiencias en RD
           </span>
         )}

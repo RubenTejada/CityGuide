@@ -1,4 +1,4 @@
-const FACILITY_ICONS: Record<string, string> = {
+export const FACILITY_ICONS: Record<string, string> = {
   "Romántico": "❤",
   "Aire Acondicionado": "❄",
   "Horario Extendido": "🕐",

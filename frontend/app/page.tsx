@@ -1,5 +1,7 @@
 import Link from "next/link";
+import JsonLd from "@/components/JsonLd";
 import SiteLogo from "@/components/SiteLogo";
+import { itemListJsonLd } from "@/lib/seo";
 import { getCities, slugOf, text } from "@/lib/umbraco";
 
 export const revalidate = 600;
@@ -9,6 +11,7 @@ export default async function HomePage() {
 
   return (
     <main className="flex-1">
+      <JsonLd data={itemListJsonLd("Ciudades en QueHacerRD.com", cities)} />
       <section className="bg-neutral-900 text-white">
         <div className="mx-auto max-w-5xl px-6 py-20 text-center">
           <h1 className="flex justify-center">

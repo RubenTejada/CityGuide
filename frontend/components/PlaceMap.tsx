@@ -10,6 +10,9 @@ import {
   Pin,
 } from "@vis.gl/react-google-maps";
 import LogoPin from "./LogoPin";
+import MapPopupCard from "./MapPopupCard";
+import { RatingBadge } from "./Rating";
+import { sectionMapIcon } from "@/lib/sections";
 
 interface NearbyPlace {
   id: string;
@@ -21,6 +24,8 @@ interface NearbyPlace {
   longitude: number;
   distanceMeters: number;
   photo: string | null;
+  rating: number | null;
+  ratingCount: number | null;
 }
 
 interface PlaceMapProps {
@@ -86,6 +91,11 @@ export default function PlaceMap({
                   className="block p-3 text-sm hover:bg-neutral-50"
                 >
                   <span className="font-medium">{place.name}</span>
+                  <RatingBadge
+                    value={place.rating}
+                    count={place.ratingCount}
+                    className="ml-2 !text-xs"
+                  />
                   <span className="mt-0.5 block text-xs text-neutral-500">
                     {place.category} · {Math.round(place.distanceMeters)} m
                   </span>
@@ -117,7 +127,10 @@ export default function PlaceMap({
                 title={place.name}
                 onClick={() => setSelected(place)}
               >
-                {place.photo ? <LogoPin logo={place.photo} name={place.name} /> : null}
+                <LogoPin
+                  logo={place.photo ?? sectionMapIcon(place.url)}
+                  name={place.name}
+                />
               </AdvancedMarker>
             ))}
             {selected && (
@@ -125,12 +138,14 @@ export default function PlaceMap({
                 position={{ lat: selected.latitude, lng: selected.longitude }}
                 onCloseClick={() => setSelected(null)}
               >
-                <div className="text-sm">
-                  <Link href={selected.url} className="font-semibold text-brand-700">
-                    {selected.name}
-                  </Link>
-                  <p className="text-neutral-600">{selected.address}</p>
-                </div>
+                <MapPopupCard
+                  url={selected.url}
+                  name={selected.name}
+                  photo={selected.photo ?? sectionMapIcon(selected.url)}
+                  address={selected.address}
+                  rating={selected.rating}
+                  ratingCount={selected.ratingCount}
+                />
               </InfoWindow>
             )}
           </Map>

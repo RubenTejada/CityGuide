@@ -1,6 +1,8 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import PlaceCard from "@/components/PlaceCard";
+import { fold } from "@/lib/search";
 import {
   getDescendantsOfType,
   getItem,
@@ -10,13 +12,20 @@ import {
 
 export const revalidate = 600;
 
-export async function generateMetadata() {
-  return { title: "Buscar" };
-}
-
-/** Lowercase and strip accents so "cafe" matches "Café". */
-function fold(value: string): string {
-  return value.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ city: string }>;
+}): Promise<Metadata> {
+  const { city: citySlug } = await params;
+  const city = await getItem(`/${citySlug}`);
+  return {
+    title: `Buscar en ${city?.name ?? "la ciudad"}`,
+    description: `Busca lugares, empresas y eventos en ${city?.name ?? "la ciudad"}.`,
+    // Result pages are thin and unbounded: crawl the links, index nothing.
+    robots: { index: false, follow: true },
+    alternates: { canonical: `/${citySlug}/buscar` },
+  };
 }
 
 /** Case/accent-insensitive match over the fields shown in listings. */

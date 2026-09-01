@@ -16,59 +16,53 @@ export interface GuideSection {
   entries: UmbracoItem[];
 }
 
-type Audience = "familia" | "pareja" | "amigos";
-
-const AUDIENCES: { value: Audience; label: string }[] = [
-  { value: "familia", label: "En familia" },
-  { value: "pareja", label: "En pareja" },
-  { value: "amigos", label: "Con amigos" },
-];
-
-/** Which audiences a guide section fits; unknown slugs fit everyone. */
-const SECTION_AUDIENCES: Record<string, Audience[]> = {
-  "bares-y-clubes": ["amigos", "pareja"],
-  restaurantes: ["familia", "pareja", "amigos"],
-  cines: ["familia", "pareja", "amigos"],
-  tiendas: ["familia", "amigos"],
-  atracciones: ["familia", "pareja", "amigos"],
+/** Emoji for each activity slot in the sentence filter. */
+const ACTIVITY_ICONS: Record<string, string> = {
+  eventos: "🎫",
+  atracciones: "🎡",
+  restaurantes: "🍽️",
+  "bares-y-clubes": "🍸",
+  cines: "🎬",
+  tiendas: "🛍️",
 };
 
-function sectionFits(slug: string, audience: Audience | null): boolean {
-  if (!audience) return true;
-  const fits = SECTION_AUDIENCES[slug];
-  return !fits || fits.includes(audience);
-}
-
-/** Audiences an event fits, inferred from its free-text category. */
-function eventFits(category: string, audience: Audience | null): boolean {
-  if (!audience) return true;
-  const c = category.toLowerCase();
-  if (/concierto|música|musica|fiesta|nocturn|club/.test(c))
-    return audience !== "familia";
-  if (/infantil|niñ|feria|familiar/.test(c)) return audience === "familia";
-  return true;
-}
-
+/** Compact filter chip with icon, label and optional result count. */
 function Chip({
   active,
   onClick,
-  children,
+  icon,
+  label,
+  count,
 }: {
   active: boolean;
   onClick: () => void;
-  children: React.ReactNode;
+  icon: string;
+  label: string;
+  count?: number;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-full border px-3.5 py-1.5 text-sm transition ${
+      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition ${
         active
-          ? "border-brand-600 bg-brand-600 text-white"
-          : "border-neutral-300 bg-white text-neutral-700 hover:border-brand-600 hover:text-brand-700"
+          ? "border-sun-400 bg-sun-400 text-neutral-900 shadow-sm"
+          : "border-neutral-200 bg-white text-neutral-600 hover:border-sun-400 hover:bg-sun-300/15"
       }`}
     >
-      {children}
+      <span aria-hidden>{icon}</span>
+      {label}
+      {count !== undefined && (
+        <span
+          className={`rounded-full px-1.5 py-0.5 text-xs ${
+            active
+              ? "bg-white/60 text-neutral-800"
+              : "bg-neutral-100 text-neutral-500"
+          }`}
+        >
+          {count}
+        </span>
+      )}
     </button>
   );
 }
@@ -86,21 +80,13 @@ export default function ThingsToDoExplorer({
 }) {
   // null = everything; otherwise "eventos", "atracciones", or a section slug.
   const [activity, setActivity] = useState<string | null>(null);
-  const [audience, setAudience] = useState<Audience | null>(null);
 
   const visibleSections = sections.filter(
     (s) =>
-      s.entries.length > 0 &&
-      (activity === null || activity === s.slug) &&
-      sectionFits(s.slug, audience),
+      s.entries.length > 0 && (activity === null || activity === s.slug),
   );
-  const showEvents =
-    (activity === null || activity === "eventos") &&
-    (!audience || events.some((e) => eventFits(e.category, audience)));
-  const filteredEvents = events.filter((e) => eventFits(e.category, audience));
-  const showAttractions =
-    (activity === null || activity === "atracciones") &&
-    sectionFits("atracciones", audience);
+  const showEvents = activity === null || activity === "eventos";
+  const showAttractions = activity === null || activity === "atracciones";
 
   const nothingVisible =
     !showEvents && !showAttractions && visibleSections.length === 0;
@@ -119,54 +105,42 @@ export default function ThingsToDoExplorer({
 
   return (
     <div>
-      <div className="mt-8 rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
-          ¿Qué te apetece?
-        </p>
-        <div className="mt-2 flex flex-wrap gap-2">
-          <Chip active={activity === null} onClick={() => setActivity(null)}>
-            Todo
-          </Chip>
-          <Chip
-            active={activity === "eventos"}
-            onClick={() => setActivity("eventos")}
-          >
-            Eventos
-          </Chip>
-          <Chip
-            active={activity === "atracciones"}
-            onClick={() => setActivity("atracciones")}
-          >
-            Atracciones
-          </Chip>
-          {sections
-            .filter((s) => s.entries.length > 0)
-            .map((s) => (
-              <Chip
-                key={s.id}
-                active={activity === s.slug}
-                onClick={() => setActivity(s.slug)}
-              >
-                {s.name}
-              </Chip>
-            ))}
-        </div>
-        <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-          ¿Con quién?
-        </p>
-        <div className="mt-2 flex flex-wrap gap-2">
-          <Chip active={audience === null} onClick={() => setAudience(null)}>
-            Todos
-          </Chip>
-          {AUDIENCES.map(({ value, label }) => (
+      <div className="sticky top-3 z-[1000] mt-8">
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-neutral-200 bg-white/95 p-2 shadow-md backdrop-blur sm:flex-nowrap">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 py-0.5">
             <Chip
-              key={value}
-              active={audience === value}
-              onClick={() => setAudience(value)}
-            >
-              {label}
-            </Chip>
-          ))}
+              active={activity === null}
+              onClick={() => setActivity(null)}
+              icon="✨"
+              label="Todo"
+            />
+            <Chip
+              active={activity === "eventos"}
+              onClick={() => setActivity("eventos")}
+              icon={ACTIVITY_ICONS.eventos}
+              label="Eventos"
+              count={events.length}
+            />
+            <Chip
+              active={activity === "atracciones"}
+              onClick={() => setActivity("atracciones")}
+              icon={ACTIVITY_ICONS.atracciones}
+              label="Atracciones"
+              count={attractions.length}
+            />
+            {sections
+              .filter((s) => s.entries.length > 0)
+              .map((s) => (
+                <Chip
+                  key={s.id}
+                  active={activity === s.slug}
+                  onClick={() => setActivity(s.slug)}
+                  icon={ACTIVITY_ICONS[s.slug] ?? "📍"}
+                  label={s.name}
+                  count={s.entries.length}
+                />
+              ))}
+          </div>
         </div>
       </div>
 
@@ -174,11 +148,11 @@ export default function ThingsToDoExplorer({
         <section className="mt-10">
           <h2 className="text-xl font-semibold">Eventos próximos</h2>
           <div className="mt-5 grid gap-4 md:grid-cols-2">
-            {filteredEvents.map((event) => (
+            {events.map((event) => (
               <EventCard key={event.id} event={event} />
             ))}
           </div>
-          {filteredEvents.length === 0 && (
+          {events.length === 0 && (
             <p className="mt-4 text-neutral-500">
               No hay eventos próximos publicados todavía.
             </p>

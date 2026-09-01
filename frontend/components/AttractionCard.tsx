@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { facilities, photoUrl, slugOf, text, type UmbracoItem } from "@/lib/umbraco";
+import { sectionListImage } from "@/lib/sections";
 import FacilityBadges from "./FacilityBadges";
 import Rating from "./Rating";
 
@@ -23,30 +24,25 @@ const FALLBACK_PHOTOS: Record<string, string> = {
 
 /** Large-photo card for attractions, same layout as the events section cards. */
 export default function AttractionCard({ place }: { place: UmbracoItem }) {
-  const photo = photoUrl(place) ?? FALLBACK_PHOTOS[slugOf(place)] ?? null;
+  const photo =
+    photoUrl(place) ??
+    FALLBACK_PHOTOS[slugOf(place)] ??
+    sectionListImage(place.route.path);
   return (
     <Link
       href={place.route.path}
       className="group overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm transition hover:shadow-md"
     >
-      {photo ? (
-        <div className="relative aspect-[2/1] bg-neutral-200">
-          <Image
-            src={photo}
-            alt={place.name}
-            fill
-            className="object-cover"
-            sizes="(min-width: 768px) 50vw, 100vw"
-          />
-        </div>
-      ) : (
-        <div
-          className="flex aspect-[2/1] items-center justify-center bg-neutral-200 text-5xl"
-          aria-hidden
-        >
-          📍
-        </div>
-      )}
+      <div className="relative aspect-[2/1] bg-neutral-200">
+        <Image
+          src={photo}
+          alt={place.name}
+          fill
+          unoptimized={photo.endsWith(".svg")}
+          className="object-cover"
+          sizes="(min-width: 768px) 50vw, 100vw"
+        />
+      </div>
       <div className="p-5">
         <h3 className="font-semibold group-hover:text-brand-600">{place.name}</h3>
         <Rating place={place} />

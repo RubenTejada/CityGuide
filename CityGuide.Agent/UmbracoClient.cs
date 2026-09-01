@@ -11,6 +11,7 @@ namespace CityGuide.Agent;
 public class UmbracoClient(HttpClient http, UmbracoConfig config)
 {
     private string? _accessToken;
+    private DateTime _tokenExpiresAt;
     private readonly Dictionary<string, Guid> _docTypeIds = new(StringComparer.OrdinalIgnoreCase);
 
     // ---- Delivery API (read) ----
@@ -27,6 +28,47 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
 
         using JsonDocument doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         return (doc.RootElement.GetProperty("id").GetGuid(), doc.RootElement.GetProperty("name").GetString()!);
+    }
+
+    public record CityAgentConfig(string CityName, Dictionary<string, string> CategoryPrompts);
+
+    /// <summary>
+    /// Agent configuration stored on the city node ("Agente" tab): the city name
+    /// used in Google queries ({city} placeholder) and per-category editor
+    /// prompts, one "categoria-slug: instrucciones" line each. Falls back to the
+    /// node name when the tab is empty; null when the city path does not exist.
+    /// </summary>
+    public async Task<CityAgentConfig?> GetCityAgentConfigAsync(string cityPath)
+    {
+        HttpResponseMessage response =
+            await http.GetAsync($"{config.BaseUrl}/umbraco/delivery/api/v2/content/item{cityPath}");
+        if (!response.IsSuccessStatusCode)
+        {
+            return null;
+        }
+
+        using JsonDocument doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        JsonElement props = doc.RootElement.GetProperty("properties");
+        string? Text(string alias) =>
+            props.TryGetProperty(alias, out JsonElement v) && v.ValueKind == JsonValueKind.String
+                ? v.GetString()
+                : null;
+
+        string cityName = Text("agentCityName") is { Length: > 0 } configured
+            ? configured
+            : doc.RootElement.GetProperty("name").GetString()!;
+
+        var prompts = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string line in (Text("agentPrompts") ?? "").Split('\n'))
+        {
+            int colon = line.IndexOf(':');
+            if (colon > 0 && line[(colon + 1)..].Trim() is { Length: > 0 } prompt)
+            {
+                prompts[line[..colon].Trim()] = prompt;
+            }
+        }
+
+        return new CityAgentConfig(cityName, prompts);
     }
 
     /// <summary>Google Place ID → document id of every published place — used for dedupe and rating refresh.</summary>
@@ -57,7 +99,8 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
 
     private async Task<string> GetAccessTokenAsync()
     {
-        if (_accessToken is not null)
+        // Tokens expire (default 300s); refresh shortly before to survive long runs.
+        if (_accessToken is not null && DateTime.UtcNow < _tokenExpiresAt)
         {
             return _accessToken;
         }
@@ -80,6 +123,10 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
 
         using JsonDocument doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         _accessToken = doc.RootElement.GetProperty("access_token").GetString()!;
+        int expiresIn = doc.RootElement.TryGetProperty("expires_in", out JsonElement exp)
+            ? exp.GetInt32()
+            : 300;
+        _tokenExpiresAt = DateTime.UtcNow.AddSeconds(expiresIn - 30);
         return _accessToken;
     }
 
@@ -196,12 +243,75 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         await PublishAsync(id);
     }
 
+    public record PublishedPlace(
+        Guid Id, string Name, string Path, double Latitude, double Longitude,
+        string? Address, string? GooglePlaceId);
+
+    /// <summary>Every published place with its coordinates — used by the rating backfill.</summary>
+    public async Task<List<PublishedPlace>> GetPublishedPlacesAsync()
+    {
+        HttpResponseMessage response = await http.GetAsync(
+            $"{config.BaseUrl}/umbraco/delivery/api/v2/content?filter=contentType%3Aplace&take=1000");
+        response.EnsureSuccessStatusCode();
+
+        var places = new List<PublishedPlace>();
+        using JsonDocument doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        foreach (JsonElement item in doc.RootElement.GetProperty("items").EnumerateArray())
+        {
+            JsonElement props = item.GetProperty("properties");
+            double Coord(string alias) =>
+                props.TryGetProperty(alias, out JsonElement v) && v.ValueKind == JsonValueKind.Number
+                    ? v.GetDouble()
+                    : 0;
+            string? Text(string alias) =>
+                props.TryGetProperty(alias, out JsonElement v) && v.ValueKind == JsonValueKind.String
+                    ? v.GetString()
+                    : null;
+            places.Add(new PublishedPlace(
+                item.GetProperty("id").GetGuid(),
+                item.GetProperty("name").GetString()!,
+                item.GetProperty("route").GetProperty("path").GetString()!,
+                Coord("latitude"), Coord("longitude"), Text("address"), Text("googlePlaceId")));
+        }
+
+        return places;
+    }
+
+    /// <summary>Google Place IDs of the direct child places of a document, drafts included — used for dedupe.</summary>
+    public async Task<Dictionary<string, Guid>> GetChildPlaceIdsAsync(Guid parentId)
+    {
+        var result = new Dictionary<string, Guid>(StringComparer.Ordinal);
+        foreach (ChildDocument child in await GetChildrenAsync(parentId))
+        {
+            HttpRequestMessage request = await AuthorizedRequestAsync(
+                HttpMethod.Get, $"/umbraco/management/api/v1/document/{child.Id}");
+            HttpResponseMessage response = await http.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
+            {
+                continue;
+            }
+
+            using JsonDocument doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            foreach (JsonElement v in doc.RootElement.GetProperty("values").EnumerateArray())
+            {
+                if (v.GetProperty("alias").GetString() == "googlePlaceId"
+                    && v.GetProperty("value").ValueKind == JsonValueKind.String)
+                {
+                    result[v.GetProperty("value").GetString()!] = child.Id;
+                }
+            }
+        }
+
+        return result;
+    }
+
     /// <summary>
-    /// Updates only the Google rating properties of an existing place, preserving
-    /// every other value. Republishes only documents that were already published.
-    /// Returns false when the stored rating already matches.
+    /// Updates only the Google rating properties (and optionally the place id) of an
+    /// existing place, preserving every other value. Republishes only documents that
+    /// were already published. Returns false when the stored values already match.
     /// </summary>
-    public async Task<bool> UpdatePlaceRatingAsync(Guid id, double rating, int ratingCount)
+    public async Task<bool> UpdatePlaceRatingAsync(
+        Guid id, double rating, int ratingCount, string? googlePlaceId = null)
     {
         HttpRequestMessage getRequest = await AuthorizedRequestAsync(
             HttpMethod.Get, $"/umbraco/management/api/v1/document/{id}");
@@ -220,6 +330,7 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
 
         double? currentRating = null;
         int? currentCount = null;
+        string? currentPlaceId = null;
         var values = new List<object>();
         foreach (JsonElement v in root.GetProperty("values").EnumerateArray())
         {
@@ -233,6 +344,9 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
                 case "googleRatingCount" when value.ValueKind == JsonValueKind.Number:
                     currentCount = value.GetInt32();
                     break;
+                case "googlePlaceId" when googlePlaceId is not null:
+                    currentPlaceId = value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+                    break;
                 case "googleRating":
                 case "googleRatingCount":
                     break;
@@ -242,13 +356,18 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
             }
         }
 
-        if (currentRating == rating && currentCount == ratingCount)
+        if (currentRating == rating && currentCount == ratingCount
+            && (googlePlaceId is null || currentPlaceId == googlePlaceId))
         {
             return false;
         }
 
         values.Add(new { alias = "googleRating", value = rating });
         values.Add(new { alias = "googleRatingCount", value = ratingCount });
+        if (googlePlaceId is not null)
+        {
+            values.Add(new { alias = "googlePlaceId", value = googlePlaceId });
+        }
 
         HttpRequestMessage putRequest = await AuthorizedRequestAsync(
             HttpMethod.Put, $"/umbraco/management/api/v1/document/{id}");

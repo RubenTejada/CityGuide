@@ -10,6 +10,8 @@ using Umbraco.Cms.Core.Serialization;
 using Umbraco.Cms.Core.Services;
 using Umbraco.Cms.Core.Services.OperationStatus;
 using Umbraco.Cms.Core.Strings;
+using Umbraco.Cms.Core.Models.Membership;
+using Umbraco.Cms.Core.Security;
 using Umbraco.Cms.Infrastructure.Examine;
 using Umbraco.Extensions;
 
@@ -42,6 +44,10 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
     private readonly IConfigurationEditorJsonSerializer _configSerializer;
     private readonly IExamineManager _examineManager;
     private readonly IIndexRebuilder _indexRebuilder;
+    private readonly IUserService _userService;
+    private readonly IUserGroupService _userGroupService;
+    private readonly IBackOfficeUserClientCredentialsManager _clientCredentialsManager;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<CityGuideSeeder> _logger;
 
     public CityGuideSeeder(
@@ -59,6 +65,10 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         IConfigurationEditorJsonSerializer configSerializer,
         IExamineManager examineManager,
         IIndexRebuilder indexRebuilder,
+        IUserService userService,
+        IUserGroupService userGroupService,
+        IBackOfficeUserClientCredentialsManager clientCredentialsManager,
+        IConfiguration configuration,
         ILogger<CityGuideSeeder> logger)
     {
         _runtimeState = runtimeState;
@@ -75,6 +85,10 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         _configSerializer = configSerializer;
         _examineManager = examineManager;
         _indexRebuilder = indexRebuilder;
+        _userService = userService;
+        _userGroupService = userGroupService;
+        _clientCredentialsManager = clientCredentialsManager;
+        _configuration = configuration;
         _logger = logger;
     }
 
@@ -103,6 +117,8 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
 
         await EnsureMovieSchemaAsync();
 
+        await EnsureArticleSchemaAsync();
+
         await EnsurePlaceRatingSchemaAsync();
 
         await EnsureEventCategorySchemaAsync();
@@ -110,6 +126,14 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         bool thingsToDoMigrated = await EnsureThingsToDoMigratedAsync();
 
         await EnsureSectionPhotoSchemaAsync();
+
+        await EnsureAgentSchemaAsync();
+
+        await EnsureSeoSchemaAsync();
+
+        await EnsureAgentApiUserAsync();
+
+        bool agentConfigSeeded = EnsureAgentConfigSeeded();
 
         bool banksSeeded = EnsureBanksSeeded();
 
@@ -125,11 +149,14 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
 
         bool shoppingSeeded = EnsureShoppingChainsSeeded();
 
+        bool articlesSeeded = EnsureArticlesSeeded();
+
         // The Delivery API query endpoint reads from this index. Rebuild it when it is
         // empty while published content exists, or when this startup seeded new content
         // (content published during boot is not picked up by the index event handlers).
         if (_examineManager.TryGetIndex(Constants.UmbracoIndexes.DeliveryApiContentIndexName, out IIndex index)
             && (banksSeeded
+                || agentConfigSeeded
                 || thingsToDoMigrated
                 || eventsSeeded
                 || atraccionesSeeded
@@ -137,6 +164,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
                 || cinemasSeeded
                 || mallsSeeded
                 || shoppingSeeded
+                || articlesSeeded
                 || index.Searcher.CreateQuery().All().Execute(Examine.Search.QueryOptions.SkipTake(0, 1)).TotalItemCount == 0))
         {
             _logger.LogInformation("CityGuide: rebuilding empty Delivery API content index");
@@ -542,6 +570,74 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         }
     }
 
+    /// Document types whose pages are indexable and therefore get the "SEO" tab.
+    private static readonly string[] SeoDocumentTypes =
+    [
+        "city", "categoryPage", "subcategory", "place", "company", "mall",
+        "eventsPage", "eventItem", "thingsToDoPage", "articlesPage", "article", "movie",
+    ];
+
+    /// <summary>
+    /// Adds the "SEO" tab (metaTitle / metaDescription / noIndex) to every indexable
+    /// document type. The frontend derives all three from the content itself, so these
+    /// are per-page overrides only — leaving them empty is the normal case. Guarded per
+    /// type and property, and run every startup so existing installations pick it up.
+    /// </summary>
+    private async Task EnsureSeoSchemaAsync()
+    {
+        IDataType? textstring = null;
+        IDataType? textarea = null;
+        IDataType? checkbox = null;
+
+        foreach (string alias in SeoDocumentTypes)
+        {
+            IContentType? contentType = _contentTypeService.Get(alias);
+            if (contentType is null || contentType.PropertyTypeExists("metaTitle"))
+            {
+                continue;
+            }
+
+            textstring ??= (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.TextstringGuid))!;
+            textarea ??= (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.TextareaGuid))!;
+            checkbox ??= (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.CheckboxGuid))!;
+
+            _logger.LogInformation("CityGuide: adding 'SEO' tab to '{Alias}'", alias);
+            AddSeoProperty(contentType, new PropertyType(_shortStringHelper, textstring, "metaTitle")
+            {
+                Name = "Título SEO",
+                Description = "Sustituye el título en Google y al compartir. Máx. 60 caracteres "
+                    + "(se le añade \" | QueHacerRD\"). Vacío = se genera del contenido.",
+                SortOrder = 1,
+            });
+            AddSeoProperty(contentType, new PropertyType(_shortStringHelper, textarea, "metaDescription")
+            {
+                Name = "Descripción SEO",
+                Description = "Resumen que aparece bajo el título en Google. Máx. 160 caracteres. "
+                    + "Vacío = se genera de la descripción o introducción.",
+                SortOrder = 2,
+            });
+            AddSeoProperty(contentType, new PropertyType(_shortStringHelper, checkbox, "noIndex")
+            {
+                Name = "Ocultar de Google (noindex)",
+                Description = "Marca esta casilla para que la página no se indexe en buscadores. "
+                    + "Sigue siendo visible en el portal.",
+                SortOrder = 3,
+            });
+
+            Attempt<ContentTypeOperationStatus> attempt =
+                await _contentTypeService.UpdateAsync(contentType, Constants.Security.SuperUserKey);
+            if (!attempt.Success)
+            {
+                throw new InvalidOperationException(
+                    $"Failed to add SEO properties to '{alias}': {attempt.Result}");
+            }
+        }
+    }
+
+    /// <summary>Adds a property to the document type's own "SEO" tab, creating it if needed.</summary>
+    private static void AddSeoProperty(IContentType contentType, PropertyType propertyType) =>
+        contentType.AddPropertyType(propertyType, "seo", "SEO");
+
     /// <summary>
     /// Adds the "photo" (section cover) property to the city-section document types
     /// ("categoryPage", "eventsPage", "thingsToDoPage") so editors can set the image
@@ -572,6 +668,130 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
                     $"Failed to add 'photo' to '{alias}': {attempt.Result}");
             }
         }
+    }
+
+    /// <summary>
+    /// Adds the "Agente" tab to the "city" document type: the city name the
+    /// ingestion agent uses in Google queries ({city} placeholder in its Runs)
+    /// and per-category prompt lines appended to the description-writing prompt.
+    /// Guarded and run every startup so existing installations pick it up.
+    /// </summary>
+    private async Task EnsureAgentSchemaAsync()
+    {
+        IContentType? city = _contentTypeService.Get("city");
+        if (city is null || city.PropertyTypeExists("agentCityName"))
+        {
+            return;
+        }
+
+        _logger.LogInformation("CityGuide: adding 'Agente' tab to 'city'");
+        IDataType textstring = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.TextstringGuid))!;
+        IDataType textarea = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.TextareaGuid))!;
+
+        city.AddPropertyType(new PropertyType(_shortStringHelper, textstring, "agentCityName")
+        {
+            Name = "Nombre para búsquedas",
+            Description = "Cómo el agente nombra la ciudad en las búsquedas de Google, "
+                + "p. ej. \"Santo Domingo, República Dominicana\". Sustituye {city} en las consultas.",
+            SortOrder = 1,
+        }, "agent", "Agente");
+        city.AddPropertyType(new PropertyType(_shortStringHelper, textarea, "agentPrompts")
+        {
+            Name = "Prompts por categoría",
+            Description = "Una línea por categoría: <slug-de-categoría>: <instrucciones>. "
+                + "P. ej. \"bares-y-clubes: Tono nocturno; menciona la música y el ambiente.\" "
+                + "El agente las añade al prompt que escribe las descripciones.",
+            SortOrder = 2,
+        }, "agent", "Agente");
+
+        Attempt<ContentTypeOperationStatus> attempt =
+            await _contentTypeService.UpdateAsync(city, Constants.Security.SuperUserKey);
+        if (!attempt.Success)
+        {
+            throw new InvalidOperationException($"Failed to add 'Agente' tab to 'city': {attempt.Result}");
+        }
+    }
+
+    /// <summary>
+    /// Creates the API user the ingestion agent authenticates with, when
+    /// CityGuide:AgentClientSecret is configured (in Azure: an App Service setting).
+    /// Lets a freshly seeded database accept the agent without manual backoffice
+    /// setup. Runs every startup, guarded by user existence; rotating the secret
+    /// requires deleting the user (or updating it in the backoffice).
+    /// </summary>
+    private async Task EnsureAgentApiUserAsync()
+    {
+        string? secret = _configuration["CityGuide:AgentClientSecret"];
+        if (string.IsNullOrWhiteSpace(secret))
+        {
+            return;
+        }
+
+        const string clientId = "umbraco-back-office-cityguide-agent";
+        const string username = "cityguide-agent@quehacerrd.com";
+
+        if (_userService.GetByUsername(username) is not null)
+        {
+            return;
+        }
+
+        _logger.LogInformation("CityGuide: creating agent API user");
+
+        IUserGroup? admins = await _userGroupService.GetAsync(Constants.Security.AdminGroupAlias);
+        if (admins is null)
+        {
+            _logger.LogError("CityGuide: admin user group not found; agent API user not created");
+            return;
+        }
+
+        var attempt = await _userService.CreateAsync(Constants.Security.SuperUserKey, new UserCreateModel
+        {
+            UserName = username,
+            Email = username,
+            Name = "CityGuide Agent",
+            Kind = UserKind.Api,
+            UserGroupKeys = new HashSet<Guid> { admins.Key },
+        }, approveUser: true);
+
+        if (attempt.Success is false || attempt.Result.CreatedUser is null)
+        {
+            _logger.LogError("CityGuide: agent API user creation failed: {Status}", attempt.Status);
+            return;
+        }
+
+        var credentialsAttempt = await _clientCredentialsManager.SaveAsync(
+            attempt.Result.CreatedUser.Key, clientId, secret);
+        if (credentialsAttempt.Success is false)
+        {
+            _logger.LogError("CityGuide: agent client credentials save failed: {Status}", credentialsAttempt.Result);
+        }
+    }
+
+    /// <summary>
+    /// Seeds default agent configuration on the Santo Domingo city node when the
+    /// "Agente" tab is still empty. Runs every startup, guarded by value.
+    /// </summary>
+    private bool EnsureAgentConfigSeeded()
+    {
+        IContent? site = _contentService.GetRootContent().FirstOrDefault(c => c.ContentType.Alias == "site");
+        IContent? city = site is null ? null : Descendant(site, "city", "Santo Domingo");
+        if (city is null || !city.HasProperty("agentCityName")
+            || !string.IsNullOrWhiteSpace(city.GetValue<string>("agentCityName")))
+        {
+            return false;
+        }
+
+        _logger.LogInformation("CityGuide: seeding agent config on 'Santo Domingo'");
+        city.SetValue("agentCityName", "Santo Domingo, República Dominicana");
+        city.SetValue("agentPrompts",
+            """
+            restaurantes: Menciona el tipo de cocina y para qué ocasión funciona el lugar.
+            bares-y-clubes: Tono nocturno y cercano; menciona la música y el ambiente.
+            tiendas: Menciona qué se consigue allí y por qué vale la pena visitarla.
+            """);
+        _contentService.Save(city);
+        _contentService.Publish(city, ["*"]);
+        return true;
     }
 
     private static readonly string ThingsToDoIntro =
@@ -1068,6 +1288,250 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         }
     }
 
+    // ---- Articles (blog) ----
+
+    /// <summary>
+    /// Idempotent, runs every startup: creates the "article" (blog post: summary,
+    /// markdown body with internal links, hero image URL, author, date, category)
+    /// and "articlesPage" (container) document types if missing, and allows
+    /// "articlesPage" under "city" so existing installations pick it up.
+    /// </summary>
+    private async Task EnsureArticleSchemaAsync()
+    {
+        if (_contentTypeService.Get("city") is null)
+        {
+            return;
+        }
+
+        if (_contentTypeService.Get("article") is null)
+        {
+            _logger.LogInformation("CityGuide: creating 'article' document type");
+            IDataType textstring = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.TextstringGuid))!;
+            IDataType textarea = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.TextareaGuid))!;
+            IDataType dateTime = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.DatePickerWithTimeGuid))!;
+
+            IContentType article = NewContentType("article", "Article", "icon-edit");
+            AddProperty(article, "summary", "Resumen", textarea, 1);
+            AddProperty(article, "body", "Contenido (Markdown)", textarea, 2);
+            AddProperty(article, "heroImageUrl", "Imagen de portada (URL)", textstring, 3);
+            AddProperty(article, "author", "Autor", textstring, 4);
+            AddProperty(article, "publishDate", "Fecha de Publicación", dateTime, 5);
+            AddProperty(article, "category", "Categoría", textstring, 6);
+            await CreateAsync(article);
+        }
+
+        if (_contentTypeService.Get("articlesPage") is null)
+        {
+            _logger.LogInformation("CityGuide: creating 'articlesPage' document type");
+            IDataType textarea = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.TextareaGuid))!;
+            IDataType imagePicker = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.MediaPicker3SingleImageGuid))!;
+            IContentType articleType = _contentTypeService.Get("article")!;
+
+            IContentType articlesPage = NewContentType("articlesPage", "Articles Page", "icon-newspaper");
+            AddProperty(articlesPage, "intro", "Introducción", textarea, 1);
+            AddProperty(articlesPage, "photo", "Foto (portada de sección)", imagePicker, 2);
+            articlesPage.AllowedContentTypes = [new ContentTypeSort(articleType.Key, 0, articleType.Alias)];
+            await CreateAsync(articlesPage);
+        }
+
+        IContentType articlesPageType = _contentTypeService.Get("articlesPage")!;
+        IContentType cityType = _contentTypeService.Get("city")!;
+        if (!cityType.AllowedContentTypes!.Any(c => c.Key == articlesPageType.Key))
+        {
+            _logger.LogInformation("CityGuide: allowing 'articlesPage' under 'city'");
+            int nextSort = cityType.AllowedContentTypes!.Count();
+            cityType.AllowedContentTypes =
+                [.. cityType.AllowedContentTypes!, new ContentTypeSort(articlesPageType.Key, nextSort, articlesPageType.Alias)];
+            Attempt<ContentTypeOperationStatus> attempt =
+                await _contentTypeService.UpdateAsync(cityType, Constants.Security.SuperUserKey);
+            if (!attempt.Success)
+            {
+                throw new InvalidOperationException(
+                    $"Failed to allow 'articlesPage' under 'city': {attempt.Result}");
+            }
+        }
+    }
+
+    private sealed record SeedArticle(
+        string Name, string Category, string Summary, string HeroImageUrl,
+        DateTime PublishDate, string Body);
+
+    private static readonly SeedArticle[] Articles =
+    [
+        new("Un día completo en la Zona Colonial: historia, café y atardecer",
+            "Cultura",
+            "Un recorrido a pie por la ciudad más antigua de América: de la Catedral Primada al Alcázar de Colón, con paradas para café, arte y una cerveza fría al caer la tarde.",
+            "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a7/Catedral_Primada_CCSD_09_2018_1234.jpg/1280px-Catedral_Primada_CCSD_09_2018_1234.jpg",
+            new DateTime(2026, 8, 20, 9, 0, 0),
+            """
+            Hay ciudades que se visitan y ciudades que se caminan. La [Zona Colonial](/santo-domingo/atracciones/zona-colonial) es de las segundas: quinientos años de historia metidos en unas pocas calles empedradas, y lo mejor es que todo queda a distancia de un buen paseo.
+
+            ## Empieza temprano en el Parque Colón
+
+            Llega antes de las diez, cuando la luz todavía es suave y las palomas mandan más que los turistas. Frente a ti tendrás la [Catedral Primada de América](/santo-domingo/atracciones/catedral-primada-de-america), la primera catedral del continente. Entra: el contraste entre la fachada de piedra coralina y el interior gótico, fresco y en penumbra, no se olvida. La visita toma menos de una hora y deja el resto del día libre.
+
+            ## El Conde, sin prisa
+
+            La calle El Conde es la peatonal de siempre: libreros de viejo, cafeteras ruidosas, gente jugando ajedrez. No es un museo, es una calle viva, y ahí está su gracia. Cualquier cafetería con mesas afuera sirve para un primer café y para ver pasar la ciudad.
+
+            ![La peatonal El Conde, la calle viva de la Zona Colonial](https://upload.wikimedia.org/wikipedia/commons/thumb/c/ce/Calle_El_Conde_CCSD_03_2019_5088.jpg/1280px-Calle_El_Conde_CCSD_03_2019_5088.jpg)
+
+            ## Plaza España al mediodía
+
+            Bajando por la Calle Las Damas —la calle empedrada más antigua del Nuevo Mundo— se llega a Plaza España, presidida por el [Alcázar de Colón](/santo-domingo/atracciones/alcazar-de-colon). El palacio de Diego Colón hoy es un museo que se recorre en una hora y regala, desde sus balcones, la mejor vista del río Ozama. La explanada de la plaza está rodeada de restaurantes con terraza: buen punto para almorzar sin salir del guion.
+
+            ![Plaza España, presidida por el Alcázar de Colón](https://upload.wikimedia.org/wikipedia/commons/thumb/d/db/Plaza_Espana_santo_domingo_02.JPG/1280px-Plaza_Espana_santo_domingo_02.JPG)
+
+            ## La tarde: arte y patios
+
+            Para bajar el almuerzo, [Casa de Teatro](/santo-domingo/bares-y-clubes/bares/casa-de-teatro) es la parada obligada de la tarde: casona colonial, exposiciones, y si tienes suerte, ensayo de algún grupo o peña en el patio. Su cartelera cambia cada semana, así que siempre hay algo distinto.
+
+            ## Cerrar con música
+
+            Cuando cae el sol la Zona cambia de ritmo. [Parada 77](/santo-domingo/bares-y-clubes/bares/parada-77) llena la esquina de son y bailadores —los domingos es fiesta segura— y [El Sartén](/santo-domingo/bares-y-clubes/bares/el-sarten), a unos pasos, sigue siendo ese bar de barrio con vellonera y dominó donde nadie es extraño. Cerveza bien fría, bolero de fondo, y el día queda redondo.
+
+            **El plan en corto:** Catedral y Parque Colón por la mañana, El Conde a media mañana, Alcázar y almuerzo en Plaza España, Casa de Teatro por la tarde, y son y cerveza en Parada 77 o El Sartén de noche. Todo a pie.
+            """),
+        new("Santo Domingo con niños: un plan que funciona de verdad",
+            "Familia",
+            "Cuevas con lagunas turquesa, un zoológico gigante, trencito en el jardín botánico y helado al final: un itinerario probado para un fin de semana en familia.",
+            "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c0/Santo_Domingo_Este_-_Los_Tres_Ojos_0202.JPG/1280px-Santo_Domingo_Este_-_Los_Tres_Ojos_0202.JPG",
+            new DateTime(2026, 8, 26, 9, 0, 0),
+            """
+            Salir con niños en Santo Domingo tiene un truco: alternar asombro y descanso. Mucho de lo primero, suficiente de lo segundo, y meriendas estratégicas. Este plan lo cumple.
+
+            ## Sábado por la mañana: Los Tres Ojos
+
+            Pocas cosas impresionan tanto a un niño (y a un adulto) como bajar una escalera de piedra y encontrarse tres lagunas subterráneas de agua turquesa. El [Parque Nacional Los Tres Ojos](/santo-domingo/atracciones/parque-nacional-los-tres-ojos) se recorre en hora y media, y la balsa manual que cruza hacia el cuarto lago —escondido a cielo abierto— es el momento estrella del día. Ve temprano: hay sombra, pero el fresco de la mañana se agradece.
+
+            ![Una de las lagunas subterráneas de Los Tres Ojos](https://upload.wikimedia.org/wikipedia/commons/thumb/1/11/Santo_Domingo_Este_-_Los_Tres_Ojos_0941.JPG/1280px-Santo_Domingo_Este_-_Los_Tres_Ojos_0941.JPG)
+
+            ## Sábado por la tarde: zoológico
+
+            El [Parque Zoológico Nacional](/santo-domingo/atracciones/parque-zoologico-nacional) es enorme —más de un millón de metros cuadrados—, así que la estrategia es el tren interno: da la vuelta completa y luego se repite a pie lo que más gustó. Los flamencos y la zona de especies nativas suelen ganar la votación familiar.
+
+            ## Domingo por la mañana: Jardín Botánico
+
+            El [Jardín Botánico Nacional](/santo-domingo/atracciones/jardin-botanico-nacional) es el paseo tranquilo del fin de semana: el trencito recorre el parque completo, el reloj floral es parada obligada de foto y el jardín japonés parece de otro país. Si prefieren pedalear o patinar, el [Parque Mirador Sur](/santo-domingo/atracciones/parque-mirador-sur) es el plan B con ciclovía y kilómetros de sombra.
+
+            ![El reloj floral del Jardín Botánico Nacional](https://upload.wikimedia.org/wikipedia/commons/1/1a/Floral_Clock.jpg)
+
+            ![El jardín japonés, uno de los rincones favoritos del Botánico](https://upload.wikimedia.org/wikipedia/commons/d/df/National_Botanical_Garden_Santo_Domingo_Japanese_Garden.jpg)
+
+            ## Domingo por la tarde: plan bajo techo
+
+            Cuando aprieta el calor (o llueve), el cierre es en [Ágora Mall](/santo-domingo/tiendas/plazas-comerciales-y-malls/agora-mall): merienda en el food court, un helado de Helados Bon y función en el [cine](/santo-domingo/cines) del cuarto nivel. Revisa la cartelera antes de salir y compra los asientos buenos.
+
+            **Consejos rápidos:** lleva efectivo pequeño para las entradas de los parques, repelente para Los Tres Ojos, y agua siempre. Y si un día se cae por el sueño de la siesta, no pasa nada: la sección [Qué Hacer](/santo-domingo/que-hacer) tiene ideas de sobra para armar otro.
+            """),
+        new("Una noche en Santo Domingo: del rooftop a bailar dentro de una cueva",
+            "Vida Nocturna",
+            "Ruta nocturna por la capital: atardecer con vista en Piantini, cena con merengue en vivo, coctelería colonial y madrugada bailando bajo estalactitas.",
+            "https://upload.wikimedia.org/wikipedia/commons/thumb/5/56/DFC_4574_Late-night_drinks_in_Pattaya_-_a_chilled_cocktail_with_a_slice_of_lime_and_neon_reflections.jpg/1280px-DFC_4574_Late-night_drinks_in_Pattaya_-_a_chilled_cocktail_with_a_slice_of_lime_and_neon_reflections.jpg",
+            new DateTime(2026, 8, 31, 9, 0, 0),
+            """
+            Santo Domingo de noche no es un solo plan: son varios encadenados. Esta ruta empieza con el atardecer y termina de madrugada, y cada parada funciona también por sí sola.
+
+            ## 7:00 PM — Atardecer en las alturas
+
+            Arranca en [SBG](/santo-domingo/bares-y-clubes/lounges-y-rooftops/sbg-santo-domingo), el rooftop de Piantini: terraza con vista a la ciudad, DJ de entrada suave y coctelería seria. Es el punto para llegar temprano, agarrar mesa cerca del borde y ver cómo la ciudad enciende las luces.
+
+            ## 9:00 PM — Cena que se convierte en fiesta
+
+            De ahí, a [Mamajuana Café](/santo-domingo/bares-y-clubes/lounges-y-rooftops/mamajuana-cafe) en Naco. Se llega por la cena y uno se queda por la música: merengue y banda en vivo, y la coctelería de la casa gira alrededor de la mamajuana, como manda el nombre. Reserva si van más de cuatro.
+
+            ## 11:00 PM — Cóctel colonial
+
+            Un salto a la Zona Colonial cambia la escena por completo. [Lucía 203](/santo-domingo/bares-y-clubes/lounges-y-rooftops/lucia-203) es una casa colonial restaurada con mixología de autor: luz baja, tapas y el mejor punto de la ruta para conversar antes del cierre. Si prefieres algo más criollo, [El Sartén](/santo-domingo/bares-y-clubes/bares/el-sarten) queda a unas cuadras con su vellonera de boleros.
+
+            ## 1:00 AM — El cierre: una discoteca dentro de una cueva
+
+            El final es de los que se cuentan: [Guácara Taína](/santo-domingo/bares-y-clubes/discotecas/guacara-taina), una discoteca montada dentro de una cueva natural del [Parque Mirador Sur](/santo-domingo/atracciones/parque-mirador-sur), con estalactitas sobre la pista. Abre para fiestas y eventos especiales —conviene confirmar programación—; el plan B clásico es [Jubilee](/santo-domingo/bares-y-clubes/discotecas/jubilee), en el Malecón, con pista grande hasta las 4:00 AM.
+
+            ![El Obelisco del Malecón, señal de que la noche va terminando frente al mar](https://upload.wikimedia.org/wikipedia/commons/6/65/Obelisco_Santo_Domingo.jpg)
+
+            ## Bonus: la caminata del final
+
+            Si al salir el cuerpo todavía pide calle, el [Malecón](/santo-domingo/atracciones/malecon-de-santo-domingo) de madrugada, con la brisa del Caribe de frente, es el mejor cierre gratis de la ciudad.
+
+            ![El Malecón de Santo Domingo al caer la noche](https://upload.wikimedia.org/wikipedia/commons/thumb/8/83/Malecon_de_Santo_Domingo_2013-10-01_21-33.jpg/1280px-Malecon_de_Santo_Domingo_2013-10-01_21-33.jpg)
+
+            **Logística:** usa taxi o app entre paradas (las distancias engañan), lleva documento para las discotecas y revisa los [eventos](/santo-domingo/eventos) de la semana: si hay concierto en agenda, la ruta se reordena sola.
+            """),
+    ];
+
+    /// <summary>
+    /// Idempotent, runs every startup: creates the "Artículos" page under Santo Domingo
+    /// and any missing seed article (guarded per article), so new entries added to
+    /// <see cref="Articles"/> reach existing installations.
+    /// </summary>
+    private bool EnsureArticlesSeeded()
+    {
+        if (_contentTypeService.Get("articlesPage") is null)
+        {
+            return false;
+        }
+
+        IContent? site = _contentService.GetRootContent().FirstOrDefault(c => c.ContentType.Alias == "site");
+        if (site is null || Descendant(site, "city", "Santo Domingo") is not { } city)
+        {
+            return false;
+        }
+
+        IContent? articulos = Descendant(city, "articlesPage", "Artículos");
+        bool seeded = false;
+        if (articulos is null)
+        {
+            _logger.LogInformation("CityGuide: seeding 'Artículos' page");
+            articulos = _contentService.Create("Artículos", city.Id, "articlesPage");
+            articulos.SetValue("intro",
+                "Guías, rutas e ideas escritas para disfrutar la ciudad: planes por barrio, por presupuesto y para cada tipo de plan.");
+            _contentService.Save(articulos);
+            seeded = true;
+        }
+
+        foreach (SeedArticle seed in Articles)
+        {
+            // Existing seed articles are updated in place when the seed text
+            // changes, so content fixes reach installations already seeded.
+            if (Descendant(articulos, "article", seed.Name) is { } existing)
+            {
+                if (existing.GetValue<string>("body") == seed.Body
+                    && existing.GetValue<string>("summary") == seed.Summary
+                    && existing.GetValue<string>("heroImageUrl") == seed.HeroImageUrl)
+                {
+                    continue;
+                }
+
+                _logger.LogInformation("CityGuide: updating seed article '{Name}'", seed.Name);
+                existing.SetValue("summary", seed.Summary);
+                existing.SetValue("body", seed.Body);
+                existing.SetValue("heroImageUrl", seed.HeroImageUrl);
+                _contentService.Save(existing);
+                seeded = true;
+                continue;
+            }
+
+            _logger.LogInformation("CityGuide: seeding article '{Name}'", seed.Name);
+            IContent article = _contentService.Create(seed.Name, articulos.Id, "article");
+            article.SetValue("summary", seed.Summary);
+            article.SetValue("body", seed.Body);
+            article.SetValue("heroImageUrl", seed.HeroImageUrl);
+            article.SetValue("author", "Equipo TuCiudad");
+            article.SetValue("publishDate", seed.PublishDate);
+            article.SetValue("category", seed.Category);
+            _contentService.Save(article);
+            seeded = true;
+        }
+
+        if (seeded)
+        {
+            _contentService.PublishBranch(articulos, PublishBranchFilter.IncludeUnpublished, ["*"]);
+        }
+
+        return seeded;
+    }
+
     // ---- Cinemas ----
 
     private sealed record CinemaBranch(string Name, string Address, decimal Latitude, decimal Longitude);
@@ -1196,6 +1660,24 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
             "Abierto 24 horas",
             18.4734m, -69.8836m,
             ["Apto para Niños"]),
+        new("Catedral Primada de América",
+            "La primera catedral del Nuevo Mundo, consagrada en el siglo XVI: fachada de piedra coralina dorada, interior gótico y capillas con siglos de historia frente al Parque Colón.",
+            "Calle Arzobispo Meriño esq. Arzobispo Nouel, Zona Colonial", "",
+            "Lun - Sáb 9:00AM - 4:30PM",
+            18.4726m, -69.8834m,
+            ["Apto para Niños"]),
+        new("Alcázar de Colón",
+            "El palacio virreinal de Diego Colón en Plaza España: museo con mobiliario y arte de la época colonial, y una de las postales más fotografiadas de la ciudad.",
+            "Plaza España, Zona Colonial", "809-682-4750",
+            "Mar - Dom 9:00AM - 5:00PM",
+            18.4777m, -69.8825m,
+            ["Apto para Niños"]),
+        new("Parque Nacional Los Tres Ojos",
+            "Tres lagunas subterráneas de agua cristalina dentro de una caverna de piedra caliza en el Parque Mirador del Este. Se cruza en una balsa manual hasta un cuarto lago escondido a cielo abierto.",
+            "Av. Las Américas, Parque Mirador del Este, Santo Domingo Este", "",
+            "Lun - Dom 9:00AM - 5:00PM",
+            18.4647m, -69.8290m,
+            ["Parqueo", "Apto para Niños"]),
     ];
 
     /// <summary>

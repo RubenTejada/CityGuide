@@ -4,6 +4,7 @@ public class AgentConfig
 {
     public UmbracoConfig Umbraco { get; set; } = new();
     public GoogleConfig Google { get; set; } = new();
+    public AzureOpenAiConfig AzureOpenAI { get; set; } = new();
     public AnthropicConfig Anthropic { get; set; } = new();
     public List<RunConfig> Runs { get; set; } = [];
     public CinemasConfig Cinemas { get; set; } = new();
@@ -19,6 +20,21 @@ public class UmbracoConfig
 
 public class GoogleConfig
 {
+    public string ApiKey { get; set; } = "";
+}
+
+public class AzureOpenAiConfig
+{
+    /// <summary>Azure OpenAI endpoint, e.g. https://cityguide-openai.openai.azure.com/.
+    /// When set, the agent uses Azure OpenAI instead of Anthropic.</summary>
+    public string Endpoint { get; set; } = "";
+
+    public string Deployment { get; set; } = "gpt-4.1-mini";
+
+    public string ApiVersion { get; set; } = "2024-10-21";
+
+    /// <summary>Optional. Empty = keyless auth via DefaultAzureCredential
+    /// (Azure CLI locally, managed identity in Azure).</summary>
     public string ApiKey { get; set; } = "";
 }
 
@@ -58,4 +74,9 @@ public class RunConfig
     public string ParentPath { get; set; } = "";
 
     public int MaxPlaces { get; set; } = 5;
+
+    /// <summary>Restaurant runs only: file each discovered place into a cuisine
+    /// subcategory derived from its Google types (see CuisineMap), creating the
+    /// subcategory under ParentPath when it does not exist yet.</summary>
+    public bool AutoCategorize { get; set; }
 }

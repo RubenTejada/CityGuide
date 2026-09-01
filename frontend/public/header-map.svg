@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="420" viewBox="0 0 640 420">
+  <!-- Patrón sutil de mapa urbano (calles, avenidas, río, rotonda) para el header oscuro.
+       Colores suaves de la paleta del logo: azul brand, amarillo sol, verde palma. -->
+  <g fill="none" stroke-linecap="round">
+    <!-- Calles secundarias (retícula irregular) -->
+    <g stroke="#ffffff" stroke-opacity="0.05" stroke-width="2">
+      <path d="M0 60 H640 M0 150 H640 M0 235 H640 M0 320 H640 M0 395 H640" />
+      <path d="M70 0 V420 M160 0 V420 M255 0 V420 M350 0 V420 M455 0 V420 M560 0 V420" />
+      <path d="M160 60 L255 150 M455 235 L560 320 M70 320 L160 395" />
+    </g>
+    <!-- Avenidas principales -->
+    <g stroke-width="5">
+      <path d="M0 105 H640" stroke="#f5b301" stroke-opacity="0.10" />
+      <path d="M305 0 V420" stroke="#ffffff" stroke-opacity="0.09" />
+      <path d="M0 420 L280 190 L640 30" stroke="#f5b301" stroke-opacity="0.08" />
+    </g>
+    <!-- Rotonda -->
+    <circle cx="305" cy="105" r="26" stroke="#f5b301" stroke-opacity="0.12" stroke-width="4" />
+    <!-- Río / malecón -->
+    <path d="M0 370 Q120 330 240 356 T480 340 T640 372" stroke="#2e9fd8" stroke-opacity="0.16" stroke-width="7" />
+  </g>
+  <!-- Manzanas insinuadas (algunas como parques en verde) -->
+  <g fill-opacity="0.04">
+    <rect x="82" y="72" width="66" height="66" rx="4" fill="#ffffff" fill-opacity="0.025" />
+    <rect x="366" y="164" width="76" height="58" rx="4" fill="#3faa4c" />
+    <rect x="470" y="72" width="78" height="66" rx="4" fill="#ffffff" fill-opacity="0.025" />
+    <rect x="180" y="250" width="62" height="56" rx="4" fill="#3faa4c" />
+    <rect x="575" y="248" width="52" height="60" rx="4" fill="#2e9fd8" />
+  </g>
+</svg>

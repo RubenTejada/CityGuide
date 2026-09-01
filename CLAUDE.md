@@ -22,7 +22,9 @@ cd CityGuideWeb && dotnet run
 cd frontend && npm run dev
 cd frontend && npm run lint
 
-# Agent (needs user-secrets: Umbraco:ClientSecret always; Google:ApiKey + Anthropic:ApiKey only for discovery Runs)
+# Agent (needs user-secrets: Umbraco:ClientSecret always; Google:ApiKey only for discovery Runs.
+# Enrichment model: Azure OpenAI gpt-4.1-mini, keyless via "az login" — requires the
+# "Cognitive Services OpenAI User" role on cityguide-openai; Anthropic:ApiKey is the fallback provider)
 cd CityGuide.Agent && dotnet run
 
 # Build everything
@@ -33,7 +35,7 @@ There are no automated tests in this repo.
 
 ## Architecture
 
-Content flow: editors use the Umbraco backoffice → published content is read by the Next.js frontend through the **Content Delivery API v2** (anonymous read, ISR with 10-min revalidation, client in `frontend/lib/umbraco.ts`). The agent (`CityGuide.Agent/Program.cs`) discovers places via Google Places, writes Spanish descriptions with Claude, and creates them as **drafts** through the **Management API** using API-user client credentials; it dedupes by `googlePlaceId`. The agent also runs `CinemaSync` (config section `Cinemas`): upserts the "Caribbean Cinemas" company + branch places from the Caribbean Cinemas GraphQL API and maintains the `movie` catalog under `/santo-domingo/cines` (synopsis, poster, YouTube trailer in Latino Spanish via search) — this content is published immediately, not drafted, and stale movies are deleted.
+Content flow: editors use the Umbraco backoffice → published content is read by the Next.js frontend through the **Content Delivery API v2** (anonymous read, ISR with 10-min revalidation, client in `frontend/lib/umbraco.ts`). The agent (`CityGuide.Agent/Program.cs`) discovers places via Google Places, writes Spanish descriptions with Azure OpenAI (`gpt-4.1-mini` on the `cityguide-openai` account, Central US; Anthropic is the fallback — see `IEnrichmentClient`), and creates them as **drafts** through the **Management API** using API-user client credentials; it dedupes by `googlePlaceId`. Enrichment is the agent's only LLM step; dedupe, rating backfill, cinema sync and trailer search are plain code. The agent reads per-city config from the city node's "Agente" tab (`agentCityName` replaces the `{city}` placeholder in Run queries; `agentPrompts` holds one `categoria-slug: instrucciones` line per category, appended to the description prompt). It is meant to run daily — `deploy/schedule-agent-job.sh` creates the Azure Container Apps Job (cron 10:00 UTC) once the CMS is in Azure; `deploy/provision-azure-openai.sh` documents the model resource. The agent also runs `CinemaSync` (config section `Cinemas`): upserts the "Caribbean Cinemas" company + branch places from the Caribbean Cinemas GraphQL API and maintains the `movie` catalog under `/santo-domingo/cines` (synopsis, poster, YouTube trailer in Latino Spanish via search) — this content is published immediately, not drafted, and stale movies are deleted.
 
 Content model (all created in code, not in the backoffice):
 `site` → `city` → `categoryPage` → `subcategory` → `place`, plus `eventsPage`/`eventItem` and `thingsToDoPage` (“Qué Hacer”: aggregation-only guide page — upcoming events by category, attractions open today, idea sections per category; no child content) under each city, and `movie` (agent-maintained cartelera catalog) under `categoryPage`. `categoryPage` accepts `subcategory`, `place`, and `company` children; `subcategory` accepts `place` and `company`; `company` (empresa: logo + general info) accepts only `place` (its branches/sucursales).
