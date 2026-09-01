@@ -125,4 +125,20 @@ public class RunConfig
     /// subcategory derived from its Google types (see CuisineMap), creating the
     /// subcategory under ParentPath when it does not exist yet.</summary>
     public bool AutoCategorize { get; set; }
+
+    /// <summary>
+    /// The plazas comerciales run: discovered plazas are created as "mall" documents,
+    /// the container the frontend renders with its establishments inside, instead of
+    /// as one more shop. ParentPath is where the plazas of that city live, which is
+    /// also where every other run looks for the plaza an establishment sits in.
+    /// </summary>
+    public bool CreatesMalls { get; set; }
+
+    /// <summary>
+    /// Shops runs: file a discovered establishment under the plaza comercial its
+    /// address places it in ("Ágora Mall, Av. Abraham Lincoln…") instead of flat under
+    /// the category. A branch of a chain still goes under its company — it inherits the
+    /// logo and general info from there, and the plaza would take that away.
+    /// </summary>
+    public bool NestInMalls { get; set; }
 }

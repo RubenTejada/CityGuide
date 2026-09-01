@@ -122,6 +122,160 @@ if (args.Contains("--recategorize-events"))
     return 0;
 }
 
+// Plazas comerciales of a city, drafts included: the run that creates them says
+// where they live (its ParentPath), so nothing here has to know the section slug.
+// Cached per city — every shops run asks for the same list.
+var mallsByCity = new Dictionary<string, List<KnownMall>>(StringComparer.OrdinalIgnoreCase);
+
+string? MallsPathOf(string citySlug) => config.Runs
+    .FirstOrDefault(r => r.CreatesMalls
+        && r.ParentPath.Trim('/').Split('/').FirstOrDefault() == citySlug)?.ParentPath;
+
+async Task<List<KnownMall>> MallsAsync(string citySlug)
+{
+    if (mallsByCity.TryGetValue(citySlug, out List<KnownMall>? cached))
+    {
+        return cached;
+    }
+
+    var malls = new List<KnownMall>();
+    mallsByCity[citySlug] = malls;
+    if (MallsPathOf(citySlug) is not string mallsPath
+        || await umbraco.GetContentByPathAsync(mallsPath) is not { } mallsParent)
+    {
+        return malls;
+    }
+
+    Guid mallTypeId = await umbraco.GetMallDocumentTypeIdAsync();
+    foreach (UmbracoClient.ChildDocument child in await umbraco.GetChildrenAsync(mallsParent.Id))
+    {
+        if (child.DocumentTypeId != mallTypeId)
+        {
+            continue;
+        }
+
+        UmbracoClient.PlaceDetail detail = await umbraco.GetPlaceDetailAsync(child.Id);
+        malls.Add(new KnownMall(child.Id, child.Name, detail.Latitude, detail.Longitude));
+    }
+
+    Console.WriteLine($"Plazas comerciales de {citySlug}: {malls.Count}");
+    return malls;
+}
+
+// Maintenance pass: file the establishments that sit inside a plaza comercial under
+// it, and report the ones that are a plaza already stored as a shop. Prints the plan
+// and changes nothing without --apply, because a move rewrites public URLs.
+if (args.Contains("--regroup-malls"))
+{
+    bool apply = args.Contains("--apply");
+    Console.WriteLine(apply
+        ? "== Reagrupando tiendas bajo sus plazas comerciales"
+        : "== Reagrupación de tiendas (simulación; agrega --apply para aplicarla)");
+
+    var moved = 0;
+    var duplicates = 0;
+    var converted = 0;
+    foreach (string citySlug in config.Runs
+        .Select(r => r.ParentPath.Trim('/').Split('/').First())
+        .Distinct(StringComparer.OrdinalIgnoreCase))
+    {
+        List<KnownMall> malls = await MallsAsync(citySlug);
+        // The category the plazas live in ("/santo-domingo/tiendas"): everything
+        // filed below it is a shop that may belong to one of them.
+        string? mallsPath = MallsPathOf(citySlug);
+        string? shopsPath = mallsPath?[..mallsPath.LastIndexOf('/')];
+        if (malls.Count == 0 || shopsPath is null
+            || await umbraco.GetContentByPathAsync(shopsPath) is not { } shopsParent)
+        {
+            continue;
+        }
+
+        Console.WriteLine($"\n-- {shopsPath}");
+        Guid placeTypeId = await umbraco.GetPlaceDocumentTypeIdAsync();
+        Guid companyTypeId = await umbraco.GetDocumentTypeIdAsync("Company");
+        Guid mallTypeId = await umbraco.GetMallDocumentTypeIdAsync();
+        var mallIds = new HashSet<Guid>(malls.Select(m => m.Id));
+        // Everything filed directly under "Plazas Comerciales y Malls" is a plaza,
+        // whatever type it was created as.
+        Guid plazasParentId = (await umbraco.GetContentByPathAsync(mallsPath!))!.Value.Id;
+
+        await RegroupBelowAsync(shopsParent.Id);
+
+        async Task RegroupBelowAsync(Guid parentId)
+        {
+            foreach (UmbracoClient.ChildDocument child in await umbraco.GetChildrenAsync(parentId))
+            {
+                // A branch keeps its company: the logo, description, phone and hours it
+                // shows are the company's, and a plaza cannot give it those. What sits
+                // inside a plaza already is where it belongs.
+                if (child.DocumentTypeId == companyTypeId
+                    || child.DocumentTypeId == mallTypeId
+                    || mallIds.Contains(parentId))
+                {
+                    continue;
+                }
+
+                if (child.DocumentTypeId != placeTypeId)
+                {
+                    await RegroupBelowAsync(child.Id);
+                    continue;
+                }
+
+                UmbracoClient.PlaceDetail detail = await umbraco.GetPlaceDetailAsync(child.Id);
+                if (MallMatching.Same(child.Name, detail.Latitude, detail.Longitude, malls) is { } twin)
+                {
+                    duplicates++;
+                    // Only what the agent itself created goes away, and only to the
+                    // recycle bin: a plaza someone typed in by hand may be the one
+                    // with the good data, so it is theirs to judge.
+                    bool agentMade = detail.Source?.StartsWith("agent", StringComparison.OrdinalIgnoreCase) == true;
+                    Console.WriteLine($"  x {child.Name}: duplicado de la plaza '{twin.Name}'"
+                        + (agentMade ? " → papelera" : " (creado a mano — revísalo tú)"));
+                    if (apply && agentMade)
+                    {
+                        await umbraco.RecycleDocumentAsync(child.Id);
+                    }
+
+                    continue;
+                }
+
+                if (parentId == plazasParentId)
+                {
+                    converted++;
+                    Console.WriteLine($"  ^ {child.Name}: plaza guardada como tienda → se recrea como plaza");
+                    if (apply)
+                    {
+                        Guid mallId = await umbraco.ConvertPlaceToMallAsync(parentId, child.Id);
+                        // Reachable for the establishments this same pass files away.
+                        malls.Add(new KnownMall(mallId, child.Name, detail.Latitude, detail.Longitude));
+                        mallIds.Add(mallId);
+                    }
+
+                    continue;
+                }
+
+                if (MallMatching.Containing(
+                        child.Name, detail.Address, detail.Latitude, detail.Longitude, malls) is not { } mall)
+                {
+                    continue;
+                }
+
+                moved++;
+                Console.WriteLine($"  > {child.Name} -> {mall.Name}");
+                if (apply)
+                {
+                    await umbraco.MoveDocumentAsync(child.Id, mall.Id);
+                }
+            }
+        }
+    }
+
+    Console.WriteLine($"\n{moved} tienda(s) {(apply ? "movidas" : "por mover")}, "
+        + $"{converted} plaza(s) {(apply ? "recreadas" : "por recrear")} con su tipo, "
+        + $"{duplicates} duplicado(s) de plazas.");
+    return 0;
+}
+
 Dictionary<string, Guid> knownPlaceIds = await umbraco.GetKnownGooglePlaceIdsAsync();
 Console.WriteLine($"Known places in CMS: {knownPlaceIds.Count}");
 
@@ -231,6 +385,12 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelec
         }
     }
 
+    // Plazas comerciales of this city: the shops runs file establishments inside
+    // them, and the plazas run itself uses them to recognise a plaza it already has.
+    List<KnownMall> malls = run.NestInMalls || run.CreatesMalls
+        ? await MallsAsync(segments[0])
+        : [];
+
     Guid? pinnedCompanyId = null;
     if (!string.IsNullOrWhiteSpace(run.CompanyName))
     {
@@ -249,6 +409,29 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelec
 
     foreach (DiscoveredPlace place in places)
     {
+        // A plaza comercial already stored as a "mall" node. Seeded plazas carry no
+        // Google place id, so the dedupe above cannot see them and every pass would
+        // add the plaza a second time — as a shop. Store the id on the plaza instead,
+        // which is what the next pass and the rating backfill look it up by.
+        if (!knownPlaceIds.ContainsKey(place.GooglePlaceId)
+            && MallMatching.Same(place.Name, place.Latitude, place.Longitude, malls) is { } storedMall)
+        {
+            runSkipped++;
+            knownPlaceIds[place.GooglePlaceId] = storedMall.Id;
+            try
+            {
+                await umbraco.UpdatePlaceRatingAsync(
+                    storedMall.Id, place.Rating ?? 0, place.UserRatingCount ?? 0, place.GooglePlaceId);
+                Console.WriteLine($"  = {place.Name} (ya existe como plaza, id de Google guardado)");
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"  ! {place.Name}: {ex.Message}");
+            }
+
+            continue;
+        }
+
         if (knownPlaceIds.TryGetValue(place.GooglePlaceId, out Guid existingId))
         {
             runSkipped++;
@@ -305,8 +488,16 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelec
                 }
             }
 
-            Guid targetParentId = companyId ?? parent.Value.Id;
-            string? cuisine = companyId is not null || subcategories is null
+            // The plaza an establishment sits inside, when its address says so and its
+            // coordinates agree. A branch of a chain keeps its company: the plaza cannot
+            // give it the logo and general info it inherits from there.
+            KnownMall? insideMall = run.NestInMalls && companyId is null
+                ? MallMatching.Containing(
+                    place.Name, place.Address, place.Latitude, place.Longitude, malls)
+                : null;
+
+            Guid targetParentId = companyId ?? insideMall?.Id ?? parent.Value.Id;
+            string? cuisine = companyId is not null || insideMall is not null || subcategories is null
                 ? null
                 : CuisineMap.SubcategoryFor(place.Types);
             if (cuisine is not null)
@@ -365,7 +556,14 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelec
             }
 
             Guid id = await umbraco.CreatePlaceAsync(
-                targetParentId, place, enrichment, photoKey, companyName, name);
+                targetParentId, place, enrichment, photoKey, companyName, name,
+                asMall: run.CreatesMalls);
+            if (run.CreatesMalls)
+            {
+                // Reachable straight away for the shops runs that follow in this pass.
+                malls.Add(new KnownMall(id, name, place.Latitude, place.Longitude));
+            }
+
             siblings[name] = id;
             knownPlaceIds[place.GooglePlaceId] = id;
             created++;
@@ -373,7 +571,9 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelec
             string state = config.Umbraco.PublishImmediately ? "published" : "draft";
             string target = companyName is not null
                 ? $" (sucursal de {companyName})"
-                : cuisine is null ? "" : $" → {cuisine}";
+                : insideMall is not null
+                    ? $" (dentro de {insideMall.Name})"
+                    : cuisine is null ? "" : $" → {cuisine}";
             Console.WriteLine($"  + {place.Name}{target} ({state}, {id})");
         }
         catch (Exception ex)

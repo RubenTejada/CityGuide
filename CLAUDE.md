@@ -48,7 +48,21 @@ places, each one LLM call plus a throttled photo download); seed it once with
 `--section restaurantes` and the daily job then skips almost everything. A `Run` with a
 `CompanyName` creates its places as branches of that `company` node instead of flat under
 the category (and fails loudly when the company does not exist); without one, a place
-whose name contains an existing company's name is nested under it anyway. Branch places
+whose name contains an existing company's name is nested under it anyway. A `Run` with
+`NestInMalls` (the shops runs) also asks the address where the establishment is: when it
+names a plaza comercial the CMS already has and the coordinates put it within 250 m of
+it, the place is created under that plaza (`MallMatching`). A company still wins over a
+plaza — a branch inherits logo, description, phone and hours from its company, and a
+plaza has none of that to give — so only shops that belong to no chain move in. The
+plazas run itself carries `CreatesMalls`: a plaza is created as a `mall`, the container
+the frontend renders with its establishments inside, not as one more shop, and its
+`ParentPath` is where every other run looks the plazas up. A discovered plaza that is one
+already stored is recognised by name and distance (`MallMatching.Same`: one name starts
+with the other, within 400 m, ignoring any address appended to tell twins apart) and only
+lends it its `googlePlaceId`, which is what the next pass and the rating backfill dedupe
+by. `--regroup-malls` applies the same three rules to content already in the CMS and is
+how the shops section was cleaned up; without `--apply` it only prints the plan, and what
+it removes goes to the recycle bin and only when the agent created it. Branch places
 store only their own data — no description, phone, website or hours — so they inherit the
 company's, and they cost no LLM tokens. A discovered branch is named "Chain — what tells it
 apart" (`BranchNaming`): Google calls most branches by the chain ("Banreservas" twenty-seven
@@ -128,7 +142,7 @@ and every schema.org builder. `components/JsonLd.tsx` renders it.
 
 - Schema creation is skipped when the `place` document type exists. **Editing a document type in the seeder does nothing for an existing database** — change it in the backoffice too, or delete `CityGuideWeb/umbraco/Data/` (and `wwwroot/media/`) to re-seed from scratch.
 - Sample content is skipped when a `site` root exists.
-- `EnsureCompanySchemaAsync` runs every startup: creates the `company` document type if missing and allows it under `subcategory`/`categoryPage`. Follow this pattern (guarded, every-startup) for schema additions that must reach existing installations.
+- `EnsureCompanySchemaAsync` runs every startup: creates the `company` document type if missing and allows it under `subcategory`/`categoryPage`. `EnsureMallSchemaAsync` does the same for `mall` and, through `EnsureMallAgentSchemaAsync`, adds the `googlePlaceId`, `source` and Google rating properties a plaza needs for the agent to own it (dedupe and rating refresh). Follow this pattern (guarded, every-startup) for schema additions that must reach existing installations.
 - Seed steps publish the nodes they created (`PublishSeeded`), never the branch: `PublishBranch(..., IncludeUnpublished)` also publishes the agent's drafts sitting in that branch, which exist to be reviewed first. The branch publishes that remain each cover a subtree the same call just created. Bank seeding (`EnsureBanksSeeded`) runs every startup and creates the "Bancos" subcategory under "Empresas y Servicios" (one `company` per bank, branches as child `place`s) only if missing. A pre-company flat "Bancos" is deleted (content + logo media) and reseeded nested. Follow this pattern for any new seed step that must apply to existing installations. `EnsureCitiesSeeded` (also every startup) creates the announced-but-empty cities — Santiago and Punta Cana — with `comingSoon` checked: they are pickable in the city switcher (the home page at `/`, where the header's city button points), but their page renders an "en construcción" notice instead of sections, the header drops nav and search, they are `noindex` and stay out of the sitemap. Unchecking the flag in the backoffice turns a city on. The switcher's buttons are `CityBadge` (`frontend/components/CityBadge.tsx`): the logo's visual language — solar arch, palm, coastline and waves — with each city's landmark drawn inside a medallion, picked by city slug; a city without its own scene gets the generic beach one, so a new city needs no code to look right. The same emblem is the city switcher inside a city: the header carries the wordmark alone on the left (`SiteLogo` with `glyph={false}`) and, on the right, a large ringless `CityEmblem` linking to `/` — it says which city you are in and replaces the old text button. Each scene carries its own ringless crop (the tower of Santiago rises higher than the arch of Santo Domingo) sharing one 13:10 ratio, so every city's emblem reads at the same size.
 
 Boot-time indexing race: content published during startup is NOT picked up by the Examine `DeliveryApiContentIndex` (its event handlers register after the seeder runs). The seeder therefore rebuilds that index when it seeded something. Symptom of getting this wrong: item-by-path Delivery API lookups work but list/filter queries return 0.

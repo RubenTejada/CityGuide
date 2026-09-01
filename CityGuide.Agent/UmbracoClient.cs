@@ -197,9 +197,13 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
 
     public Task<Guid> GetPlaceDocumentTypeIdAsync() => GetDocumentTypeIdAsync("Place");
 
+    /// <summary>The plaza comercial document type. The lookup above goes by display
+    /// name, and the backoffice shows this one under both words it is called by.</summary>
+    public Task<Guid> GetMallDocumentTypeIdAsync() => GetDocumentTypeIdAsync("Mall / Plaza Comercial");
+
     // ---- Generic document operations (cinema sync) ----
 
-    public record ChildDocument(Guid Id, string Name, Guid DocumentTypeId);
+    public record ChildDocument(Guid Id, string Name, Guid DocumentTypeId, string State = "");
 
     /// <summary>
     /// Children of a document via the management tree (includes drafts). Pages through
@@ -246,7 +250,7 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
 
     /// <summary>Creates a document and publishes it. Returns the new document id.</summary>
     public async Task<Guid> CreateDocumentAsync(
-        Guid parentId, Guid docTypeId, string name, IEnumerable<object> values)
+        Guid parentId, Guid docTypeId, string name, IEnumerable<object> values, bool publish = true)
     {
         var documentId = Guid.NewGuid();
         HttpRequestMessage request = await AuthorizedRequestAsync(HttpMethod.Post, "/umbraco/management/api/v1/document");
@@ -267,7 +271,11 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
                 $"Create '{name}' failed ({(int)response.StatusCode}): {await response.Content.ReadAsStringAsync()}");
         }
 
-        await PublishAsync(documentId);
+        if (publish)
+        {
+            await PublishAsync(documentId);
+        }
+
         return documentId;
     }
 
@@ -535,6 +543,42 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         return Text(values, "address");
     }
 
+    public record PlaceDetail(
+        string Name, string State, string? Address, double Latitude, double Longitude,
+        string? GooglePlaceId, string? Source);
+
+    /// <summary>
+    /// The location data of a place or plaza, drafts included. The Delivery API twin of
+    /// this (<see cref="GetPublishedPlacesAsync"/>) only sees published nodes, and the
+    /// agent's own creations sit there as drafts until someone reviews them.
+    /// </summary>
+    public async Task<PlaceDetail> GetPlaceDetailAsync(Guid id)
+    {
+        (string name, string state, Dictionary<string, object?> values) = await ReadDocumentAsync(id);
+        return new PlaceDetail(
+            name, state, Text(values, "address"),
+            Number(values, "latitude") ?? 0, Number(values, "longitude") ?? 0,
+            Text(values, "googlePlaceId"), Text(values, "source"));
+    }
+
+    /// <summary>
+    /// Moves a document under another parent, keeping its values and its publication
+    /// state. Used to file an establishment under the plaza comercial it turned out to
+    /// be inside of.
+    /// </summary>
+    public async Task MoveDocumentAsync(Guid id, Guid targetParentId)
+    {
+        HttpRequestMessage request = await AuthorizedRequestAsync(
+            HttpMethod.Put, $"/umbraco/management/api/v1/document/{id}/move");
+        request.Content = JsonContent.Create(new { target = new { id = targetParentId } });
+        HttpResponseMessage response = await http.SendAsync(request);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException(
+                $"Move {id} failed ({(int)response.StatusCode}): {await response.Content.ReadAsStringAsync()}");
+        }
+    }
+
     public async Task PublishAsync(Guid id)
     {
         HttpRequestMessage request = await AuthorizedRequestAsync(
@@ -548,6 +592,63 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         {
             throw new InvalidOperationException(
                 $"Publish {id} failed ({(int)response.StatusCode}): {await response.Content.ReadAsStringAsync()}");
+        }
+    }
+
+    /// <summary>Values a plaza keeps. A "place" carries two the "mall" type does not
+    /// (facilities and the cuisine-ish extras it may have picked up); everything else
+    /// describes the same building and survives the conversion.</summary>
+    private static readonly string[] MallAliases =
+    [
+        "description", "address", "phone", "website", "hours", "photo", "latitude", "longitude",
+        "googlePlaceId", "source", "googleRating", "googleRatingCount",
+        "metaTitle", "metaDescription", "noIndex",
+    ];
+
+    /// <summary>
+    /// Recreates a "place" as the plaza comercial it is: a "mall" node under the same
+    /// parent, carrying its values and whatever was filed under it, with the old node
+    /// sent to the recycle bin. Umbraco cannot change a document's type, so a plaza the
+    /// agent stored as one more shop can only be fixed by rebuilding it. Returns the id
+    /// of the new plaza.
+    /// </summary>
+    public async Task<Guid> ConvertPlaceToMallAsync(Guid parentId, Guid placeId)
+    {
+        (string name, string state, Dictionary<string, object?> values) = await ReadDocumentAsync(placeId);
+        bool published = state.StartsWith("Published", StringComparison.Ordinal);
+        Guid mallId = await CreateDocumentAsync(
+            parentId, await GetMallDocumentTypeIdAsync(), name,
+            values.Where(v => MallAliases.Contains(v.Key))
+                .Select(v => (object)new { alias = v.Key, value = v.Value }),
+            published);
+
+        foreach (ChildDocument child in await GetChildrenAsync(placeId))
+        {
+            await MoveDocumentAsync(child.Id, mallId);
+        }
+
+        await RecycleDocumentAsync(placeId);
+
+        // Umbraco numbered the new node "Plaza Duarte (1)" while the old one was still
+        // its sibling. With that one in the recycle bin the name is free again, and the
+        // plaza keeps the name (and the URL) it had.
+        await RenameDocumentAsync(mallId, name);
+        return mallId;
+    }
+
+    /// <summary>
+    /// Sends a document to the recycle bin. What the agent files away on its own is
+    /// recoverable from the backoffice; a plain delete would not be.
+    /// </summary>
+    public async Task RecycleDocumentAsync(Guid id)
+    {
+        HttpRequestMessage request = await AuthorizedRequestAsync(
+            HttpMethod.Put, $"/umbraco/management/api/v1/document/{id}/move-to-recycle-bin");
+        HttpResponseMessage response = await http.SendAsync(request);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException(
+                $"Recycle {id} failed ({(int)response.StatusCode}): {await response.Content.ReadAsStringAsync()}");
         }
     }
 
@@ -680,12 +781,15 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
     /// A branch of a company stores only its own data (name, address, coordinates, photo,
     /// rating): description, phone, website and hours are inherited from the parent company
     /// by the frontend, so writing them here would freeze a copy that goes stale.
+    /// <paramref name="asMall"/> is the plazas comerciales run: a plaza is a container of
+    /// shops, not a shop, and the frontend renders it as one — the only difference here is
+    /// that "mall" carries no facilities property.
     /// </summary>
     public async Task<Guid> CreatePlaceAsync(
         Guid parentId, DiscoveredPlace place, Enrichment? enrichment, Guid? photoMediaKey = null,
-        string? companyName = null, string? documentName = null)
+        string? companyName = null, string? documentName = null, bool asMall = false)
     {
-        Guid docTypeId = await GetPlaceDocumentTypeIdAsync();
+        Guid docTypeId = asMall ? await GetMallDocumentTypeIdAsync() : await GetPlaceDocumentTypeIdAsync();
         var documentId = Guid.NewGuid();
         bool branchOfCompany = companyName is not null;
 
@@ -706,7 +810,9 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
             // fail publish validation ("ContentInvalid").
             new { alias = "latitude", value = Math.Round(place.Latitude, 6) },
             new { alias = "longitude", value = Math.Round(place.Longitude, 6) },
-            branchOfCompany ? null : (object?)new { alias = "facilities", value = enrichment?.Facilities },
+            branchOfCompany || asMall
+                ? null
+                : (object?)new { alias = "facilities", value = enrichment?.Facilities },
             new { alias = "googlePlaceId", value = place.GooglePlaceId },
             new { alias = "googleRating", value = place.Rating },
             new { alias = "googleRatingCount", value = place.UserRatingCount },

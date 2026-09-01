@@ -2221,6 +2221,56 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
                     $"Failed to allow 'mall' under '{parentAlias}': {attempt.Result}");
             }
         }
+
+        await EnsureMallAgentSchemaAsync(mallType);
+    }
+
+    /// <summary>
+    /// Adds the properties the agent needs to own plazas to the "mall" document type:
+    /// the Google place id it dedupes by, the rating it refreshes and the source marker.
+    /// Without them a discovered plaza can only be created as a "place", which is what
+    /// left plaza duplicates next to the seeded malls. Guarded per property and run
+    /// every startup so existing installations pick them up.
+    /// </summary>
+    private async Task EnsureMallAgentSchemaAsync(IContentType mall)
+    {
+        (string Alias, string Name, int Sort)[] missing =
+            new[]
+            {
+                ("googlePlaceId", "Google Place ID", 9), ("source", "Fuente (manual | agent)", 10),
+                ("googleRating", "Rating Google", 11), ("googleRatingCount", "Reseñas Google (cantidad)", 12),
+            }
+                .Where(p => !mall.PropertyTypeExists(p.Item1))
+                .ToArray();
+        if (missing.Length == 0)
+        {
+            return;
+        }
+
+        IDataType textstring = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.TextstringGuid))!;
+        IDataType numeric = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.NumericGuid))!;
+        IDataType rating = await GetOrCreateDataTypeAsync(
+            "CityGuide Rating", Constants.PropertyEditors.Aliases.Decimal,
+            "Umb.PropertyEditorUi.Decimal", ValueStorageType.Decimal, configurationData: null);
+
+        foreach ((string alias, string name, int sort) in missing)
+        {
+            _logger.LogInformation("CityGuide: adding '{Alias}' property to 'mall'", alias);
+            AddProperty(mall, alias, name, alias switch
+            {
+                "googleRating" => rating,
+                "googleRatingCount" => numeric,
+                _ => textstring,
+            }, sort);
+        }
+
+        Attempt<ContentTypeOperationStatus> update =
+            await _contentTypeService.UpdateAsync(mall, Constants.Security.SuperUserKey);
+        if (!update.Success)
+        {
+            throw new InvalidOperationException(
+                $"Failed to add agent properties to 'mall': {update.Result}");
+        }
     }
 
     private sealed record MallStore(string Name, string Description, string Level);
