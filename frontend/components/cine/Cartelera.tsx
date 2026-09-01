@@ -1,27 +1,15 @@
-import { PendingArea, PendingLink } from "@/components/LoadingOverlay";
+import { PendingArea } from "@/components/LoadingOverlay";
+import DateTabs from "@/components/cine/DateTabs";
 import MovieCard from "@/components/cine/MovieCard";
 import {
   CINEMAS_BY_CITY,
   getAvailableDates,
-  getKnownTrailers,
+  getMovieCatalog,
   getMovieBillboard,
   todayInDR,
   toMovieCards,
   type Cinema,
 } from "@/lib/cinema";
-
-function dateLabel(date: string, today: string): string {
-  if (date === today) return "Hoy";
-  const d = new Date(`${date}T12:00:00Z`);
-  const t = new Date(`${today}T12:00:00Z`);
-  if (d.getTime() - t.getTime() === 86_400_000) return "Mañana";
-  return new Intl.DateTimeFormat("es-DO", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    timeZone: "UTC",
-  }).format(d);
-}
 
 /**
  * Live cartelera from Caribbean Cinemas, grouped by movie (most cinemas and
@@ -45,16 +33,17 @@ export default async function Cartelera({
   const siteIds = cinema
     ? [cinema.id]
     : (CINEMAS_BY_CITY[citySlug] ?? []).map((c) => c.id);
-  const [dates, knownTrailers] = await Promise.all([
+  const [dates, catalog] = await Promise.all([
     getAvailableDates(siteIds),
-    // Agent-maintained movie catalog: stable trailer picks live in the CMS.
-    getKnownTrailers(citySlug),
+    // Agent-maintained movie catalog: the detail page, the stable trailer pick
+    // and the IMDb / Rotten Tomatoes scores all live in the CMS.
+    getMovieCatalog(citySlug),
   ]);
   const date =
     selectedDate && dates.includes(selectedDate)
       ? selectedDate
       : (dates[0] ?? today);
-  let billboard = await getMovieBillboard(citySlug, date, knownTrailers);
+  let billboard = await getMovieBillboard(citySlug, date, { catalog });
 
   if (cinema) {
     billboard = billboard
@@ -70,7 +59,7 @@ export default async function Cartelera({
       );
   }
 
-  const cards = toMovieCards(citySlug, billboard);
+  const cards = toMovieCards(citySlug, billboard, catalog);
 
   return (
     <PendingArea className="mt-10" label="Actualizando cartelera…">
@@ -89,23 +78,12 @@ export default async function Cartelera({
         </p>
       </div>
 
-      {dates.length > 0 && (
-        <div className="mt-4 flex flex-wrap gap-2">
-          {dates.map((d) => (
-            <PendingLink
-              key={d}
-              href={d === dates[0] ? basePath : `${basePath}?fecha=${d}`}
-              className={
-                d === date
-                  ? "rounded-full bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white"
-                  : "rounded-full border border-neutral-300 bg-white px-4 py-1.5 text-sm font-medium hover:border-brand-500 hover:text-brand-600"
-              }
-            >
-              {dateLabel(d, today)}
-            </PendingLink>
-          ))}
-        </div>
-      )}
+      <DateTabs
+        dates={dates}
+        selected={date}
+        today={today}
+        basePath={basePath}
+      />
 
       {cards.length === 0 ? (
         <p className="mt-6 text-neutral-500">

@@ -17,6 +17,9 @@ import PlaceCard from "@/components/PlaceCard";
 import PlaceMap from "@/components/PlaceMap";
 import Rating from "@/components/Rating";
 import Cartelera from "@/components/cine/Cartelera";
+import DateTabs from "@/components/cine/DateTabs";
+import MovieReviewBadges from "@/components/cine/MovieReviewBadges";
+import MovieShowtimes from "@/components/cine/MovieShowtimes";
 import EventsList, { type EventEntry } from "@/components/EventsList";
 import ThingsToDoExplorer, {
   type GuideSection,
@@ -26,7 +29,12 @@ import { branchDisplayName } from "@/lib/branches";
 import {
   CINEMAS_BY_CITY,
   cinemaByName,
+  cinemaSiteIds,
+  getAvailableDates,
+  getMovieShowings,
   getTopMoviesToday,
+  movieReviews,
+  todayInDR,
 } from "@/lib/cinema";
 import { cuisineIcon, mapPinIcon, sectionListImage } from "@/lib/sections";
 import {
@@ -109,8 +117,16 @@ export default async function ContentPage({
       }
       return <PlaceView item={item} />;
     }
-    case "movie":
-      return <MovieView item={item} citySlug={city} />;
+    case "movie": {
+      const { fecha } = await searchParams;
+      return (
+        <MovieView
+          item={item}
+          citySlug={city}
+          fecha={typeof fecha === "string" ? fecha : undefined}
+        />
+      );
+    }
     case "eventsPage":
       return <EventsView item={item} />;
     case "eventItem":
@@ -663,15 +679,35 @@ async function CategoryView({
   );
 }
 
-/** Agent-maintained cartelera catalog entry (movie doc type under Cines). */
-function MovieView({ item, citySlug }: { item: UmbracoItem; citySlug: string }) {
+/**
+ * A movie's own page: the agent-maintained catalog entry (poster, sinopsis,
+ * trailer, IMDb / Rotten Tomatoes scores) over the live Caribbean Cinemas
+ * showings — every cinema in the city presenting it on the chosen date, with
+ * booking links and a map of those cinemas. Date via ?fecha=YYYY-MM-DD.
+ */
+async function MovieView({
+  item,
+  citySlug,
+  fecha,
+}: {
+  item: UmbracoItem;
+  citySlug: string;
+  fecha?: string;
+}) {
   const poster = text(item, "posterUrl");
   const trailer = text(item, "trailerYoutubeId");
+  const reviews = movieReviews(item);
   const meta = [
     text(item, "rating"),
     text(item, "duration") && `${text(item, "duration")} min`,
     text(item, "genre"),
   ].filter(Boolean);
+
+  const today = todayInDR();
+  const dates = await getAvailableDates(cinemaSiteIds(citySlug));
+  const date = fecha && dates.includes(fecha) ? fecha : (dates[0] ?? today);
+  const cinemas = await getMovieShowings(citySlug, item.name, date);
+  const showtimes = cinemas.reduce((sum, c) => sum + c.showtimes.length, 0);
 
   return (
     <PageShell item={item}>
@@ -695,6 +731,9 @@ function MovieView({ item, citySlug }: { item: UmbracoItem; citySlug: string }) 
           {meta.length > 0 && (
             <p className="mt-2 text-sm text-neutral-500">{meta.join(" · ")}</p>
           )}
+          <div className="mt-3">
+            <MovieReviewBadges movieName={item.name} reviews={reviews} />
+          </div>
           {text(item, "synopsis") && (
             <p className="mt-4 max-w-2xl text-neutral-700">
               {text(item, "synopsis")}
@@ -702,12 +741,39 @@ function MovieView({ item, citySlug }: { item: UmbracoItem; citySlug: string }) 
           )}
           <Link
             href={`/${citySlug}/cines`}
-            className="mt-6 inline-block rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700"
+            className="mt-6 inline-block rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium hover:border-brand-500 hover:text-brand-600"
           >
-            Ver horarios en cartelera
+            Ver la cartelera completa
           </Link>
         </div>
       </div>
+
+      <section className="mt-10">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-2xl font-bold">¿Dónde verla?</h2>
+          {cinemas.length > 0 && (
+            <p className="text-sm text-neutral-500">
+              {cinemas.length} {cinemas.length === 1 ? "cine" : "cines"} ·{" "}
+              {showtimes} {showtimes === 1 ? "función" : "funciones"}
+            </p>
+          )}
+        </div>
+        <DateTabs
+          dates={dates}
+          selected={date}
+          today={today}
+          basePath={item.route.path}
+        />
+        {cinemas.length === 0 ? (
+          <p className="mt-6 text-neutral-500">
+            No hay funciones de {item.name} para esta fecha.
+          </p>
+        ) : (
+          <div className="mt-2 rounded-xl border border-neutral-200 bg-white shadow-sm">
+            <MovieShowtimes movieName={item.name} cinemas={cinemas} />
+          </div>
+        )}
+      </section>
     </PageShell>
   );
 }

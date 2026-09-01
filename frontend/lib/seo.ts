@@ -459,6 +459,9 @@ export function movieJsonLd(item: UmbracoItem): JsonLd {
   const url = absoluteUrl(item.route.path);
   const minutes = Number(text(item, "duration"));
   const trailerId = text(item, "trailerYoutubeId");
+  const imdbId = text(item, "imdbId");
+  const imdbRating = Number(text(item, "imdbRating"));
+  const imdbVotes = Number(text(item, "imdbVotes"));
   return prune({
     "@context": "https://schema.org",
     "@type": "Movie",
@@ -478,6 +481,19 @@ export function movieJsonLd(item: UmbracoItem): JsonLd {
           thumbnailUrl: `https://i.ytimg.com/vi/${trailerId}/hqdefault.jpg`,
         }
       : undefined,
+    sameAs: imdbId ? [`https://www.imdb.com/title/${imdbId}/`] : undefined,
+    // IMDb's own score, credited to it — the portal rates nothing itself.
+    aggregateRating:
+      Number.isFinite(imdbRating) && imdbRating > 0
+        ? {
+            "@type": "AggregateRating",
+            ratingValue: imdbRating,
+            bestRating: 10,
+            worstRating: 1,
+            ratingCount:
+              Number.isFinite(imdbVotes) && imdbVotes > 0 ? imdbVotes : undefined,
+          }
+        : undefined,
   });
 }
 

@@ -4,7 +4,7 @@
 // requires the site-id/circuit-id/client-type headers the SPA sends.
 
 import { findYoutubeTrailer } from "@/lib/trailers";
-import { getDescendantsOfType, text } from "@/lib/umbraco";
+import { getDescendantsOfType, text, type UmbracoItem } from "@/lib/umbraco";
 
 const CC_BASE = "https://rd.caribbeancinemas.com";
 const CIRCUIT_ID = "5"; // Caribbean Cinemas Dominican Republic
@@ -353,10 +353,15 @@ async function getCinemaShowings(
 export async function getMovieBillboard(
   citySlug: string,
   date: string,
-  knownTrailers?: Record<string, string>,
-  /** Keep only the richest N movies — cut before the trailer lookups. */
-  limit?: number,
+  options: {
+    catalog?: Record<string, CatalogMovie>;
+    /** Keep only the richest N movies — cut before the trailer lookups. */
+    limit?: number;
+    /** Off when the caller only needs showtimes: the fallback search is slow. */
+    trailers?: boolean;
+  } = {},
 ): Promise<MovieBillboard[]> {
+  const { catalog, limit, trailers = true } = options;
   const cinemas = CINEMAS_BY_CITY[citySlug];
   if (!cinemas) return [];
   const perCinema = await Promise.all(
@@ -406,17 +411,19 @@ export async function getMovieBillboard(
   // YouTube trailer: the agent-maintained CMS catalog first (knownTrailers,
   // keyed by lowercased movie name), then a live search; the cinema's own id
   // stays as last resort.
-  await Promise.all(
-    billboard.map(async (movie) => {
-      const known = knownTrailers?.[movie.name.toLowerCase()];
-      if (known) {
-        movie.trailerYoutubeId = known;
-        return;
-      }
-      const id = await findYoutubeTrailer(movie.name);
-      if (id) movie.trailerYoutubeId = id;
-    }),
-  );
+  if (trailers) {
+    await Promise.all(
+      billboard.map(async (movie) => {
+        const known = catalog?.[movie.name.toLowerCase()]?.trailerYoutubeId;
+        if (known) {
+          movie.trailerYoutubeId = known;
+          return;
+        }
+        const id = await findYoutubeTrailer(movie.name);
+        if (id) movie.trailerYoutubeId = id;
+      }),
+    );
+  }
 
   return billboard;
 }
@@ -477,29 +484,89 @@ export interface MovieCardProps {
   genre: string | null;
   synopsis: string | null;
   trailerYoutubeId: string | null;
+  /** The movie's own page in this portal, when the CMS catalog has it. */
+  path: string | null;
+  reviews: MovieReviews | null;
   cinemas: MovieCardCinema[];
 }
 
+/** IMDb and Rotten Tomatoes scores, filled by the agent's cinema sync. */
+export interface MovieReviews {
+  imdbId: string | null;
+  /** "7.8" on IMDb's ten-point scale. */
+  imdbRating: string | null;
+  imdbVotes: number | null;
+  /** Tomatometer, 0–100. */
+  rottenTomatoes: number | null;
+  /** Original (usually English) title — what both services index by. */
+  originalTitle: string | null;
+}
+
+/** Reviews stored on a CMS `movie` node, or null when it has no score at all. */
+export function movieReviews(item: UmbracoItem): MovieReviews | null {
+  const votes = Number(text(item, "imdbVotes"));
+  const tomatometer = Number(text(item, "rottenTomatoes"));
+  const reviews: MovieReviews = {
+    imdbId: text(item, "imdbId") || null,
+    imdbRating: text(item, "imdbRating") || null,
+    imdbVotes: Number.isFinite(votes) && votes > 0 ? votes : null,
+    rottenTomatoes:
+      Number.isFinite(tomatometer) && tomatometer > 0 ? tomatometer : null,
+    originalTitle: text(item, "originalTitle") || null,
+  };
+  return reviews.imdbId || reviews.rottenTomatoes ? reviews : null;
+}
+
+/** Where a movie's scores are read and discussed in full. */
+export function imdbUrl(reviews: MovieReviews): string | null {
+  return reviews.imdbId ? `https://www.imdb.com/title/${reviews.imdbId}/` : null;
+}
+
 /**
- * Trailers the agent curated in the CMS `movie` catalog, keyed by lowercased
- * movie name — stable picks that beat a live YouTube search.
+ * Rotten Tomatoes exposes no id in the data we get, so the link is its search
+ * for the original title — always resolvable, never a guessed 404.
  */
-export async function getKnownTrailers(
+export function rottenTomatoesUrl(name: string, reviews: MovieReviews): string {
+  return `https://www.rottentomatoes.com/search?search=${encodeURIComponent(
+    reviews.originalTitle ?? name,
+  )}`;
+}
+
+/**
+ * What the agent-maintained CMS `movie` catalog adds to a live billboard row:
+ * the movie's own page, a curated trailer and the review scores.
+ */
+export interface CatalogMovie {
+  path: string;
+  trailerYoutubeId: string | null;
+  reviews: MovieReviews | null;
+}
+
+/**
+ * The CMS `movie` catalog of a city, keyed by lowercased movie name. The
+ * Caribbean API names the cartelera rows exactly as the agent named the nodes,
+ * so the name is the join key between the live billboard and the catalog.
+ */
+export async function getMovieCatalog(
   citySlug: string,
-): Promise<Record<string, string>> {
+): Promise<Record<string, CatalogMovie>> {
   const movies = await getDescendantsOfType(`/${citySlug}/cines`, "movie");
-  const trailers: Record<string, string> = {};
+  const catalog: Record<string, CatalogMovie> = {};
   for (const movie of movies) {
-    const id = text(movie, "trailerYoutubeId");
-    if (id) trailers[movie.name.toLowerCase()] = id;
+    catalog[movie.name.toLowerCase()] = {
+      path: movie.route.path,
+      trailerYoutubeId: text(movie, "trailerYoutubeId") || null,
+      reviews: movieReviews(movie),
+    };
   }
-  return trailers;
+  return catalog;
 }
 
 /** Billboard rows as the props `MovieCard` renders. */
 export function toMovieCards(
   citySlug: string,
   billboard: MovieBillboard[],
+  catalog: Record<string, CatalogMovie> = {},
 ): MovieCardProps[] {
   return billboard.map((movie) => ({
     name: movie.name,
@@ -509,6 +576,8 @@ export function toMovieCards(
     genre: movie.genre,
     synopsis: movie.synopsis?.replace(/<[^>]+>/g, "") ?? null,
     trailerYoutubeId: movie.trailerYoutubeId,
+    path: catalog[movie.name.toLowerCase()]?.path ?? null,
+    reviews: catalog[movie.name.toLowerCase()]?.reviews ?? null,
     cinemas: movie.cinemas.map(({ cinema, showtimes }) => ({
       id: cinema.id,
       name: cinema.name,
@@ -532,11 +601,35 @@ export async function getTopMoviesToday(
   limit: number,
 ): Promise<MovieCardProps[]> {
   if (!CINEMAS_BY_CITY[citySlug]) return [];
-  const billboard = await getMovieBillboard(
-    citySlug,
-    todayInDR(),
-    await getKnownTrailers(citySlug),
+  const catalog = await getMovieCatalog(citySlug);
+  const billboard = await getMovieBillboard(citySlug, todayInDR(), {
+    catalog,
     limit,
+  });
+  return toMovieCards(citySlug, billboard, catalog);
+}
+
+/**
+ * Every cinema in the city showing one movie on a date, with its showtimes —
+ * what the movie's own page lists and maps. Empty when it is not on that day.
+ * The trailer already lives on the CMS node, so no trailer lookup runs here.
+ */
+export async function getMovieShowings(
+  citySlug: string,
+  movieName: string,
+  date: string,
+): Promise<MovieCardCinema[]> {
+  if (!CINEMAS_BY_CITY[citySlug]) return [];
+  const billboard = await getMovieBillboard(citySlug, date, {
+    trailers: false,
+  });
+  const match = billboard.find(
+    (movie) => movie.name.toLowerCase() === movieName.toLowerCase(),
   );
-  return toMovieCards(citySlug, billboard);
+  return match ? (toMovieCards(citySlug, [match])[0]?.cinemas ?? []) : [];
+}
+
+/** Ids of every Caribbean Cinemas theater in the city. */
+export function cinemaSiteIds(citySlug: string): string[] {
+  return (CINEMAS_BY_CITY[citySlug] ?? []).map((cinema) => cinema.id);
 }

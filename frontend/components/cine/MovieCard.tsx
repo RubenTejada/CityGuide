@@ -2,14 +2,16 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import MarkersMap, { type MapMarker } from "@/components/MarkersMap";
+import MovieReviewBadges from "@/components/cine/MovieReviewBadges";
+import MovieShowtimes from "@/components/cine/MovieShowtimes";
 import TrailerModal from "@/components/cine/TrailerModal";
 import { type MovieCardProps } from "@/lib/cinema";
 
 /**
- * One movie in the cartelera: header with poster/meta/trailer, expandable
- * detail with per-cinema showtimes (booking links) and a map of the cinemas
- * showing it. The map only mounts when the detail is opened.
+ * One movie in the cartelera: header with poster/meta/trailer/reviews, and an
+ * expandable detail with per-cinema showtimes (booking links) and a map of the
+ * cinemas showing it. The map only mounts when the detail is opened.
+ * The title links to the movie's own page when the CMS catalog has it.
  * `compact` stacks the poster over the text so the card fits a grid column
  * ("Qué Hacer"); the wide layout is the cartelera's own list.
  */
@@ -28,36 +30,40 @@ export default function MovieCard({
     0,
   );
 
-  const markers: MapMarker[] = movie.cinemas.map((c) => ({
-    id: c.id,
-    name: `Caribbean Cinemas ${c.name}`,
-    url: c.portalPath,
-    address: c.address,
-    latitude: c.lat,
-    longitude: c.lng,
-    logo: "/caribbean-cinemas-logo.png",
-  }));
+  const poster = movie.poster && (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={movie.poster}
+      alt={`Afiche de ${movie.name}`}
+      loading="lazy"
+      className={
+        compact
+          ? "mb-3 aspect-[2/3] w-full rounded-lg object-cover"
+          : "h-36 w-24 flex-none rounded-lg object-cover sm:h-44 sm:w-28"
+      }
+    />
+  );
 
   return (
     <article className="rounded-xl border border-neutral-200 bg-white shadow-sm">
       <div className={compact ? "p-3" : "flex gap-4 p-4"}>
-        {movie.poster && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={movie.poster}
-            alt={`Afiche de ${movie.name}`}
-            loading="lazy"
-            className={
-              compact
-                ? "mb-3 aspect-[2/3] w-full rounded-lg object-cover"
-                : "h-36 w-24 flex-none rounded-lg object-cover sm:h-44 sm:w-28"
-            }
-          />
+        {movie.path && poster ? (
+          <Link href={movie.path} className={compact ? "block" : "flex-none"}>
+            {poster}
+          </Link>
+        ) : (
+          poster
         )}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <h3 className={compact ? "font-semibold" : "text-lg font-semibold"}>
-              {movie.name}
+              {movie.path ? (
+                <Link href={movie.path} className="hover:text-brand-600">
+                  {movie.name}
+                </Link>
+              ) : (
+                movie.name
+              )}
             </h3>
             {movie.trailerYoutubeId && (
               <TrailerModal
@@ -75,6 +81,13 @@ export default function MovieCard({
               .filter(Boolean)
               .join(" · ")}
           </p>
+          <div className="mt-2">
+            <MovieReviewBadges
+              movieName={movie.name}
+              reviews={movie.reviews}
+              size="sm"
+            />
+          </div>
           <p className="mt-1 text-sm font-medium text-brand-700">
             {movie.cinemas.length}{" "}
             {movie.cinemas.length === 1 ? "cine" : "cines"} · {totalShowtimes}{" "}
@@ -91,70 +104,42 @@ export default function MovieCard({
               {movie.synopsis}
             </p>
           )}
-          <button
-            type="button"
-            onClick={() => setOpen((o) => !o)}
-            aria-expanded={open}
-            className={`mt-3 inline-flex items-center gap-1.5 rounded-lg bg-neutral-900 font-medium text-white hover:bg-neutral-700 ${
-              compact ? "px-3 py-1.5 text-xs" : "px-4 py-1.5 text-sm"
-            }`}
-          >
-            {open ? "Ocultar horarios" : "Ver horarios y cines"}
-            <span aria-hidden className="text-xs">
-              {open ? "▲" : "▼"}
-            </span>
-          </button>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setOpen((o) => !o)}
+              aria-expanded={open}
+              className={`inline-flex items-center gap-1.5 rounded-lg bg-neutral-900 font-medium text-white hover:bg-neutral-700 ${
+                compact ? "px-3 py-1.5 text-xs" : "px-4 py-1.5 text-sm"
+              }`}
+            >
+              {open ? "Ocultar horarios" : "Ver horarios y cines"}
+              <span aria-hidden className="text-xs">
+                {open ? "▲" : "▼"}
+              </span>
+            </button>
+            {movie.path && (
+              <Link
+                href={movie.path}
+                className={`inline-flex items-center rounded-lg border border-neutral-300 bg-white font-medium hover:border-brand-500 hover:text-brand-600 ${
+                  compact ? "px-3 py-1.5 text-xs" : "px-4 py-1.5 text-sm"
+                }`}
+              >
+                Ver detalle
+              </Link>
+            )}
+          </div>
         </div>
       </div>
 
       {open && (
-        <div
-          className={`grid gap-6 border-t border-neutral-200 ${
-            compact ? "p-3" : "p-4"
-          } ${showMap ? "lg:grid-cols-2" : ""}`}
-        >
-          <div className="space-y-4">
-            {movie.cinemas.map((cinema) => (
-              <div key={cinema.id}>
-                <p className="font-semibold">
-                  <Link
-                    href={cinema.portalPath}
-                    className="hover:text-brand-600"
-                  >
-                    🎬 Caribbean Cinemas {cinema.name}
-                  </Link>
-                </p>
-                <p className="text-xs text-neutral-500">{cinema.address}</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {cinema.showtimes.map((showtime) => (
-                    <a
-                      key={showtime.id}
-                      href={showtime.bookingUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title={`Reservar en ${cinema.name}`}
-                      className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium hover:border-brand-500 hover:bg-brand-50 hover:text-brand-700"
-                    >
-                      {showtime.time}
-                      {showtime.badge && (
-                        <span className="ml-1.5 text-[10px] font-normal uppercase tracking-wide text-neutral-400">
-                          {showtime.badge}
-                        </span>
-                      )}
-                    </a>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-          {showMap && (
-            <div>
-              <p className="mb-2 text-sm font-medium text-neutral-600">
-                Cines que presentan {movie.name}
-              </p>
-              <MarkersMap markers={markers} />
-            </div>
-          )}
+        <div className="border-t border-neutral-200">
+          <MovieShowtimes
+            movieName={movie.name}
+            cinemas={movie.cinemas}
+            showMap={showMap}
+            compact={compact}
+          />
         </div>
       )}
     </article>

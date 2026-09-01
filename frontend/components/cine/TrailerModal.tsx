@@ -46,7 +46,8 @@ export default function TrailerModal({
           onClick={close}
         >
           <div
-            className="w-full max-w-3xl"
+            /* 72rem: half again as wide as the 48rem the modal opened at. */
+            className="w-full max-w-6xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-2 flex items-center justify-between text-white">
@@ -60,7 +61,8 @@ export default function TrailerModal({
                 ×
               </button>
             </div>
-            <div className="aspect-video overflow-hidden rounded-xl bg-black">
+            {/* The extra width must not push the player past a laptop screen. */}
+            <div className="mx-auto aspect-video max-h-[80vh] w-full overflow-hidden rounded-xl bg-black">
               <iframe
                 src={`https://www.youtube-nocookie.com/embed/${youtubeId}?autoplay=1&rel=0`}
                 title={`Trailer de ${movieName}`}
