@@ -27,7 +27,10 @@ interface UmbracoList {
 
 async function api(path: string): Promise<Response> {
   return fetch(`${BASE_URL}/umbraco/delivery/api/v2${path}`, {
-    next: { revalidate: REVALIDATE_SECONDS },
+    // Tagged so /api/revalidate (called by an Umbraco webhook on publish/
+    // unpublish/delete) can drop every CMS response at once; the time-based
+    // revalidate stays as a fallback.
+    next: { revalidate: REVALIDATE_SECONDS, tags: ["umbraco"] },
   });
 }
 
