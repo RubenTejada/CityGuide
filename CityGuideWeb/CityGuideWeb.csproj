@@ -12,6 +12,15 @@
     <PackageReference Include="Umbraco.Cms.DevelopmentMode.Backoffice" />
   </ItemGroup>
 
+  <!--
+    Seed images (chain logos, event photos) read from disk by CityGuideSeeder at startup.
+    The Web SDK only publishes wwwroot plus .json/.config/.cshtml, so without this the
+    files are missing in Azure and every seeded company is created without its logo.
+  -->
+  <ItemGroup>
+    <Content Include="CityGuide/SeedAssets/**" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <PropertyGroup>
     <!--
       Opt-in to app-local ICU to ensure consistent globalization APIs across different platforms.

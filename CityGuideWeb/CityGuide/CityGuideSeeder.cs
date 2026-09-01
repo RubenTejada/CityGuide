@@ -151,11 +151,14 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
 
         bool articlesSeeded = EnsureArticlesSeeded();
 
+        bool logosRestored = EnsureChainLogos();
+
         // The Delivery API query endpoint reads from this index. Rebuild it when it is
         // empty while published content exists, or when this startup seeded new content
         // (content published during boot is not picked up by the index event handlers).
         if (_examineManager.TryGetIndex(Constants.UmbracoIndexes.DeliveryApiContentIndexName, out IIndex index)
             && (banksSeeded
+                || logosRestored
                 || agentConfigSeeded
                 || thingsToDoMigrated
                 || eventsSeeded
@@ -2219,6 +2222,56 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
 
         _contentService.PublishBranch(plazas, PublishBranchFilter.IncludeUnpublished, ["*"]);
         return true;
+    }
+
+    /// <summary>
+    /// Idempotent, runs every startup: gives every chain "company" node its logo when it
+    /// has none. Installations seeded while the SeedAssets images were missing from the
+    /// publish output got their companies without a logo, and the branches inherit that
+    /// emptiness, so a whole chain falls back to the section placeholder.
+    /// </summary>
+    private bool EnsureChainLogos()
+    {
+        if (_contentTypeService.Get("company") is not { } companyType)
+        {
+            return false;
+        }
+
+        var logos = new Dictionary<string, (string LogoFile, string Folder)>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Caribbean Cinemas"] = ("caribbean-cinemas.png", "Cines"),
+        };
+        foreach ((Chain[] Chains, string Folder) group in new[]
+        {
+            (Banks, "Bancos"), (Supermarkets, "Supermercados"), (Pharmacies, "Farmacias"),
+        })
+        {
+            foreach (Chain chain in group.Chains)
+            {
+                logos[chain.Name] = (chain.LogoFile, group.Folder);
+            }
+        }
+
+        bool changed = false;
+        foreach (IContent company in _contentService.GetPagedOfType(companyType.Id, 0, 500, out _, filter: null!))
+        {
+            if (!string.IsNullOrWhiteSpace(company.GetValue<string>("photo"))
+                || company.Name is not { } name
+                || !logos.TryGetValue(name, out (string LogoFile, string Folder) logo)
+                || CreateLogoMedia(GetOrCreateRootMediaFolder(logo.Folder), name, logo.LogoFile)
+                    is not { } photoValue)
+            {
+                continue;
+            }
+
+            _logger.LogInformation("CityGuide: restoring missing logo for '{Name}'", name);
+            company.SetValue("photo", photoValue);
+            _contentService.Save(company);
+            _contentService.Publish(company, ["*"]);
+            changed = true;
+        }
+
+        return changed;
     }
 
     private IContent? Descendant(IContent parent, string contentTypeAlias, string name) =>
