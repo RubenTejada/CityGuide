@@ -57,8 +57,8 @@ export default function ThingsToDoExplorer({
     <div>
       <FilterPills
         options={[
-          { value: "eventos", label: "Eventos" },
           { value: "atracciones", label: "Atracciones" },
+          { value: "eventos", label: "Eventos" },
           ...sections
             .filter((s) => s.entries.length > 0)
             .map((s) => ({ value: s.slug, label: s.name })),
@@ -69,24 +69,8 @@ export default function ThingsToDoExplorer({
         className="mt-8 flex flex-wrap gap-2"
       />
 
-      {showEvents && (
-        <section className="mt-10">
-          <h2 className="text-xl font-semibold">Eventos próximos</h2>
-          <div className="mt-5 grid gap-4 md:grid-cols-2">
-            {events.map((event) => (
-              <EventCard key={event.id} event={event} />
-            ))}
-          </div>
-          {events.length === 0 && (
-            <p className="mt-4 text-neutral-500">
-              No hay eventos próximos publicados todavía.
-            </p>
-          )}
-        </section>
-      )}
-
       {showAttractions && (
-        <section className="mt-12">
+        <section className="mt-10">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold">
               Parques y atracciones abiertos hoy
@@ -111,6 +95,31 @@ export default function ThingsToDoExplorer({
         </section>
       )}
 
+      {showAttractions && attractionMarkers.length > 0 && (
+        <section className="mt-12">
+          <h2 className="text-xl font-semibold">Mapa de atracciones</h2>
+          <div className="mt-5">
+            <MarkersMap markers={attractionMarkers} />
+          </div>
+        </section>
+      )}
+
+      {showEvents && (
+        <section className="mt-12">
+          <h2 className="text-xl font-semibold">Eventos próximos</h2>
+          <div className="mt-5 grid gap-4 md:grid-cols-2">
+            {events.map((event) => (
+              <EventCard key={event.id} event={event} />
+            ))}
+          </div>
+          {events.length === 0 && (
+            <p className="mt-4 text-neutral-500">
+              No hay eventos próximos publicados todavía.
+            </p>
+          )}
+        </section>
+      )}
+
       {visibleSections.map((section) => (
         <section key={section.id} className="mt-12">
           <div className="flex items-center justify-between">
@@ -129,15 +138,6 @@ export default function ThingsToDoExplorer({
           </div>
         </section>
       ))}
-
-      {showAttractions && attractionMarkers.length > 0 && (
-        <section className="mt-12">
-          <h2 className="text-xl font-semibold">Mapa de atracciones</h2>
-          <div className="mt-5">
-            <MarkersMap markers={attractionMarkers} />
-          </div>
-        </section>
-      )}
 
       {nothingVisible && (
         <p className="mt-10 text-neutral-500">
