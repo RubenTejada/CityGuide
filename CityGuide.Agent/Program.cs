@@ -42,6 +42,19 @@ if (sections.Count > 0)
     Console.WriteLine($"Secciones seleccionadas: {string.Join(", ", sections)}");
 }
 
+// --publish releases the drafts the agent left in the selected sections when the run
+// ends: everything unpublished below the parent path of each selected Run, this pass's
+// creations and the ones earlier passes left for review alike. Drafts in every other
+// section stay drafts, which is why it only works together with --section.
+bool publishSections = args.Contains("--publish");
+if (publishSections && sections.Count == 0)
+{
+    Console.Error.WriteLine(
+        "--publish requiere --section: sin ella publicaría el sitio entero. "
+        + "Ejemplo: dotnet run -- --section restaurantes --publish");
+    return 1;
+}
+
 // Every external request goes through the throttler: minimum interval + jitter
 // per host, so no portal or API ever sees a burst. Slow but never blocked.
 using var http = new HttpClient(new ThrottlingHandler(
@@ -589,6 +602,37 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelec
 
 Console.WriteLine($"\nDone. Created {created} place(s)" +
     (config.Umbraco.PublishImmediately ? "." : " as drafts — review and publish them in the backoffice."));
+
+if (publishSections)
+{
+    Console.WriteLine("\n== Publicando las secciones seleccionadas");
+    var totalPublished = 0;
+    foreach (string parentPath in config.Runs
+        .Where(r => SectionSelected(r.ParentPath))
+        .Select(r => r.ParentPath)
+        .Distinct(StringComparer.OrdinalIgnoreCase))
+    {
+        (Guid Id, string Name)? sectionParent = await umbraco.GetContentByPathAsync(parentPath);
+        if (sectionParent is null)
+        {
+            Console.Error.WriteLine($"  Parent path not found in CMS, skipping: {parentPath}");
+            continue;
+        }
+
+        try
+        {
+            int publishedHere = await umbraco.PublishDraftDescendantsAsync(sectionParent.Value.Id);
+            totalPublished += publishedHere;
+            Console.WriteLine($"  {parentPath}: {publishedHere} publicado(s)");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"  ! {parentPath}: {ex.Message}");
+        }
+    }
+
+    Console.WriteLine($"  Total publicado: {totalPublished}");
+}
 
 // Rating and photo backfill. Places without a stored googlePlaceId (e.g. seeded
 // content) are matched by name and address near their coordinates, and the found

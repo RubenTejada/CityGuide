@@ -29,6 +29,16 @@ cd CityGuide.Agent && dotnet run
 # One section only (shorter runs): matches any segment of a Run's ParentPath,
 # plus "cines"/"eventos" for those syncs. Comma-separated for several.
 cd CityGuide.Agent && dotnet run -- --section restaurantes
+# Publish, when the run ends, everything still unpublished under the selected
+# sections (this pass's drafts and the ones earlier passes left). Drafts in every
+# other section stay drafts, so --publish requires --section.
+cd CityGuide.Agent && dotnet run -- --section restaurantes --publish
+# Maintenance over the shops section: file each establishment under the plaza
+# comercial its address puts it in, recreate a plaza stored as a shop with the
+# "mall" type, and send plaza duplicates the agent made to the recycle bin.
+# Prints the plan and changes nothing without --apply.
+cd CityGuide.Agent && dotnet run -- --regroup-malls
+cd CityGuide.Agent && dotnet run -- --regroup-malls --apply
 
 # Build everything
 dotnet build CityGuide.slnx

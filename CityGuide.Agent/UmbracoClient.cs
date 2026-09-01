@@ -233,7 +233,10 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
                 children.Add(new ChildDocument(
                     item.GetProperty("id").GetGuid(),
                     name,
-                    item.GetProperty("documentType").GetProperty("id").GetGuid()));
+                    item.GetProperty("documentType").GetProperty("id").GetGuid(),
+                    item.GetProperty("variants")[0].TryGetProperty("state", out JsonElement state)
+                        ? state.GetString() ?? ""
+                        : ""));
                 page++;
             }
 
@@ -576,6 +579,35 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         {
             throw new InvalidOperationException(
                 $"Move {id} failed ({(int)response.StatusCode}): {await response.Content.ReadAsStringAsync()}");
+        }
+    }
+
+    /// <summary>
+    /// Publishes every unpublished document below <paramref name="parentId"/> and returns
+    /// how many were published. Everything the agent leaves under a section is a draft
+    /// waiting for review, so this is how a whole section is released at once without
+    /// touching the drafts sitting in any other section. Parents are published before
+    /// their children: Umbraco refuses to publish below an unpublished node.
+    /// </summary>
+    public async Task<int> PublishDraftDescendantsAsync(Guid parentId)
+    {
+        var published = 0;
+        await PublishBelowAsync(parentId);
+        return published;
+
+        async Task PublishBelowAsync(Guid id)
+        {
+            foreach (ChildDocument child in await GetChildrenAsync(id))
+            {
+                if (!child.State.StartsWith("Published", StringComparison.Ordinal))
+                {
+                    await PublishAsync(child.Id);
+                    published++;
+                    Console.WriteLine($"  ^ {child.Name} publicado");
+                }
+
+                await PublishBelowAsync(child.Id);
+            }
         }
     }
 
