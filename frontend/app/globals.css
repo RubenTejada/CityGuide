@@ -168,6 +168,12 @@ html.dark .gm-style-iw .hover\:bg-neutral-50:hover {
 html.dark .gm-style-iw .border-neutral-200 {
   border-color: var(--color-neutral-200);
 }
+/* Google pinta la X de cerrar con light-dark(), que sigue al color-scheme del
+   documento: en oscuro la saca blanca sobre esa burbuja blanca. Dentro de la
+   burbuja el esquema es claro, como su fondo. */
+html.dark .gm-style-iw-c {
+  color-scheme: light;
+}
 
 /* El botón de tema lleva los dos iconos: el que se ve lo decide la clase de
    <html>, que ya está puesta antes del primer pintado. */

@@ -198,6 +198,11 @@ export default function PlaceMap({
               <InfoWindow
                 position={{ lat: selected.latitude, lng: selected.longitude }}
                 onCloseClick={() => setSelected(null)}
+                headerContent={
+                  <span className="text-sm font-semibold text-brand-700">
+                    {selected.name}
+                  </span>
+                }
                 // Focusing the popup scrolls the page to it, moving the map
                 // out from under the pointer mid-click.
                 shouldFocus={false}

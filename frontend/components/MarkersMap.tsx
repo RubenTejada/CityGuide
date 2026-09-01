@@ -259,8 +259,21 @@ export default function MarkersMap({
               type="button"
               onClick={askForLocation}
               disabled={locating}
-              className="rounded-full border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 shadow-md transition hover:border-brand-600 hover:text-brand-700 disabled:cursor-not-allowed disabled:text-neutral-400"
+              className="flex items-center gap-2 rounded-full bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg ring-2 ring-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-brand-600/70"
             >
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                className="h-4 w-4 shrink-0"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <circle cx="12" cy="12" r="3.5" />
+                <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+              </svg>
               {locating
                 ? "Buscando tu ubicación…"
                 : position
@@ -268,7 +281,7 @@ export default function MarkersMap({
                   : "Usar mi ubicación"}
             </button>
             {locateError && (
-              <p className="mt-2 rounded-lg bg-white/95 px-3 py-2 text-xs text-neutral-600 shadow">
+              <p className="mt-2 rounded-lg bg-white px-3 py-2 text-xs font-medium text-neutral-800 shadow-lg ring-1 ring-neutral-300">
                 {locateError}
               </p>
             )}
@@ -327,6 +340,11 @@ function ClusteredMarkers({ markers }: { markers: MapMarker[] }) {
         <InfoWindow
           position={{ lat: selected.latitude, lng: selected.longitude }}
           onCloseClick={() => setSelected(null)}
+          headerContent={
+            <span className="text-sm font-semibold text-brand-700">
+              {selected.name}
+            </span>
+          }
           // Focusing the popup scrolls the page to it, moving the map out
           // from under the pointer mid-click.
           shouldFocus={false}

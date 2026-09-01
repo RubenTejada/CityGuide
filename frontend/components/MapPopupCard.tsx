@@ -5,9 +5,11 @@ import Link from "next/link";
 import { RatingBadge } from "./Rating";
 
 /**
- * InfoWindow content for map pins: photo thumbnail, name, rating and address.
- * The whole card is the link — inside a map popup the name alone is a target
- * a few pixels tall, and clicks meant for it land on dead space.
+ * InfoWindow content for map pins: photo thumbnail, rating and address. The
+ * name goes in the InfoWindow's own header instead, so it sits on the same
+ * line as the close button rather than pushing it onto an empty line of its
+ * own. The whole card is the link — inside a map popup the name alone is a
+ * target a few pixels tall, and clicks meant for it land on dead space.
  */
 export default function MapPopupCard({
   url,
@@ -43,12 +45,7 @@ export default function MapPopupCard({
         </div>
       )}
       <div className="min-w-0">
-        <span className="font-semibold text-brand-700 group-hover:underline">
-          {name}
-        </span>
-        <div>
-          <RatingBadge value={rating} count={ratingCount} className="!text-xs" />
-        </div>
+        <RatingBadge value={rating} count={ratingCount} className="!text-xs" />
         {address && <p className="mt-0.5 text-xs text-neutral-600">{address}</p>}
       </div>
     </Link>
