@@ -1,0 +1,69 @@
+namespace CityGuide.Agent;
+
+/// <summary>
+/// Names a chain branch by the part that tells it apart from its siblings.
+/// A branch node stores only its local name; the frontend (branchDisplayName)
+/// puts the chain back in front wherever the branch appears alone. Google,
+/// though, returns the chain name for most branches ("Banreservas" twenty-seven
+/// times), so taking its name verbatim makes every sibling collide and Umbraco
+/// numbers them "Banreservas (7)" — a name that identifies nothing.
+/// </summary>
+public static class BranchNaming
+{
+    /// <summary>
+    /// The branch's own name: what is left of the Google name once the chain is
+    /// removed ("BanReservas Torre" → "Torre"), or the street line of its address
+    /// when the name is nothing but the chain.
+    /// </summary>
+    public static string For(string placeName, string? address, string companyName)
+    {
+        string trimmed = placeName.Trim();
+        string local = StripCompany(trimmed, companyName);
+
+        // Stripping shortened the name, so what is left is this branch's own part.
+        // When it removed nothing the name carries no chain to subtract (Google
+        // calls APAP's branches "Asociación Popular de Ahorros y Préstamos"), and
+        // the name is the chain's however it is spelled — fall back to the address.
+        if (local.Length > 0 && local.Length < trimmed.Length)
+        {
+            return local;
+        }
+
+        return StreetOf(address) ?? (local.Length > 0 ? local : "Sucursal");
+    }
+
+    private static string StripCompany(string placeName, string companyName)
+    {
+        var chain = new HashSet<string>(TextMatch.Tokens(companyName));
+        IEnumerable<string> kept = placeName
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(word =>
+            {
+                string token = TextMatch.Normalize(word).Trim('.', ',', '(', ')', '-');
+                return token.Length > 0 && !chain.Contains(token);
+            });
+
+        return string.Join(' ', kept).Trim(' ', '-', '–', '—', ',');
+    }
+
+    /// <summary>First line of a formatted address ("Av. Winston Churchill 1099,
+    /// Santo Domingo…"), skipping a leading plus code, which names no street.</summary>
+    private static string? StreetOf(string? address)
+    {
+        if (string.IsNullOrWhiteSpace(address))
+        {
+            return null;
+        }
+
+        foreach (string part in address.Split(','))
+        {
+            string segment = part.Trim();
+            if (segment.Length > 3 && !segment.Contains('+'))
+            {
+                return segment;
+            }
+        }
+
+        return null;
+    }
+}

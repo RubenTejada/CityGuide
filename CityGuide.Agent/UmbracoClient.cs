@@ -664,10 +664,16 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
     /// </summary>
     public async Task<Guid> CreatePlaceAsync(
         Guid parentId, DiscoveredPlace place, Enrichment? enrichment, Guid? photoMediaKey = null,
-        bool branchOfCompany = false)
+        string? companyName = null)
     {
         Guid docTypeId = await GetPlaceDocumentTypeIdAsync();
         var documentId = Guid.NewGuid();
+        bool branchOfCompany = companyName is not null;
+
+        // Siblings under a company would otherwise all carry the chain's own name.
+        string name = branchOfCompany
+            ? BranchNaming.For(place.Name, place.Address, companyName!)
+            : place.Name;
 
         object?[] values =
         [
@@ -703,7 +709,7 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
             documentType = new { id = docTypeId },
             template = (object?)null,
             values,
-            variants = new[] { new { culture = (string?)null, segment = (string?)null, name = place.Name } },
+            variants = new[] { new { culture = (string?)null, segment = (string?)null, name } },
         });
 
         HttpResponseMessage response = await http.SendAsync(request);

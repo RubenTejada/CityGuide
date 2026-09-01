@@ -289,14 +289,17 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelec
                 targetParentId = subcategoryId;
             }
 
+            string? companyName = companyId is null
+                ? null
+                : companies.First(c => c.Value == companyId).Key;
             Guid id = await umbraco.CreatePlaceAsync(
-                targetParentId, place, enrichment, photoKey, branchOfCompany: companyId is not null);
+                targetParentId, place, enrichment, photoKey, companyName);
             knownPlaceIds[place.GooglePlaceId] = id;
             created++;
             runCreated++;
             string state = config.Umbraco.PublishImmediately ? "published" : "draft";
-            string target = companyId is not null
-                ? $" (sucursal de {companies.First(c => c.Value == companyId).Key})"
+            string target = companyName is not null
+                ? $" (sucursal de {companyName})"
                 : cuisine is null ? "" : $" → {cuisine}";
             Console.WriteLine($"  + {place.Name}{target} ({state}, {id})");
         }
