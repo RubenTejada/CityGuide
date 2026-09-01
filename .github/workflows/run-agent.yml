@@ -7,6 +7,14 @@ on:
   schedule:
     - cron: "17 10 * * *"
   workflow_dispatch:
+    inputs:
+      section:
+        description: >-
+          Limit the run to these sections (comma-separated), matched against
+          any segment of a Run's ParentPath, plus "cines"/"eventos". Empty
+          runs everything, like the daily schedule.
+        required: false
+        default: ""
 
 permissions:
   id-token: write
@@ -41,4 +49,12 @@ jobs:
           Umbraco__BaseUrl: https://quehacerrd-cms.azurewebsites.net
           Umbraco__ClientSecret: ${{ secrets.UMBRACO_AGENT_CLIENT_SECRET }}
           Google__ApiKey: ${{ secrets.GOOGLE_API_KEY }}
-        run: dotnet run -c Release
+          SECTION: ${{ inputs.section }}
+        # The scheduled run has no inputs, so SECTION is empty and the agent
+        # runs every section, as before.
+        run: |
+          if [ -n "$SECTION" ]; then
+            dotnet run -c Release -- --section "$SECTION"
+          else
+            dotnet run -c Release
+          fi
