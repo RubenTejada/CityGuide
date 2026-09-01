@@ -423,7 +423,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         return category;
     }
 
-    private void CreatePlace(
+    private IContent CreatePlace(
         int parentId, string name, string description, string address, string phone,
         string hours, decimal latitude, decimal longitude, string[] facilities,
         string? website = null, string? photoValue = null)
@@ -448,6 +448,23 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         }
 
         _contentService.Save(place);
+        return place;
+    }
+
+    /// <summary>
+    /// Publishes exactly the nodes the seeder just created, parents before children.
+    /// PublishBranch(..., IncludeUnpublished) would publish everything else left
+    /// unpublished in the branch too — including the ingestion agent's drafts, which
+    /// exist precisely so an editor reviews them before they go live. That is how two
+    /// Punta Cana bars from a cancelled run reached the live site: reseeding one
+    /// deleted bar published the whole "Bares y Clubes" branch with them in it.
+    /// </summary>
+    private void PublishSeeded(IEnumerable<IContent> created)
+    {
+        foreach (IContent content in created.OrderBy(c => c.Level))
+        {
+            _contentService.Publish(content, ["*"]);
+        }
     }
 
     // ---- Company level (empresa -> sucursales) ----
@@ -1110,6 +1127,10 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
 
         if (changed)
         {
+            // Safe as a branch publish: the events sync publishes what it creates, so
+            // nothing under here is deliberately held back as a draft. The remaining
+            // branch publishes are the same — each covers a subtree this method just
+            // created, never one the agent may already have written drafts into.
             _contentService.PublishBranch(eventos, PublishBranchFilter.IncludeUnpublished, ["*"]);
         }
         return changed;
@@ -1755,14 +1776,14 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         }
 
         IContent? atracciones = Descendant(city, "categoryPage", "Atracciones");
-        bool seeded = false;
+        var created = new List<IContent>();
         if (atracciones is null)
         {
             _logger.LogInformation("CityGuide: seeding 'Atracciones' category");
             atracciones = _contentService.Create("Atracciones", city.Id, "categoryPage");
             atracciones.SetValue("intro", "Parques, monumentos y lugares emblemáticos para disfrutar la ciudad.");
             _contentService.Save(atracciones);
-            seeded = true;
+            created.Add(atracciones);
         }
 
         foreach (Atraccion a in Atracciones)
@@ -1773,17 +1794,12 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
             }
 
             _logger.LogInformation("CityGuide: seeding attraction '{Name}'", a.Name);
-            CreatePlace(atracciones.Id, a.Name, a.Description, a.Address, a.Phone,
-                a.Hours, a.Latitude, a.Longitude, a.Facilities, website: a.Website);
-            seeded = true;
+            created.Add(CreatePlace(atracciones.Id, a.Name, a.Description, a.Address, a.Phone,
+                a.Hours, a.Latitude, a.Longitude, a.Facilities, website: a.Website));
         }
 
-        if (seeded)
-        {
-            _contentService.PublishBranch(atracciones, PublishBranchFilter.IncludeUnpublished, ["*"]);
-        }
-
-        return seeded;
+        PublishSeeded(created);
+        return created.Count > 0;
     }
 
     // ---- Bares y Clubes ----
@@ -1875,7 +1891,8 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
             return false;
         }
 
-        bool seeded = false;
+        var created = new List<IContent>();
+        bool moved = false;
         foreach ((string subcategoryName, NightSpot[] spots) in NightlifeSubcategories)
         {
             IContent? subcategory = Descendant(bares, "subcategory", subcategoryName);
@@ -1884,14 +1901,14 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
                 _logger.LogInformation("CityGuide: seeding '{Name}' subcategory under 'Bares y Clubes'", subcategoryName);
                 subcategory = _contentService.Create(subcategoryName, bares.Id, "subcategory");
                 _contentService.Save(subcategory);
-                seeded = true;
+                created.Add(subcategory);
             }
 
             if (subcategoryName == "Bares" && Descendant(bares, "place", "Onno's Bar") is { } onnos)
             {
                 _logger.LogInformation("CityGuide: moving 'Onno's Bar' into 'Bares' subcategory");
                 _contentService.Move(onnos, subcategory.Id);
-                seeded = true;
+                moved = true;
             }
 
             foreach (NightSpot spot in spots)
@@ -1902,18 +1919,13 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
                 }
 
                 _logger.LogInformation("CityGuide: seeding nightlife place '{Name}'", spot.Name);
-                CreatePlace(subcategory.Id, spot.Name, spot.Description, spot.Address, spot.Phone,
-                    spot.Hours, spot.Latitude, spot.Longitude, spot.Facilities, website: spot.Website);
-                seeded = true;
+                created.Add(CreatePlace(subcategory.Id, spot.Name, spot.Description, spot.Address, spot.Phone,
+                    spot.Hours, spot.Latitude, spot.Longitude, spot.Facilities, website: spot.Website));
             }
         }
 
-        if (seeded)
-        {
-            _contentService.PublishBranch(bares, PublishBranchFilter.IncludeUnpublished, ["*"]);
-        }
-
-        return seeded;
+        PublishSeeded(created);
+        return created.Count > 0 || moved;
     }
 
     // ---- Supermarkets & pharmacies (Tiendas) ----
