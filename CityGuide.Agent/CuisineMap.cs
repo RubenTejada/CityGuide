@@ -43,9 +43,16 @@ public static class CuisineMap
         ["brunch_restaurant"] = "Desayunos y Brunch",
     };
 
-    /// <summary>First cuisine match in the place's types; null when only generic
-    /// types ("restaurant", "food") are present — the place then stays at the
-    /// category root.</summary>
-    public static string? SubcategoryFor(IEnumerable<string> types) =>
-        types.Select(t => ByGoogleType.GetValueOrDefault(t)).FirstOrDefault(name => name is not null);
+    /// <summary>Subcategory for places Google types as a restaurant without saying
+    /// which kind ("restaurant", "food"). Most discovered places carry only those,
+    /// so without it the category root collects more places than every cuisine
+    /// subcategory put together.</summary>
+    public const string Fallback = "Otros";
+
+    /// <summary>First cuisine match in the place's types, or <see cref="Fallback"/>
+    /// when only generic types are present. Never null: every discovered restaurant
+    /// files under some subcategory.</summary>
+    public static string SubcategoryFor(IEnumerable<string> types) =>
+        types.Select(t => ByGoogleType.GetValueOrDefault(t)).FirstOrDefault(name => name is not null)
+        ?? Fallback;
 }
