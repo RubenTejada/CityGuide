@@ -7,7 +7,12 @@ public record CinemaSite(
 
 public record CinemaMovie(
     string Name, string UrlSlug, string? PosterImage, string? Synopsis,
-    string? Genre, string? Rating, int? Duration, string? TrailerYoutubeId);
+    string? Genre, string? Rating, int? Duration, string? TrailerYoutubeId,
+    string? ReleaseDate)
+{
+    /// <summary>Release year, used to disambiguate the IMDb / Rotten Tomatoes lookup.</summary>
+    public int? Year => DateTime.TryParse(ReleaseDate, out DateTime d) ? d.Year : null;
+}
 
 /// <summary>
 /// Read-only client for the Caribbean Cinemas RD public GraphQL API (Indy Cinema
@@ -64,7 +69,7 @@ public class CaribbeanCinemasClient(HttpClient http)
     public async Task<List<CinemaMovie>> GetMoviesAsync(string siteId)
     {
         using JsonDocument? doc = await QueryAsync(siteId,
-            "{ movies { data { name urlSlug posterImage synopsis genre rating duration trailerYoutubeId } } }");
+            "{ movies { data { name urlSlug posterImage synopsis genre rating duration trailerYoutubeId releaseDate } } }");
         var movies = new List<CinemaMovie>();
         if (doc?.RootElement.GetProperty("data").TryGetProperty("movies", out JsonElement list) != true
             || !list.TryGetProperty("data", out JsonElement items))
@@ -86,7 +91,8 @@ public class CaribbeanCinemasClient(HttpClient http)
                 Text(m, "genre"), Text(m, "rating"),
                 m.TryGetProperty("duration", out JsonElement d) && d.ValueKind == JsonValueKind.Number
                     ? d.GetInt32() : null,
-                Text(m, "trailerYoutubeId")));
+                Text(m, "trailerYoutubeId"),
+                Text(m, "releaseDate")));
         }
 
         return movies;

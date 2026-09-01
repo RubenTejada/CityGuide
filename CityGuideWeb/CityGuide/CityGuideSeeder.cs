@@ -1443,6 +1443,8 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         }
 
         IContentType movieType = _contentTypeService.Get("movie")!;
+        await EnsureMovieReviewSchemaAsync(movieType);
+
         IContentType categoryPage = _contentTypeService.Get("categoryPage")!;
         if (!categoryPage.AllowedContentTypes!.Any(c => c.Key == movieType.Key))
         {
@@ -1457,6 +1459,43 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
                 throw new InvalidOperationException(
                     $"Failed to allow 'movie' under 'categoryPage': {attempt.Result}");
             }
+        }
+    }
+
+    /// <summary>
+    /// Adds the review properties the agent fills from IMDb and Rotten Tomatoes to the
+    /// "movie" document type, so the portal can show the scores and link out to both.
+    /// Guarded per property and run every startup so existing installations pick them up.
+    /// </summary>
+    private async Task EnsureMovieReviewSchemaAsync(IContentType movie)
+    {
+        (string Alias, string Name, int Sort)[] missing =
+            new[]
+            {
+                ("imdbId", "IMDb ID", 8), ("imdbRating", "Rating IMDb", 9),
+                ("imdbVotes", "Votos IMDb", 10), ("rottenTomatoes", "Rotten Tomatoes (%)", 11),
+                ("originalTitle", "Título original", 12),
+            }
+                .Where(p => !movie.PropertyTypeExists(p.Item1))
+                .ToArray();
+        if (missing.Length == 0)
+        {
+            return;
+        }
+
+        IDataType textstring = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.TextstringGuid))!;
+        foreach ((string alias, string name, int sort) in missing)
+        {
+            _logger.LogInformation("CityGuide: adding '{Alias}' property to 'movie'", alias);
+            AddProperty(movie, alias, name, textstring, sort);
+        }
+
+        Attempt<ContentTypeOperationStatus> update =
+            await _contentTypeService.UpdateAsync(movie, Constants.Security.SuperUserKey);
+        if (!update.Success)
+        {
+            throw new InvalidOperationException(
+                $"Failed to add review properties to 'movie': {update.Result}");
         }
     }
 

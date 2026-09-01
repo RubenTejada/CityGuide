@@ -441,6 +441,19 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
     }
 
     /// <summary>
+    /// The text values a document already stores, by alias. Lets a sync keep a value
+    /// it could not refresh this run instead of blanking it, since a PUT replaces the
+    /// whole document.
+    /// </summary>
+    public async Task<Dictionary<string, string?>> GetTextValuesAsync(Guid id)
+    {
+        (_, _, Dictionary<string, object?> values) = await ReadDocumentAsync(id);
+        return values.ToDictionary(
+            v => v.Key,
+            v => v.Value is JsonElement { ValueKind: JsonValueKind.String } e ? e.GetString() : null);
+    }
+
+    /// <summary>
     /// Writes a document's name and values back. Republishes only documents that were
     /// already published, so the agent's drafts stay drafts until someone reviews them.
     /// </summary>

@@ -7,7 +7,8 @@ namespace CityGuide.Agent;
 ///    (name, address, phone, coordinates from the Caribbean API, with config
 ///    fallbacks for coordinates the API doesn't have), and
 ///  - maintains the movie catalog ("movie" documents under the Cines category)
-///    with synopsis, poster and a YouTube trailer in Latin American Spanish.
+///    with synopsis, poster, a YouTube trailer in Latin American Spanish and the
+///    IMDb / Rotten Tomatoes scores the portal links to.
 /// All cinema-sync content is published immediately: it is deterministic data
 /// from Caribbean Cinemas, not AI-generated drafts.
 /// </summary>
@@ -15,6 +16,7 @@ public class CinemaSync(
     UmbracoClient umbraco,
     CaribbeanCinemasClient caribbean,
     YoutubeTrailerFinder trailers,
+    MovieRatingsClient reviews,
     CinemasConfig config)
 {
     public async Task RunAsync()
@@ -143,6 +145,14 @@ public class CinemaSync(
 
             string? trailerId = await trailers.FindAsync(movie.Name) ?? movie.TrailerYoutubeId;
 
+            // A PUT replaces the document, so the scores of a movie whose lookup
+            // fails this run have to be read back and written again unchanged.
+            Dictionary<string, string?> stored = match is not null && reviews.Enabled
+                ? await umbraco.GetTextValuesAsync(match.Id)
+                : [];
+            MovieRatings? scores = await reviews.LookupAsync(
+                movie.Name, movie.Year, stored.GetValueOrDefault("imdbId"));
+
             object[] values =
             [
                 new { alias = "synopsis", value = (object)StripHtml(movie.Synopsis ?? "") },
@@ -153,6 +163,11 @@ public class CinemaSync(
                 new { alias = "rating", value = (object)(movie.Rating ?? "") },
                 new { alias = "duration", value = (object)(movie.Duration?.ToString() ?? "") },
                 new { alias = "caribbeanSlug", value = (object)movie.UrlSlug },
+                new { alias = "imdbId", value = Kept(scores?.ImdbId, stored, "imdbId") },
+                new { alias = "imdbRating", value = Kept(scores?.ImdbRating, stored, "imdbRating") },
+                new { alias = "imdbVotes", value = Kept(scores?.ImdbVotes, stored, "imdbVotes") },
+                new { alias = "rottenTomatoes", value = Kept(scores?.RottenTomatoes, stored, "rottenTomatoes") },
+                new { alias = "originalTitle", value = Kept(scores?.OriginalTitle, stored, "originalTitle") },
             ];
 
             try
@@ -181,6 +196,11 @@ public class CinemaSync(
             Console.WriteLine($"  - movie {stale.Name} (no longer in cartelera)");
         }
     }
+
+    /// <summary>The freshly looked-up value, or the one already stored when the lookup
+    /// came back empty — never a blank that would drop a score the portal was showing.</summary>
+    private static object Kept(string? found, Dictionary<string, string?> stored, string alias) =>
+        found ?? stored.GetValueOrDefault(alias) ?? "";
 
     private static string StripHtml(string value) =>
         System.Text.RegularExpressions.Regex.Replace(value, "<[^>]+>", string.Empty).Trim();

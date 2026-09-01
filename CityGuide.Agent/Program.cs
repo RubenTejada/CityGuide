@@ -726,7 +726,8 @@ if (config.Cinemas.Enabled && config.Cinemas.Sites.Count > 0 && SectionSelected(
     try
     {
         var cinemaSync = new CinemaSync(
-            umbraco, new CaribbeanCinemasClient(http), new YoutubeTrailerFinder(http), config.Cinemas);
+            umbraco, new CaribbeanCinemasClient(http), new YoutubeTrailerFinder(http),
+            new MovieRatingsClient(http, config.Cinemas.Ratings), config.Cinemas);
         await cinemaSync.RunAsync();
     }
     catch (Exception ex)

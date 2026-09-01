@@ -93,6 +93,22 @@ public class CinemasConfig
     /// <summary>Caribbean (Indy) site ids to sync, with coordinate fallbacks for
     /// sites where the Caribbean API has no lat/lon.</summary>
     public List<CinemaSiteConfig> Sites { get; set; } = [];
+
+    /// <summary>IMDb / Rotten Tomatoes lookup for the movie catalog.</summary>
+    public MovieRatingsConfig Ratings { get; set; } = new();
+}
+
+public class MovieRatingsConfig
+{
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>TMDb v3 key. Resolves the Spanish release title to an IMDb id;
+    /// without it only movies whose title is not translated can be matched.</summary>
+    public string TmdbApiKey { get; set; } = "";
+
+    /// <summary>OMDb key. Turns an IMDb id into the IMDb and Rotten Tomatoes
+    /// scores; without it the portal links to IMDb but shows no scores.</summary>
+    public string OmdbApiKey { get; set; } = "";
 }
 
 public class CinemaSiteConfig

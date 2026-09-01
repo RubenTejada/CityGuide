@@ -57,6 +57,10 @@ jobs:
           Umbraco__BaseUrl: https://quehacerrd-cms.azurewebsites.net
           Umbraco__ClientSecret: ${{ secrets.UMBRACO_AGENT_CLIENT_SECRET }}
           Google__ApiKey: ${{ secrets.GOOGLE_API_KEY }}
+          # IMDb / Rotten Tomatoes scores on the movie catalog. Missing secrets
+          # only mean no scores: the cinema sync runs exactly as before.
+          Cinemas__Ratings__TmdbApiKey: ${{ secrets.TMDB_API_KEY }}
+          Cinemas__Ratings__OmdbApiKey: ${{ secrets.OMDB_API_KEY }}
           SECTION: ${{ inputs.section }}
           RECATEGORIZE: ${{ inputs.recategorize_events }}
         # The scheduled run has no inputs, so both are empty and the agent runs
