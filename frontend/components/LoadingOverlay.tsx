@@ -31,7 +31,9 @@ export default function LoadingOverlay({
     >
       <div className="sticky top-[40vh] flex h-fit flex-col items-center gap-2 py-6">
         <span className="h-9 w-9 animate-spin rounded-full border-4 border-white/30 border-t-white" />
-        <span className="text-sm font-medium text-white drop-shadow">{label}</span>
+        <span className="text-sm font-medium text-white drop-shadow">
+          {label}
+        </span>
       </div>
     </div>
   );
@@ -39,11 +41,60 @@ export default function LoadingOverlay({
 
 const NavigateContext = createContext<((href: string) => void) | null>(null);
 
+const PendingContext = createContext(false);
+
 /**
- * Marks a region whose content is re-rendered by the server on navigation
- * (date chips, filters). Links inside it rendered as `PendingLink` navigate
- * within a transition, and the region is covered by `LoadingOverlay` until
- * the new content arrives.
+ * Runs the navigations of every `PendingLink` below it inside one transition,
+ * so the `PendingRegion` under the same provider knows when to cover itself.
+ * The links and the region they cover can sit in different subtrees (the nav
+ * bar navigates, the page body is what gets replaced).
+ */
+export function PendingNavProvider({
+  children,
+  scroll = false,
+}: {
+  children: ReactNode;
+  /** Scroll to the top once the new page arrives (section changes do). */
+  scroll?: boolean;
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+
+  function navigate(href: string) {
+    startTransition(() => router.push(href, { scroll }));
+  }
+
+  return (
+    <NavigateContext.Provider value={navigate}>
+      <PendingContext.Provider value={pending}>
+        {children}
+      </PendingContext.Provider>
+    </NavigateContext.Provider>
+  );
+}
+
+/** The area the server re-renders: covered while its provider navigates. */
+export function PendingRegion({
+  children,
+  className,
+  label,
+}: {
+  children: ReactNode;
+  className?: string;
+  label?: string;
+}) {
+  const pending = useContext(PendingContext);
+  return (
+    <div className={`relative ${className ?? ""}`} aria-busy={pending}>
+      {children}
+      <LoadingOverlay show={pending} label={label} />
+    </div>
+  );
+}
+
+/**
+ * Provider and region in one, for a self-contained block whose own links
+ * (date chips, filters) re-render it — the common case.
  */
 export function PendingArea({
   children,
@@ -54,20 +105,12 @@ export function PendingArea({
   className?: string;
   label?: string;
 }) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
-
-  function navigate(href: string) {
-    startTransition(() => router.push(href, { scroll: false }));
-  }
-
   return (
-    <NavigateContext.Provider value={navigate}>
-      <div className={`relative ${className ?? ""}`} aria-busy={pending}>
+    <PendingNavProvider>
+      <PendingRegion className={className} label={label}>
         {children}
-        <LoadingOverlay show={pending} label={label} />
-      </div>
-    </NavigateContext.Provider>
+      </PendingRegion>
+    </PendingNavProvider>
   );
 }
 
@@ -88,7 +131,8 @@ export function PendingLink({
       className={className}
       onClick={(e) => {
         // Let the browser handle new-tab/window clicks.
-        if (!navigate || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        if (!navigate || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)
+          return;
         e.preventDefault();
         navigate(href);
       }}

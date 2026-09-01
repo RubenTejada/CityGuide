@@ -153,14 +153,14 @@ export default async function CityLandingPage({
           itemListJsonLd(`Secciones de ${city.name}`, sections),
         ]}
       />
-      <section className="border-b border-neutral-200 bg-white/60">
-        <div className="mx-auto max-w-6xl px-6 py-8">
+      <section className="bg-white/60">
+        <div className="mx-auto max-w-6xl px-6 pt-8 pb-3">
           <h1 className="text-3xl font-bold sm:text-4xl">{city.name}</h1>
           <p className="mt-2 max-w-2xl text-neutral-600">{text(city, "intro")}</p>
         </div>
       </section>
 
-      <section className="mx-auto grid max-w-6xl gap-8 px-6 py-10 lg:grid-cols-[1fr_320px]">
+      <section className="mx-auto grid max-w-6xl gap-8 px-6 pt-4 pb-10 lg:grid-cols-[1fr_320px]">
         <div>
           <HeroCarousel slides={slides} />
 
