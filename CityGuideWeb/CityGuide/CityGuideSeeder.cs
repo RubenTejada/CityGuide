@@ -1120,7 +1120,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
     /// Seeds the event catalog (with categories) under Santo Domingo's "Eventos" page.
     /// Idempotent per event: only creates the seed events whose name is missing, so new
     /// entries added to <see cref="Events"/> reach existing installations. Also backfills
-    /// the "category" value on pre-existing events that lack it.
+    /// the "category" and photo of pre-existing seed events that lack them.
     /// </summary>
     private bool EnsureEventsSeeded()
     {
@@ -1154,9 +1154,19 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         IMedia? photoFolder = null;
         IMedia PhotoFolder() => photoFolder ??= GetOrCreateRootMediaFolder("Eventos");
 
+        // Backfill the category on seeded events that lack one, by name. Only the
+        // events seeded here have a known category: the agent's imported events get
+        // theirs from the event sync, and a blanket value here would relabel every
+        // one of them (they all read "Gastronomía" until this stopped doing that).
+        Dictionary<string, string> categoriesByName = Events.ToDictionary(s => s.Name, s => s.Category);
         foreach (IContent item in existing.Where(c => string.IsNullOrEmpty(c.GetValue<string>("category"))))
         {
-            item.SetValue("category", "Gastronomía");
+            if (!categoriesByName.TryGetValue(item.Name!, out string? category))
+            {
+                continue;
+            }
+
+            item.SetValue("category", category);
             _contentService.Save(item);
             changed = true;
         }

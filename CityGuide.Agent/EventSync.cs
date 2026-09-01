@@ -20,10 +20,12 @@ public record ScrapedEvent(
 /// the cinema sync). Only events this agent created (source = "agent:*") are
 /// ever deleted, and only once their date has passed — manual events are never
 /// touched. All fetches go through the throttled HttpClient: slow but never
-/// blocked. No LLM tokens are spent here.
+/// blocked. Scraping and dedupe are plain code; the one model call per source is
+/// the category (see <see cref="EventCategories"/>), which no portal states.
 /// </summary>
 public partial class EventSync(
-    HttpClient http, UmbracoClient umbraco, EventsConfig config, GooglePlacesClient? google = null)
+    HttpClient http, UmbracoClient umbraco, EventsConfig config,
+    GooglePlacesClient? google = null, IEnrichmentClient? enricher = null)
 {
     [GeneratedRegex("""<script type=.application/ld\+json.[^>]*>(.*?)</script>""", RegexOptions.Singleline)]
     private static partial Regex JsonLdBlocks();
@@ -93,19 +95,22 @@ public partial class EventSync(
             }
 
             Console.WriteLine($"  {source.Name}: {events.Count} eventos futuros");
-            foreach (ScrapedEvent ev in events)
+
+            List<ScrapedEvent> pending =
+            [
+                .. events.Where(ev =>
+                    // portals keep cancelled/postponed events listed for refunds
+                    !ev.Name.Contains("cancelado", StringComparison.OrdinalIgnoreCase)
+                    && !ev.Name.Contains("pospuesto", StringComparison.OrdinalIgnoreCase)
+                    // already in CMS, or same event seen via another portal
+                    && !byUrl.ContainsKey(ev.Url)
+                    && byNameDate.Add(NameDateKey(ev.Name, ev.Start))),
+            ];
+
+            Dictionary<int, string> categories = await ClassifyAsync(pending);
+
+            foreach ((ScrapedEvent ev, int position) in pending.Select((ev, i) => (ev, i)))
             {
-                if (ev.Name.Contains("cancelado", StringComparison.OrdinalIgnoreCase)
-                    || ev.Name.Contains("pospuesto", StringComparison.OrdinalIgnoreCase))
-                {
-                    continue; // portals keep cancelled/postponed events listed for refunds
-                }
-
-                if (byUrl.ContainsKey(ev.Url) || !byNameDate.Add(NameDateKey(ev.Name, ev.Start)))
-                {
-                    continue; // already in CMS, or same event seen via another portal
-                }
-
                 // Main image, uploaded to the Media library. Image failures never
                 // block creating the event.
                 string? photoValue = null;
@@ -140,12 +145,16 @@ public partial class EventSync(
                     new { alias = "address", value = (object)(ev.Address ?? "") },
                     new { alias = "website", value = (object)ev.Url },
                     new { alias = "source", value = (object)$"agent:{source.Name}" },
+                    .. categories.TryGetValue(position, out string? category)
+                        ? new object[] { new { alias = "category", value = (object)category } }
+                        : [],
                 ];
                 try
                 {
                     Guid id = await umbraco.CreateDocumentAsync(eventos.Value.Id, eventTypeId, ev.Name, values);
                     byUrl[ev.Url] = id;
-                    Console.WriteLine($"  + {ev.Name} ({ev.Start:yyyy-MM-dd})");
+                    Console.WriteLine($"  + {ev.Name} ({ev.Start:yyyy-MM-dd})"
+                        + (categories.TryGetValue(position, out string? label) ? $" [{label}]" : ""));
                 }
                 catch (Exception ex)
                 {
@@ -159,6 +168,107 @@ public partial class EventSync(
             await umbraco.DeleteDocumentAsync(id);
             Console.WriteLine($"  - {name} (evento pasado)");
         }
+    }
+
+    /// <summary>
+    /// Categories the events about to be created, in batches, keyed by their
+    /// position in <paramref name="events"/>. Without a model — or when the call
+    /// fails — every position is missing and the events are created without a
+    /// category, which the frontend simply omits.
+    /// </summary>
+    private async Task<Dictionary<int, string>> ClassifyAsync(IReadOnlyList<ScrapedEvent> events)
+    {
+        var categories = new Dictionary<int, string>();
+        if (enricher is null || events.Count == 0)
+        {
+            return categories;
+        }
+
+        for (int offset = 0; offset < events.Count; offset += EventCategories.BatchSize)
+        {
+            List<ScrapedEvent> batch = [.. events.Skip(offset).Take(EventCategories.BatchSize)];
+            try
+            {
+                foreach ((int position, string category) in await enricher.ClassifyEventsAsync(batch))
+                {
+                    categories[offset + position] = category;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"  ! categorización: {ex.Message}");
+            }
+        }
+
+        return categories;
+    }
+
+    /// <summary>
+    /// Maintenance pass over the events this agent already created: recategorizes
+    /// them and reports what would change, writing only with <paramref name="apply"/>.
+    /// Events created by hand (or seeded) keep the category their editor chose —
+    /// this only touches "agent:*" ones, which is also what the sync deletes.
+    /// </summary>
+    public async Task RecategorizeAsync(bool apply)
+    {
+        Console.WriteLine(apply
+            ? $"\n== Recategorizando eventos del agente en {config.CityPath}/eventos"
+            : $"\n== Recategorización de eventos (simulación; agrega --apply para aplicarla)");
+        if (enricher is null)
+        {
+            Console.Error.WriteLine("  Sin modelo configurado — nada que hacer.");
+            return;
+        }
+
+        (Guid Id, string Name)? eventos = await umbraco.GetContentByPathAsync($"{config.CityPath}/eventos");
+        if (eventos is null)
+        {
+            Console.Error.WriteLine("  Events page not found in CMS, skipping.");
+            return;
+        }
+
+        Guid eventTypeId = await umbraco.GetDocumentTypeIdAsync("Event");
+        var ids = new List<Guid>();
+        var current = new List<string?>();
+        var events = new List<ScrapedEvent>();
+        foreach (UmbracoClient.ChildDocument child in await umbraco.GetChildrenAsync(eventos.Value.Id))
+        {
+            if (child.DocumentTypeId != eventTypeId
+                || await umbraco.GetDocumentTextValuesAsync(child.Id) is not { } detail
+                || detail.TextValues.GetValueOrDefault("source")?.StartsWith("agent:") != true)
+            {
+                continue;
+            }
+
+            ids.Add(child.Id);
+            current.Add(detail.TextValues.GetValueOrDefault("category"));
+            events.Add(new ScrapedEvent(
+                child.Name, detail.TextValues.GetValueOrDefault("website") ?? "", DateTime.Today, null,
+                detail.TextValues.GetValueOrDefault("venueName"), null,
+                detail.TextValues.GetValueOrDefault("description")));
+        }
+
+        Console.WriteLine($"  {events.Count} eventos creados por el agente");
+        Dictionary<int, string> categories = await ClassifyAsync(events);
+        var changed = 0;
+        for (var i = 0; i < events.Count; i++)
+        {
+            if (!categories.TryGetValue(i, out string? category) || category == current[i])
+            {
+                continue;
+            }
+
+            changed++;
+            Console.WriteLine($"  {events[i].Name}: {current[i] ?? "(sin categoría)"} → {category}");
+            if (apply)
+            {
+                await umbraco.SetTextValueAsync(ids[i], "category", category);
+            }
+        }
+
+        Console.WriteLine(apply
+            ? $"  {changed} eventos recategorizados"
+            : $"  {changed} eventos cambiarían de categoría");
     }
 
     // ---- Strategies ----

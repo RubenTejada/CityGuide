@@ -15,6 +15,14 @@ on:
           runs everything, like the daily schedule.
         required: false
         default: ""
+      recategorize_events:
+        description: >-
+          Maintenance pass instead of the ingestion run: recategorizes the
+          events the agent created (the imported ones carried no category until
+          the sync learned to ask the model for one) and writes the result.
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   id-token: write
@@ -50,10 +58,13 @@ jobs:
           Umbraco__ClientSecret: ${{ secrets.UMBRACO_AGENT_CLIENT_SECRET }}
           Google__ApiKey: ${{ secrets.GOOGLE_API_KEY }}
           SECTION: ${{ inputs.section }}
-        # The scheduled run has no inputs, so SECTION is empty and the agent
-        # runs every section, as before.
+          RECATEGORIZE: ${{ inputs.recategorize_events }}
+        # The scheduled run has no inputs, so both are empty and the agent runs
+        # every section, as before.
         run: |
-          if [ -n "$SECTION" ]; then
+          if [ "$RECATEGORIZE" = "true" ]; then
+            dotnet run -c Release -- --recategorize-events --apply
+          elif [ -n "$SECTION" ]; then
             dotnet run -c Release -- --section "$SECTION"
           else
             dotnet run -c Release

@@ -5,15 +5,18 @@ namespace CityGuide.Agent;
 public record Enrichment(string Description, string[] Facilities);
 
 /// <summary>
-/// LLM-backed enrichment: Spanish description + facility mapping for a newly
-/// discovered place. Implemented by AzureOpenAiClient (production) and
-/// ClaudeClient (fallback). This is the ONLY step of the agent that uses a
-/// model — everything else (dedupe, rating refresh, cinema sync, trailers)
-/// is plain code.
+/// The agent's model-backed steps: a Spanish description + facility mapping for a
+/// newly discovered place, and the category of a scraped event. Implemented by
+/// AzureOpenAiClient (production) and ClaudeClient (fallback). Everything else
+/// (dedupe, rating refresh, cinema sync, trailers, event scraping) is plain code.
 /// </summary>
 public interface IEnrichmentClient
 {
     Task<Enrichment> EnrichAsync(DiscoveredPlace place, string? categoryPrompt = null);
+
+    /// <summary>Categories a batch of scraped events, keyed by their position in
+    /// the list. Positions the model left out stay uncategorized.</summary>
+    Task<Dictionary<int, string>> ClassifyEventsAsync(IReadOnlyList<ScrapedEvent> events);
 }
 
 /// <summary>Prompt, schema and response parsing shared by both model providers.</summary>

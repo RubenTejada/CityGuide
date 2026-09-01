@@ -31,9 +31,34 @@ public class AzureOpenAiClient(HttpClient http, AzureOpenAiConfig config) : IEnr
 
     public async Task<Enrichment> EnrichAsync(DiscoveredPlace place, string? categoryPrompt = null)
     {
+        JsonElement? arguments = await CallToolAsync(
+            EnrichmentPrompt.ToolName, EnrichmentPrompt.ToolDescription, EnrichmentPrompt.Schema,
+            EnrichmentPrompt.UserMessage(place, categoryPrompt), place.Name);
+        // The content filter occasionally trips on nightlife venues; create the
+        // draft without a description rather than losing the place.
+        return arguments is null ? new Enrichment("", []) : EnrichmentPrompt.Parse(arguments.Value);
+    }
+
+    public async Task<Dictionary<int, string>> ClassifyEventsAsync(IReadOnlyList<ScrapedEvent> events)
+    {
+        JsonElement? arguments = await CallToolAsync(
+            EventCategories.ToolName, EventCategories.ToolDescription, EventCategories.Schema,
+            EventCategories.UserMessage(events), "cartelera");
+        return arguments is null ? [] : EventCategories.Parse(arguments.Value, events.Count);
+    }
+
+    /// <summary>
+    /// One forced function call, returning its arguments — null when Azure's
+    /// content filter refused the request, which callers answer with an empty
+    /// result instead of losing the whole item.
+    /// </summary>
+    private async Task<JsonElement?> CallToolAsync(
+        string toolName, string toolDescription, object schema, string userMessage, string subject)
+    {
         var payload = new
         {
-            max_tokens = 1024,
+            // Room for the batched event classification; a description never nears it.
+            max_tokens = 2048,
             tools = new object[]
             {
                 new
@@ -41,16 +66,16 @@ public class AzureOpenAiClient(HttpClient http, AzureOpenAiConfig config) : IEnr
                     type = "function",
                     function = new
                     {
-                        name = EnrichmentPrompt.ToolName,
-                        description = EnrichmentPrompt.ToolDescription,
-                        parameters = EnrichmentPrompt.Schema,
+                        name = toolName,
+                        description = toolDescription,
+                        parameters = schema,
                     },
                 },
             },
-            tool_choice = new { type = "function", function = new { name = EnrichmentPrompt.ToolName } },
+            tool_choice = new { type = "function", function = new { name = toolName } },
             messages = new object[]
             {
-                new { role = "user", content = EnrichmentPrompt.UserMessage(place, categoryPrompt) },
+                new { role = "user", content = userMessage },
             },
         };
 
@@ -58,7 +83,7 @@ public class AzureOpenAiClient(HttpClient http, AzureOpenAiConfig config) : IEnr
             + $"/chat/completions?api-version={config.ApiVersion}";
 
         // Over-quota deployments stall or 429 for up to a minute; retry with
-        // backoff instead of failing the place.
+        // backoff instead of failing the item.
         HttpResponseMessage? response = null;
         for (int attempt = 1; ; attempt++)
         {
@@ -84,10 +109,8 @@ public class AzureOpenAiClient(HttpClient http, AzureOpenAiConfig config) : IEnr
                 string body = await response.Content.ReadAsStringAsync();
                 if (body.Contains("content_filter", StringComparison.Ordinal))
                 {
-                    // Azure's content filter occasionally trips on nightlife venues;
-                    // create the draft without a description rather than losing the place.
-                    Console.Error.WriteLine($"    (content filter en '{place.Name}' — draft sin descripción)");
-                    return new Enrichment("", []);
+                    Console.Error.WriteLine($"    (content filter en '{subject}')");
+                    return null;
                 }
 
                 bool retryable = (int)response.StatusCode is 429 or >= 500;
@@ -113,7 +136,7 @@ public class AzureOpenAiClient(HttpClient http, AzureOpenAiConfig config) : IEnr
         {
             string arguments = toolCalls[0].GetProperty("function").GetProperty("arguments").GetString() ?? "{}";
             using JsonDocument args = JsonDocument.Parse(arguments);
-            return EnrichmentPrompt.Parse(args.RootElement);
+            return args.RootElement.Clone();
         }
 
         throw new InvalidOperationException("Azure OpenAI response contained no tool call.");

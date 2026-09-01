@@ -111,6 +111,17 @@ if (args.Contains("--scrape-events"))
     return 0;
 }
 
+// Maintenance pass: recategorize the events the agent already created — the sync
+// left them without a category until it learned to ask for one, and a startup of
+// the CMS stamped every category-less event as "Gastronomía". Prints the plan and
+// changes nothing without --apply.
+if (args.Contains("--recategorize-events"))
+{
+    await new EventSync(http, umbraco, config.Events, google, enricher)
+        .RecategorizeAsync(args.Contains("--apply"));
+    return 0;
+}
+
 Dictionary<string, Guid> knownPlaceIds = await umbraco.GetKnownGooglePlaceIdsAsync();
 Console.WriteLine($"Known places in CMS: {knownPlaceIds.Count}");
 
@@ -485,7 +496,7 @@ if (config.Events.Enabled && config.Events.Sources.Count > 0 && SectionSelected(
 {
     try
     {
-        await new EventSync(http, umbraco, config.Events, google).RunAsync();
+        await new EventSync(http, umbraco, config.Events, google, enricher).RunAsync();
     }
     catch (Exception ex)
     {

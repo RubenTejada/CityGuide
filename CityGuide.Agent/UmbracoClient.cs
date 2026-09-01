@@ -507,6 +507,17 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
     }
 
     /// <summary>
+    /// Sets one text property of an existing document, preserving every other value
+    /// and its published state.
+    /// </summary>
+    public async Task SetTextValueAsync(Guid id, string alias, string value)
+    {
+        (string name, string state, Dictionary<string, object?> values) = await ReadDocumentAsync(id);
+        values[alias] = value;
+        await WriteDocumentAsync(id, name, values, state);
+    }
+
+    /// <summary>
     /// Renames a document, preserving every value. Used when a second place turns up
     /// with a name already taken by a sibling: both are renamed to say where they are,
     /// instead of letting Umbraco number one of them.
