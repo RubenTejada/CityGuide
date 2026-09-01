@@ -17,6 +17,9 @@ public record DiscoveredPlace(
     int? UserRatingCount,
     string? PhotoName);
 
+/// <summary>A rectangle a text search is confined to, corner to corner.</summary>
+public record GeoArea(double SouthLat, double WestLng, double NorthLat, double EastLng);
+
 /// <summary>Google Places API (New) — Text Search.</summary>
 public class GooglePlacesClient(HttpClient http, string apiKey)
 {
@@ -27,7 +30,7 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
     /// <paramref name="max"/>: the point of a bigger run is the best-known
     /// places, not an arbitrary slice of relevance order.
     /// </summary>
-    public async Task<List<DiscoveredPlace>> SearchAsync(string query, int max)
+    public async Task<List<DiscoveredPlace>> SearchAsync(string query, int max, GeoArea? area = null)
     {
         var collected = new List<PlaceModel>();
         string? pageToken = null;
@@ -41,6 +44,17 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
                     languageCode = "es",
                     pageSize = Math.Clamp(max - collected.Count, 1, 20),
                     pageToken,
+                    // Without this Google answers a city query with the whole country:
+                    // "bares en Santo Domingo" brings back Punta Cana. Text Search only
+                    // takes a rectangle here, never a radius.
+                    locationRestriction = area is null ? null : new
+                    {
+                        rectangle = new
+                        {
+                            low = new { latitude = area.SouthLat, longitude = area.WestLng },
+                            high = new { latitude = area.NorthLat, longitude = area.EastLng },
+                        },
+                    },
                 }),
             };
             request.Headers.Add("X-Goog-Api-Key", apiKey);

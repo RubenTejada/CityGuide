@@ -30,7 +30,7 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         return (doc.RootElement.GetProperty("id").GetGuid(), doc.RootElement.GetProperty("name").GetString()!);
     }
 
-    public record CityAgentConfig(string CityName, Dictionary<string, string> CategoryPrompts);
+    public record CityAgentConfig(string CityName, Dictionary<string, string> CategoryPrompts, GeoArea? Area);
 
     /// <summary>
     /// Agent configuration stored on the city node ("Agente" tab): the city name
@@ -68,7 +68,30 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
             }
         }
 
-        return new CityAgentConfig(cityName, prompts);
+        return new CityAgentConfig(cityName, prompts, ParseArea(Text("agentArea")));
+    }
+
+    /// <summary>"lat,lng;lat,lng" (southwest corner, then northeast) into a search
+    /// rectangle. Anything that does not parse means no restriction, as an empty
+    /// field does: a malformed box must not silently shrink a run to nothing.</summary>
+    private static GeoArea? ParseArea(string? value)
+    {
+        string[] corners = (value ?? "").Split(';',
+            StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        if (corners.Length != 2)
+        {
+            return null;
+        }
+
+        double[] numbers = [.. corners
+            .SelectMany(c => c.Split(',', StringSplitOptions.TrimEntries))
+            .Select(n => double.TryParse(n, System.Globalization.CultureInfo.InvariantCulture, out double d)
+                ? d
+                : double.NaN)];
+
+        return numbers.Length == 4 && !numbers.Any(double.IsNaN)
+            ? new GeoArea(numbers[0], numbers[1], numbers[2], numbers[3])
+            : null;
     }
 
     /// <summary>Google Place ID → document id of every published place — used for dedupe and rating refresh.</summary>

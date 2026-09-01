@@ -686,31 +686,55 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
     private async Task EnsureAgentSchemaAsync()
     {
         IContentType? city = _contentTypeService.Get("city");
-        if (city is null || city.PropertyTypeExists("agentCityName"))
+        if (city is null)
         {
             return;
         }
 
-        _logger.LogInformation("CityGuide: adding 'Agente' tab to 'city'");
         IDataType textstring = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.TextstringGuid))!;
         IDataType textarea = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.TextareaGuid))!;
 
-        city.AddPropertyType(new PropertyType(_shortStringHelper, textstring, "agentCityName")
+        // Each property is guarded on its own: an installation seeded before a
+        // property existed still gets it, which a single tab-level guard would skip.
+        var wanted = new (string Alias, IDataType Editor, string Name, string Description, int SortOrder)[]
         {
-            Name = "Nombre para búsquedas",
-            Description = "Cómo el agente nombra la ciudad en las búsquedas de Google, "
-                + "p. ej. \"Santo Domingo, República Dominicana\". Sustituye {city} en las consultas.",
-            SortOrder = 1,
-        }, "agent", "Agente");
-        city.AddPropertyType(new PropertyType(_shortStringHelper, textarea, "agentPrompts")
-        {
-            Name = "Prompts por categoría",
-            Description = "Una línea por categoría: <slug-de-categoría>: <instrucciones>. "
+            ("agentCityName", textstring, "Nombre para búsquedas",
+                "Cómo el agente nombra la ciudad en las búsquedas de Google, "
+                + "p. ej. \"Santo Domingo, República Dominicana\". Sustituye {city} en las consultas.", 1),
+            ("agentPrompts", textarea, "Prompts por categoría",
+                "Una línea por categoría: <slug-de-categoría>: <instrucciones>. "
                 + "P. ej. \"bares-y-clubes: Tono nocturno; menciona la música y el ambiente.\" "
-                + "El agente las añade al prompt que escribe las descripciones.",
-            SortOrder = 2,
-        }, "agent", "Agente");
+                + "El agente las añade al prompt que escribe las descripciones.", 2),
+            ("agentArea", textstring, "Área de búsqueda",
+                "Rectángulo al que se limitan las búsquedas de Google: esquina suroeste y "
+                + "noreste, \"lat,lng;lat,lng\". Sin él Google responde con todo el país "
+                + "(bares de Punta Cana en una búsqueda de Santo Domingo).", 3),
+        };
 
+        var added = new List<string>();
+        foreach ((string alias, IDataType editor, string name, string description, int sortOrder) in wanted)
+        {
+            if (city.PropertyTypeExists(alias))
+            {
+                continue;
+            }
+
+            city.AddPropertyType(new PropertyType(_shortStringHelper, editor, alias)
+            {
+                Name = name,
+                Description = description,
+                SortOrder = sortOrder,
+            }, "agent", "Agente");
+            added.Add(alias);
+        }
+
+        if (added.Count == 0)
+        {
+            return;
+        }
+
+        _logger.LogInformation("CityGuide: adding {Properties} to the 'Agente' tab on 'city'",
+            string.Join(", ", added));
         Attempt<ContentTypeOperationStatus> attempt =
             await _contentTypeService.UpdateAsync(city, Constants.Security.SuperUserKey);
         if (!attempt.Success)
@@ -775,27 +799,51 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
     }
 
     /// <summary>
-    /// Seeds default agent configuration on the Santo Domingo city node when the
-    /// "Agente" tab is still empty. Runs every startup, guarded by value.
+    /// Seeds default agent configuration on the Santo Domingo city node. Runs every
+    /// startup and fills each field only while it is still empty, so a field added
+    /// after the node was seeded gets its default and an editor's own value is kept.
     /// </summary>
     private bool EnsureAgentConfigSeeded()
     {
         IContent? site = _contentService.GetRootContent().FirstOrDefault(c => c.ContentType.Alias == "site");
         IContent? city = site is null ? null : Descendant(site, "city", "Santo Domingo");
-        if (city is null || !city.HasProperty("agentCityName")
-            || !string.IsNullOrWhiteSpace(city.GetValue<string>("agentCityName")))
+        if (city is null)
         {
             return false;
         }
 
-        _logger.LogInformation("CityGuide: seeding agent config on 'Santo Domingo'");
-        city.SetValue("agentCityName", "Santo Domingo, República Dominicana");
-        city.SetValue("agentPrompts",
-            """
-            restaurantes: Menciona el tipo de cocina y para qué ocasión funciona el lugar.
-            bares-y-clubes: Tono nocturno y cercano; menciona la música y el ambiente.
-            tiendas: Menciona qué se consigue allí y por qué vale la pena visitarla.
-            """);
+        var defaults = new (string Alias, string Value)[]
+        {
+            ("agentCityName", "Santo Domingo, República Dominicana"),
+            ("agentPrompts",
+                """
+                restaurantes: Menciona el tipo de cocina y para qué ocasión funciona el lugar.
+                bares-y-clubes: Tono nocturno y cercano; menciona la música y el ambiente.
+                tiendas: Menciona qué se consigue allí y por qué vale la pena visitarla.
+                """),
+            // Greater Santo Domingo: the Distrito Nacional plus Este, Norte and Oeste.
+            // Boca Chica, Punta Cana and Santiago fall outside it.
+            ("agentArea", "18.35,-70.05;18.62,-69.75"),
+        };
+
+        var seeded = new List<string>();
+        foreach ((string alias, string value) in defaults)
+        {
+            if (!city.HasProperty(alias) || !string.IsNullOrWhiteSpace(city.GetValue<string>(alias)))
+            {
+                continue;
+            }
+
+            city.SetValue(alias, value);
+            seeded.Add(alias);
+        }
+
+        if (seeded.Count == 0)
+        {
+            return false;
+        }
+
+        _logger.LogInformation("CityGuide: seeding {Fields} on 'Santo Domingo'", string.Join(", ", seeded));
         _contentService.Save(city);
         _contentService.Publish(city, ["*"]);
         return true;

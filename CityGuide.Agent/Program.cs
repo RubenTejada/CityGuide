@@ -162,7 +162,7 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelec
         }
     }
 
-    List<DiscoveredPlace> places = await google.SearchAsync(query, run.MaxPlaces);
+    List<DiscoveredPlace> places = await google.SearchAsync(query, run.MaxPlaces, cityConfig?.Area);
     Console.WriteLine($"  Google returned {places.Count} places");
     var runCreated = 0;
     var runSkipped = 0;
