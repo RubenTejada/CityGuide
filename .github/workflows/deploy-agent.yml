@@ -29,6 +29,10 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       # The daily Container Apps Job (cityguide-agent) pulls :latest on each run,
-      # so pushing a new image is enough to "deploy" the agent.
-      - name: Build and push image (ACR build)
-        run: az acr build -r quehacerrd -t cityguide-agent:latest -f CityGuide.Agent/Dockerfile .
+      # so pushing a new image is enough to "deploy" the agent. Built on the
+      # runner (ACR Tasks is not permitted on this subscription).
+      - name: Build and push image
+        run: |
+          az acr login -n quehacerrd
+          docker build -f CityGuide.Agent/Dockerfile -t quehacerrd.azurecr.io/cityguide-agent:latest .
+          docker push quehacerrd.azurecr.io/cityguide-agent:latest
