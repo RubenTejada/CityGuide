@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import BranchesMap, { type BranchMarker } from "@/components/BranchesMap";
+import MarkersMap, { type MapMarker } from "@/components/MarkersMap";
 import TrailerModal from "@/components/cine/TrailerModal";
 
 export interface MovieCardCinema {
@@ -50,7 +50,7 @@ export default function MovieCard({
     0,
   );
 
-  const markers: BranchMarker[] = movie.cinemas.map((c) => ({
+  const markers: MapMarker[] = movie.cinemas.map((c) => ({
     id: c.id,
     name: `Caribbean Cinemas ${c.name}`,
     url: c.portalPath,
@@ -160,7 +160,7 @@ export default function MovieCard({
               <p className="mb-2 text-sm font-medium text-neutral-600">
                 Cines que presentan {movie.name}
               </p>
-              <BranchesMap branches={markers} />
+              <MarkersMap markers={markers} />
             </div>
           )}
         </div>

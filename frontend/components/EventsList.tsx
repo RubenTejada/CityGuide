@@ -4,6 +4,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import FilterPills from "./FilterPills";
+import MarkersMap, { type MapMarker } from "./MarkersMap";
+import ViewToggle, { type ListingView } from "./ViewToggle";
 
 export interface EventEntry {
   id: string;
@@ -15,6 +17,26 @@ export interface EventEntry {
   venueName: string;
   description: string;
   photo: string | null;
+  latitude: number;
+  longitude: number;
+}
+
+/** The events that carry coordinates, as map pins. */
+function eventMarkers(events: EventEntry[]): MapMarker[] {
+  return events
+    .filter((event) => event.latitude !== 0 && event.longitude !== 0)
+    .map((event) => ({
+      id: event.id,
+      name: event.name,
+      url: event.href,
+      address: event.venueName || null,
+      latitude: event.latitude,
+      longitude: event.longitude,
+      // An event has no company logo: the pin shows the section glyph and the
+      // poster stays in the popup card.
+      logo: null,
+      photo: event.photo,
+    }));
 }
 
 const monthFormat = new Intl.DateTimeFormat("es-DO", {
@@ -77,6 +99,7 @@ export function EventCard({ event }: { event: EventEntry }) {
 
 export default function EventsList({ events }: { events: EventEntry[] }) {
   const [category, setCategory] = useState<string | null>(null);
+  const [view, setView] = useState<ListingView>("lista");
 
   const categories = useMemo(
     () =>
@@ -109,29 +132,55 @@ export default function EventsList({ events }: { events: EventEntry[] }) {
     else byMonth.set(label, [event]);
   }
 
+  const markers = eventMarkers(filtered);
+  const mappable = eventMarkers(events).length > 0;
+
   return (
     <div>
-      {categories.length > 1 && (
-        <FilterPills
-          options={categories.map((c) => ({ value: c, label: c }))}
-          value={category}
-          onChange={setCategory}
-          allLabel="Todas"
-        />
+      {(categories.length > 1 || mappable) && (
+        <div className="mt-6 flex flex-wrap items-center gap-2">
+          {categories.length > 1 && (
+            <FilterPills
+              options={categories.map((c) => ({ value: c, label: c }))}
+              value={category}
+              onChange={setCategory}
+              allLabel="Todas"
+              className="flex flex-wrap gap-2"
+            />
+          )}
+          {mappable && <ViewToggle value={view} onChange={setView} />}
+        </div>
       )}
 
-      {[...byMonth.entries()].map(([label, group]) => (
-        <section key={label} className="mt-8">
-          <h2 className="text-lg font-semibold text-neutral-800">{label}</h2>
-          <div className="mt-4 grid gap-4 md:grid-cols-2">
-            {group.map((event) => (
-              <EventCard key={event.id} event={event} />
-            ))}
-          </div>
-        </section>
-      ))}
+      {view === "mapa" && filtered.length > 0 && (
+        <div className="mt-8">
+          {markers.length === 0 ? (
+            <p className="text-neutral-500">
+              Ninguno de estos eventos tiene ubicación en el mapa.
+            </p>
+          ) : (
+            <MarkersMap
+              markers={markers}
+              locate
+              heightClass="h-[26rem] lg:h-[34rem]"
+            />
+          )}
+        </div>
+      )}
 
-      {past.length > 0 && (
+      {view === "lista" &&
+        [...byMonth.entries()].map(([label, group]) => (
+          <section key={label} className="mt-8">
+            <h2 className="text-lg font-semibold text-neutral-800">{label}</h2>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              {group.map((event) => (
+                <EventCard key={event.id} event={event} />
+              ))}
+            </div>
+          </section>
+        ))}
+
+      {view === "lista" && past.length > 0 && (
         <section className="mt-10">
           <h2 className="text-lg font-semibold text-neutral-500">Eventos pasados</h2>
           <div className="mt-4 grid gap-4 opacity-70 md:grid-cols-2">

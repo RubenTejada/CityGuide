@@ -73,7 +73,7 @@ ticket page, else a Google photo of its venue. `EventSync` (config section `Even
 Content model (all created in code, not in the backoffice):
 `site` → `city` → `categoryPage` → `subcategory` → `place`, plus `eventsPage`/`eventItem` and `thingsToDoPage` (“Qué Hacer”: aggregation-only guide page — upcoming events by category, attractions open today, idea sections per category; no child content) under each city, and `movie` (agent-maintained cartelera catalog) under `categoryPage`. `categoryPage` accepts `subcategory`, `place`, and `company` children; `subcategory` accepts `place` and `company`; `company` (empresa: logo + general info) accepts only `place` (its branches/sucursales).
 
-Company inheritance: a `place` under a `company` stores only its own data (name, address, coordinates); empty fields (phone, website, hours, description, photo) fall back to the parent company **in the frontend** (`PlaceView` in the catch-all page). Category/subcategory listings show companies as single cards and never flatten their branch places (`listingEntries`); branches appear only inside the company page.
+Company inheritance: a `place` under a `company` stores only its own data (name, address, coordinates); empty fields (phone, website, hours, description, photo) fall back to the parent company **in the frontend** (`PlaceView` in the catch-all page). Category/subcategory listings show companies as single cards and never flatten their branch places (`listingEntries`); branches appear only inside the company page. Every listing (category, subcategory, mall groups) is ordered best rated first by `listingEntriesByRating`: a company or mall carries no rating of its own, so it ranks by its best-rated nested place, and unrated entries keep their original order at the end.
 
 Frontend routing is a single catch-all (`frontend/app/[city]/[...slug]/page.tsx`) that switches on the item's `contentType` — new document types need a new case there.
 
@@ -81,7 +81,19 @@ Map pins never show a node's own photo: `mapPinIcon` (`frontend/lib/sections.ts`
 parent company's logo for a branch and the section glyph otherwise, so pins stay legible and
 say which section they belong to. Photos are for listing cards, detail headers and map popup
 cards — that is why `/api/nearby` returns `photo` (the real image) and `icon` (company logo
-or null) separately, and why `BranchMarker` has both.
+or null) separately, and why `MapMarker` has both.
+
+Every listing offers two views of the same results, switched by `ViewToggle`: the paginated
+grid of cards and a map of those very same (filtered) entries. `ListingViews` owns both — it
+holds the filter state, so narrowing the dropdowns narrows the map too; cards reach it
+already rendered on the server, and each entry carries the pins it puts on the map (a place
+or mall pins itself, a company pins every branch under it, an entry without coordinates pins
+nothing, and the toggle is hidden when no entry has any). `MarkersMap` is the one map of
+many places — listings, company branches, malls, attractions, cinemas showing a film: pins
+are clustered by `@googlemaps/markerclusterer` into a branded bubble carrying the count, and
+with `locate` the visitor can share their position to pin it and get the same places ranked
+by distance in a side panel. That panel is deliberately *not* `/api/nearby`: it ranks the
+listing's own filtered results, not everything around the visitor.
 
 The "¿Qué está cerca?" map panel calls `GET /api/nearby` (`CityGuideWeb/CityGuide/NearbyController.cs`, haversine scan over the published-content cache). The frontend proxies it via a Next.js rewrite so the browser call is same-origin.
 

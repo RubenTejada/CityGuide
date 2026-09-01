@@ -50,9 +50,10 @@ export default async function CityLayout({
             <SearchAutocomplete citySlug={citySlug} />
             <Link
               href="/"
-              className="ml-auto text-sm text-neutral-400 hover:text-white sm:ml-0"
+              className="ml-auto rounded-full bg-sun-400 px-4 py-2 text-sm font-semibold text-neutral-900 shadow-sm transition-colors hover:bg-sun-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sun-300 sm:ml-0"
+              title="Cambiar ciudad"
             >
-              Cambiar ciudad
+              {city.name}
             </Link>
           </div>
           <nav className="border-t border-neutral-800">

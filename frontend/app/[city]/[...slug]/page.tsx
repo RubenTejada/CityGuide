@@ -5,10 +5,14 @@ import { notFound } from "next/navigation";
 import ArticleBody from "@/components/ArticleBody";
 import JsonLd from "@/components/JsonLd";
 import ArticleCard, { articleDate } from "@/components/ArticleCard";
-import BranchesMap, { type BranchMarker } from "@/components/BranchesMap";
-import FacilityBadges from "@/components/FacilityBadges";
+import FacilityBadges, { FACILITY_ICONS } from "@/components/FacilityBadges";
 import AttractionCard from "@/components/AttractionCard";
-import FacilityFilterGrid from "@/components/FacilityFilterGrid";
+import ListingViews, {
+  type FilterGroup,
+  type ListingEntry,
+} from "@/components/ListingViews";
+import { type MapMarker } from "@/components/MarkersMap";
+import PaginatedList from "@/components/PaginatedList";
 import PlaceCard from "@/components/PlaceCard";
 import PlaceMap from "@/components/PlaceMap";
 import Rating from "@/components/Rating";
@@ -20,7 +24,7 @@ import ThingsToDoExplorer, {
 import TrailerModal from "@/components/cine/TrailerModal";
 import { branchDisplayName } from "@/lib/branches";
 import { CINEMAS_BY_CITY, cinemaByName } from "@/lib/cinema";
-import { mapPinIcon, sectionListImage } from "@/lib/sections";
+import { cuisineIcon, mapPinIcon, sectionListImage } from "@/lib/sections";
 import {
   articleJsonLd,
   breadcrumbJsonLd,
@@ -423,25 +427,128 @@ async function listingFacilities(
   );
 }
 
-/** Map markers for the malls in a listing (used at the bottom of the page). */
-function mallMarkers(entries: UmbracoItem[]): BranchMarker[] {
-  return entries
-    .filter((e) => e.contentType === "mall")
-    .map((mall) => ({
-      id: mall.id,
-      name: mall.name,
-      url: mall.route.path,
-      address: text(mall, "address") || null,
-      latitude: num(mall, "latitude"),
-      longitude: num(mall, "longitude"),
-      // Plazas have no company logo: the pin shows the section glyph and the
-      // photo stays in the popup card.
-      logo: null,
-      photo: photoUrl(mall),
-      rating: num(mall, "googleRating") || null,
-      ratingCount: num(mall, "googleRatingCount") || null,
-    }))
-    .filter((m) => m.latitude !== 0 && m.longitude !== 0);
+/** The "Facilidades" dropdown: canonical facility order first, then the rest. */
+async function facilityFilter(
+  path: string,
+  entries: UmbracoItem[],
+): Promise<FilterGroup> {
+  const valuesByEntry = await listingFacilities(path, entries);
+  const present = new Set(Object.values(valuesByEntry).flat());
+  const known = Object.keys(FACILITY_ICONS).filter((f) => present.has(f));
+  const extra = [...present]
+    .filter((f) => !(f in FACILITY_ICONS))
+    .sort((a, b) => a.localeCompare(b, "es"));
+  return {
+    key: "facilidades",
+    label: "Filtrar por facilidades",
+    options: [...known, ...extra],
+    valuesByEntry,
+    // A place must offer every facility that is ticked.
+    match: "all",
+    icons: FACILITY_ICONS,
+  };
+}
+
+/**
+ * Categories whose subcategories are offered as a multi-select dropdown
+ * instead of a pill row, with the label that names them and the glyph each
+ * subcategory is listed with.
+ */
+const SUBCATEGORY_FILTERS: Record<
+  string,
+  { label: string; icon: (slug: string) => string }
+> = {
+  restaurantes: { label: "Tipo de comida", icon: cuisineIcon },
+};
+
+/**
+ * The subcategory dropdown (cuisine type on "Restaurantes"): an entry's values
+ * are the subcategories it sits under, so companies and malls match through
+ * the branch that is nested there. Entries hanging straight off the category
+ * carry none and drop out once something is ticked.
+ */
+function subcategoryFilter(
+  { label, icon }: { label: string; icon: (slug: string) => string },
+  entries: UmbracoItem[],
+  subcategories: UmbracoItem[],
+): FilterGroup {
+  const under = (sub: UmbracoItem, entry: UmbracoItem) =>
+    entry.route.path.startsWith(`${sub.route.path.replace(/\/+$/, "")}/`);
+  const valuesByEntry = Object.fromEntries(
+    entries.map((entry) => [
+      entry.id,
+      subcategories.filter((sub) => under(sub, entry)).map((sub) => sub.name),
+    ]),
+  );
+  const present = new Set(Object.values(valuesByEntry).flat());
+  return {
+    key: "subcategoria",
+    label,
+    options: subcategories.map((sub) => sub.name).filter((n) => present.has(n)),
+    valuesByEntry,
+    // Ticking two cuisines widens the listing instead of emptying it.
+    match: "any",
+    icons: Object.fromEntries(
+      subcategories.map((sub) => [
+        sub.name,
+        icon(sub.route.path.split("/").filter(Boolean).pop() ?? ""),
+      ]),
+    ),
+  };
+}
+
+/** A located node as a map pin. `logo` is the company logo for a branch. */
+function markerOf(
+  item: UmbracoItem,
+  name: string,
+  logo: string | null,
+): MapMarker {
+  return {
+    id: item.id,
+    name,
+    url: item.route.path,
+    address: text(item, "address") || null,
+    latitude: num(item, "latitude"),
+    longitude: num(item, "longitude"),
+    logo,
+    photo: photoUrl(item) ?? logo,
+    rating: num(item, "googleRating") || null,
+    ratingCount: num(item, "googleRatingCount") || null,
+  };
+}
+
+/** Content without coordinates cannot be mapped. */
+const isPlaced = (marker: MapMarker) =>
+  marker.latitude !== 0 && marker.longitude !== 0;
+
+/**
+ * The pins each listing entry puts on the map view. A place or a mall pins
+ * itself; a company has no coordinates of its own, so it pins every branch
+ * under it, each drawn with the company logo.
+ */
+async function listingMarkers(
+  path: string,
+  entries: UmbracoItem[],
+): Promise<Map<string, MapMarker[]>> {
+  const allPlaces = await getDescendantsOfType(path, "place");
+  return new Map(
+    entries.map((entry) => {
+      if (entry.contentType !== "company") {
+        return [entry.id, [markerOf(entry, entry.name, null)].filter(isPlaced)];
+      }
+      const prefix = `${entry.route.path.replace(/\/+$/, "")}/`;
+      const logo = photoUrl(entry);
+      return [
+        entry.id,
+        allPlaces
+          .filter((place) => place.route.path.startsWith(prefix))
+          .map((branch) =>
+            markerOf(branch, branchDisplayName(branch.name, entry.name), logo),
+          )
+          .filter(isPlaced),
+      ];
+    }),
+  );
 }
 
 function SubcategoryPills({ subcategories }: { subcategories: UmbracoItem[] }) {
@@ -467,15 +574,36 @@ async function CategoryView({
 }) {
   const [children, entries] = await Promise.all([
     getChildren(item.route.path),
-    listingEntries(item.route.path),
+    listingEntriesByRating(item.route.path),
   ]);
   const subcategories = children.filter((c) => c.contentType === "subcategory");
   const categorySlug = item.route.path.split("/").filter(Boolean).pop();
   const showCartelera =
     categorySlug === "cines" && !!citySlug && citySlug in CINEMAS_BY_CITY;
-  const facilitiesByEntry = FACILITY_FILTER_SLUGS.has(categorySlug ?? "")
-    ? await listingFacilities(item.route.path, entries)
-    : null;
+  const subcategoryFilterConfig = SUBCATEGORY_FILTERS[categorySlug ?? ""];
+  const filters: FilterGroup[] = [
+    ...(FACILITY_FILTER_SLUGS.has(categorySlug ?? "")
+      ? [await facilityFilter(item.route.path, entries)]
+      : []),
+    // The dropdown replaces the pill row for this category, so they never
+    // offer the same taxonomy twice.
+    ...(subcategoryFilterConfig && subcategories.length > 0
+      ? [subcategoryFilter(subcategoryFilterConfig, entries, subcategories)]
+      : []),
+  ];
+  const showPills = subcategories.length > 0 && !subcategoryFilterConfig;
+  const markers = await listingMarkers(item.route.path, entries);
+  const listing: ListingEntry[] = entries.map((entry) => ({
+    id: entry.id,
+    card:
+      // Attractions use the large-photo layout, same as the events listing.
+      categorySlug === "atracciones" ? (
+        <AttractionCard key={entry.id} place={entry} />
+      ) : (
+        <PlaceCard key={entry.id} place={entry} />
+      ),
+    markers: markers.get(entry.id) ?? [],
+  }));
 
   return (
     <PageShell item={item}>
@@ -484,11 +612,6 @@ async function CategoryView({
       {text(item, "intro") && (
         <p className="mt-2 max-w-2xl text-neutral-600">{text(item, "intro")}</p>
       )}
-      {!facilitiesByEntry && subcategories.length > 0 && (
-        <div className="mt-6 flex flex-wrap gap-2">
-          <SubcategoryPills subcategories={subcategories} />
-        </div>
-      )}
       {showCartelera && (
         <Cartelera
           citySlug={citySlug!}
@@ -496,44 +619,13 @@ async function CategoryView({
           selectedDate={fecha}
         />
       )}
-      {facilitiesByEntry ? (
-        <FacilityFilterGrid entries={entries} facilitiesByEntry={facilitiesByEntry}>
-          <SubcategoryPills subcategories={subcategories} />
-        </FacilityFilterGrid>
-      ) : (
-        (entries.length > 0 || !showCartelera) && (
-          <div className="mt-8 grid gap-4 md:grid-cols-2">
-            {entries.map((entry) =>
-              // Attractions use the large-photo layout, same as the events listing.
-              categorySlug === "atracciones" ? (
-                <AttractionCard key={entry.id} place={entry} />
-              ) : (
-                <PlaceCard key={entry.id} place={entry} />
-              ),
-            )}
-            {entries.length === 0 && (
-              <p className="text-neutral-500">
-                No hay lugares publicados todavía.
-              </p>
-            )}
-          </div>
-        )
+      {/* The cartelera stands on its own when the section has no places yet. */}
+      {(entries.length > 0 || !showCartelera) && (
+        <ListingViews entries={listing} filters={filters}>
+          {showPills && <SubcategoryPills subcategories={subcategories} />}
+        </ListingViews>
       )}
-      <MallsMapSection markers={mallMarkers(entries)} />
     </PageShell>
-  );
-}
-
-/** Bottom-of-listing map with every mall in the listing. */
-function MallsMapSection({ markers }: { markers: BranchMarker[] }) {
-  if (markers.length === 0) return null;
-  return (
-    <section className="mt-10">
-      <h2 className="text-lg font-semibold">Mapa de plazas</h2>
-      <div className="mt-4">
-        <BranchesMap branches={markers} />
-      </div>
-    </section>
   );
 }
 
@@ -587,20 +679,18 @@ function MovieView({ item, citySlug }: { item: UmbracoItem; citySlug: string }) 
 }
 
 async function SubcategoryView({ item }: { item: UmbracoItem }) {
-  const entries = await listingEntries(item.route.path);
+  const entries = await listingEntriesByRating(item.route.path);
+  const markers = await listingMarkers(item.route.path, entries);
+  const listing: ListingEntry[] = entries.map((entry) => ({
+    id: entry.id,
+    card: <PlaceCard key={entry.id} place={entry} />,
+    markers: markers.get(entry.id) ?? [],
+  }));
   return (
     <PageShell item={item}>
       <JsonLd data={itemListJsonLd(item.name, entries)} />
       <h1 className="mt-4 text-3xl font-bold">{item.name}</h1>
-      <div className="mt-8 grid gap-4 md:grid-cols-2">
-        {entries.map((entry) => (
-          <PlaceCard key={entry.id} place={entry} />
-        ))}
-        {entries.length === 0 && (
-          <p className="text-neutral-500">No hay lugares publicados todavía.</p>
-        )}
-      </div>
-      <MallsMapSection markers={mallMarkers(entries)} />
+      <ListingViews entries={listing} />
     </PageShell>
   );
 }
@@ -616,7 +706,7 @@ async function MallView({ item }: { item: UmbracoItem }) {
     (c) => c.contentType === "place" || c.contentType === "company",
   );
   const groupEntries = await Promise.all(
-    groups.map((group) => listingEntries(group.route.path)),
+    groups.map((group) => listingEntriesByRating(group.route.path)),
   );
   const photo = photoUrl(item);
   const website = text(item, "website");
@@ -749,20 +839,20 @@ async function CompanyView({ item }: { item: UmbracoItem }) {
   const logo = photoUrl(item);
   const branches = children.filter((c) => c.contentType === "place");
   const website = text(item, "website");
-  const branchMarkers: BranchMarker[] = branches
-    .map((branch) => ({
-      id: branch.id,
-      name: branchDisplayName(branch.name, item.name),
-      url: branch.route.path,
-      address: text(branch, "address") || null,
-      latitude: num(branch, "latitude"),
-      longitude: num(branch, "longitude"),
-      logo,
-      photo: photoUrl(branch) ?? logo,
-      rating: num(branch, "googleRating") || null,
-      ratingCount: num(branch, "googleRatingCount") || null,
-    }))
-    .filter((b) => b.latitude !== 0 && b.longitude !== 0);
+  const branchEntries: ListingEntry[] = branches.map((branch) => ({
+    id: branch.id,
+    card: (
+      <PlaceCard
+        key={branch.id}
+        place={branch}
+        fallbackPhoto={logo}
+        company={item}
+      />
+    ),
+    markers: [
+      markerOf(branch, branchDisplayName(branch.name, item.name), logo),
+    ].filter(isPlaced),
+  }));
   const cityItem = await cityOf(item);
 
   return (
@@ -827,28 +917,10 @@ async function CompanyView({ item }: { item: UmbracoItem }) {
       <h2 className="mt-10 text-lg font-semibold">
         Sucursales {branches.length > 0 && `(${branches.length})`}
       </h2>
-      <div className="mt-4 grid gap-4 md:grid-cols-2">
-        {branches.map((branch) => (
-          <PlaceCard
-            key={branch.id}
-            place={branch}
-            fallbackPhoto={logo}
-            company={item}
-          />
-        ))}
-        {branches.length === 0 && (
-          <p className="text-neutral-500">No hay sucursales publicadas todavía.</p>
-        )}
-      </div>
-
-      {branchMarkers.length > 0 && (
-        <section className="mt-10">
-          <h2 className="text-lg font-semibold">Mapa de sucursales</h2>
-          <div className="mt-4">
-            <BranchesMap branches={branchMarkers} />
-          </div>
-        </section>
-      )}
+      <ListingViews
+        entries={branchEntries}
+        emptyLabel="No hay sucursales publicadas todavía."
+      />
     </PageShell>
   );
 }
@@ -1018,6 +1090,8 @@ async function EventsView({ item }: { item: UmbracoItem }) {
     venueName: text(event, "venueName"),
     description: text(event, "description"),
     photo: photoUrl(event),
+    latitude: num(event, "latitude"),
+    longitude: num(event, "longitude"),
   }));
   return (
     <PageShell item={item}>
@@ -1164,14 +1238,17 @@ async function ArticlesView({ item }: { item: UmbracoItem }) {
       {text(item, "intro") && (
         <p className="mt-2 max-w-2xl text-neutral-600">{text(item, "intro")}</p>
       )}
-      <div className="mt-8 space-y-5">
-        {articles.map((article) => (
-          <ArticleCard key={article.id} article={article} />
-        ))}
-        {articles.length === 0 && (
-          <p className="text-neutral-500">No hay artículos publicados todavía.</p>
-        )}
-      </div>
+      {articles.length === 0 ? (
+        <p className="mt-8 text-neutral-500">
+          No hay artículos publicados todavía.
+        </p>
+      ) : (
+        <PaginatedList className="mt-8 space-y-5">
+          {articles.map((article) => (
+            <ArticleCard key={article.id} article={article} />
+          ))}
+        </PaginatedList>
+      )}
     </PageShell>
   );
 }
@@ -1335,6 +1412,8 @@ async function ThingsToDoView({
     venueName: text(event, "venueName"),
     description: text(event, "description"),
     photo: photoUrl(event),
+    latitude: num(event, "latitude"),
+    longitude: num(event, "longitude"),
   }));
 
   const attractionsSection = sections.find(

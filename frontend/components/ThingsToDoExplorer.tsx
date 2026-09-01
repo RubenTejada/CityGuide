@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { num, text, type UmbracoItem } from "@/lib/umbraco";
 import AttractionCard from "./AttractionCard";
-import BranchesMap, { type BranchMarker } from "./BranchesMap";
+import MarkersMap, { type MapMarker } from "./MarkersMap";
 import { EventCard, type EventEntry } from "./EventsList";
 import FilterPills from "./FilterPills";
 import PlaceCard from "./PlaceCard";
@@ -41,7 +41,7 @@ export default function ThingsToDoExplorer({
   const nothingVisible =
     !showEvents && !showAttractions && visibleSections.length === 0;
 
-  const attractionMarkers: BranchMarker[] = attractions
+  const attractionMarkers: MapMarker[] = attractions
     .map((entry) => ({
       id: entry.id,
       name: entry.name,
@@ -134,7 +134,7 @@ export default function ThingsToDoExplorer({
         <section className="mt-12">
           <h2 className="text-xl font-semibold">Mapa de atracciones</h2>
           <div className="mt-5">
-            <BranchesMap branches={attractionMarkers} />
+            <MarkersMap markers={attractionMarkers} />
           </div>
         </section>
       )}

@@ -27,6 +27,35 @@ export const SECTION_LIST_IMAGES: Record<string, string> = {
     "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a7/Catedral_Primada_CCSD_09_2018_1234.jpg/1280px-Catedral_Primada_CCSD_09_2018_1234.jpg",
 };
 
+/**
+ * Glyphs for the cuisine subcategories of "Restaurantes", keyed by slug and
+ * used in the "Tipo de comida" filter dropdown. A dish reads at any size and
+ * on any platform; flag emoji degrade to bare letters on Windows.
+ */
+const CUISINE_ICONS: Record<string, string> = {
+  criolla: "🍲",
+  china: "🥡",
+  italiana: "🍝",
+  japonesa: "🍣",
+  mexicana: "🌮",
+  espanola: "🥘",
+  americana: "🍔",
+  arabe: "🥙",
+  francesa: "🥐",
+  peruana: "🐟",
+  mariscos: "🦐",
+  pizzeria: "🍕",
+  parrilla: "🥩",
+  vegetariana: "🥗",
+  cafeteria: "☕",
+  postres: "🍰",
+};
+
+/** Cuisine glyph for a subcategory slug; a plate for anything unlisted. */
+export function cuisineIcon(slug: string): string {
+  return CUISINE_ICONS[slug] ?? "🍽";
+}
+
 /** Section slugs that have a bundled map icon in /public/sections/icons/. */
 const SECTION_MAP_ICON_SLUGS = new Set([
   "restaurantes",
