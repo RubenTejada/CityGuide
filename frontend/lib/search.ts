@@ -1,5 +1,6 @@
 // Search helpers shared by the /buscar page and the autocomplete index API.
 
+import { branchDisplayName } from "./branches";
 import {
   getChildren,
   getDescendantsOfType,
@@ -34,6 +35,20 @@ const KIND_LABELS: Record<string, string> = {
   article: "Artículo",
 };
 
+/** The company a branch place hangs from, by path prefix; null for anything else. */
+function companyOf(
+  item: UmbracoItem,
+  companyNameByPath: Map<string, string>,
+): string | null {
+  if (item.contentType !== "place") return null;
+  for (const [companyPath, companyName] of companyNameByPath) {
+    if (trimPath(item.route.path).startsWith(`${companyPath}/`)) {
+      return companyName;
+    }
+  }
+  return null;
+}
+
 /** Umbraco route paths may carry a trailing slash; strip it for prefix checks. */
 function trimPath(path: string): string {
   return path.replace(/\/+$/, "");
@@ -42,6 +57,7 @@ function trimPath(path: string): string {
 function toEntry(
   item: UmbracoItem,
   sectionNameByPath: Map<string, string>,
+  companyNameByPath: Map<string, string>,
 ): SearchEntry {
   // Category = the city section whose path prefixes this item's path.
   let category = "";
@@ -52,7 +68,7 @@ function toEntry(
     }
   }
   return {
-    name: item.name,
+    name: branchDisplayName(item.name, companyOf(item, companyNameByPath)),
     path: item.route.path,
     kind: KIND_LABELS[item.contentType] ?? item.contentType,
     category,
@@ -84,6 +100,10 @@ export async function buildSearchIndex(cityPath: string): Promise<SearchEntry[]>
     getDescendantsOfType(cityPath, "article"),
   ]);
 
+  const companyNameByPath = new Map(
+    companies.map((c) => [trimPath(c.route.path), c.name]),
+  );
+
   return [
     ...sections.filter((s) => s.contentType === "categoryPage"),
     ...subcategories,
@@ -91,5 +111,5 @@ export async function buildSearchIndex(cityPath: string): Promise<SearchEntry[]>
     ...places,
     ...events,
     ...articles,
-  ].map((item) => toEntry(item, sectionNameByPath));
+  ].map((item) => toEntry(item, sectionNameByPath, companyNameByPath));
 }

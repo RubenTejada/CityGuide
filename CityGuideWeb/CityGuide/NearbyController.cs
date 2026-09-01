@@ -91,7 +91,7 @@ public class NearbyController : ControllerBase
                         IPublishedContent? ancestor = await _contentCache.GetByIdAsync(ancestorKey);
                         if (ancestor?.ContentType.Alias == "company")
                         {
-                            displayName = $"{ancestor.Name} — {place.Name}";
+                            displayName = BranchDisplayName(place.Name, ancestor.Name);
                             icon = PhotoUrl(ancestor);
                             photo ??= icon;
                         }
@@ -125,6 +125,37 @@ public class NearbyController : ControllerBase
 
         return Ok(results.OrderBy(r => r.DistanceMeters).Take(Math.Clamp(limit, 1, 100)));
     }
+
+    /// <summary>Words that name the trade, not the chain, so they identify nothing on their own.</summary>
+    private static readonly HashSet<string> GenericWords = new(StringComparer.Ordinal)
+    {
+        "banco", "banca", "supermercado", "supermercados", "farmacia", "farmacias",
+        "cine", "cines", "cinemas", "tienda", "tiendas", "grupo", "plaza",
+        "la", "el", "los", "las", "de", "del",
+    };
+
+    /// <summary>
+    /// Name shown for a branch: its company's name plus its own, since branch names
+    /// repeat across chains ("Oficina Principal" is seven different banks). Kept as the
+    /// branch's own name when it already says which chain it is ("Jumbo Luperón").
+    /// Mirrors branchDisplayName in the frontend (frontend/lib/branches.ts).
+    /// </summary>
+    private static string BranchDisplayName(string branchName, string companyName)
+    {
+        string branch = Fold(branchName);
+        bool identified = Fold(companyName)
+            .Split([' ', '-', '.', ',', '(', ')'], StringSplitOptions.RemoveEmptyEntries)
+            .Where(word => word.Length > 2 && !GenericWords.Contains(word))
+            .Any(branch.Contains);
+        return identified ? branchName : $"{companyName} — {branchName}";
+    }
+
+    /// <summary>Lowercase, accents stripped.</summary>
+    private static string Fold(string value) => string.Concat(
+        value.Normalize(System.Text.NormalizationForm.FormD)
+            .Where(c => System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c)
+                != System.Globalization.UnicodeCategory.NonSpacingMark))
+        .ToLowerInvariant();
 
     /// <summary>
     /// Relative URL of the first image in the node's MediaPicker3 "photo" property.

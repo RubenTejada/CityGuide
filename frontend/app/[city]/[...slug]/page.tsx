@@ -18,6 +18,7 @@ import ThingsToDoExplorer, {
   type GuideSection,
 } from "@/components/ThingsToDoExplorer";
 import TrailerModal from "@/components/cine/TrailerModal";
+import { branchDisplayName } from "@/lib/branches";
 import { CINEMAS_BY_CITY, cinemaByName } from "@/lib/cinema";
 import { mapPinIcon, sectionListImage } from "@/lib/sections";
 import {
@@ -185,11 +186,17 @@ export async function generateMetadata({
       const company = parent?.contentType === "company" ? parent : null;
       const inherited = (alias: string) =>
         text(item, alias) || (company ? text(company, alias) : "");
-      title = seoTitle(item, qualified, `${item.name}${inCity}`, item.name);
+      const displayName = branchDisplayName(item.name, company?.name);
+      title = seoTitle(
+        item,
+        company ? `${displayName}${inCity}` : qualified,
+        `${displayName}${inCity}`,
+        displayName,
+      );
       description = seoDescription(
         item,
         inherited("description"),
-        `${item.name}${text(item, "address") ? `, ${text(item, "address")}` : ""}${inCity}. Horario, teléfono, ubicación y cómo llegar.`,
+        `${displayName}${text(item, "address") ? `, ${text(item, "address")}` : ""}${inCity}. Horario, teléfono, ubicación y cómo llegar.`,
       );
       image = image ?? (company ? photoUrl(company) : null) ?? sectionListImage(item.route.path);
       break;
@@ -745,7 +752,7 @@ async function CompanyView({ item }: { item: UmbracoItem }) {
   const branchMarkers: BranchMarker[] = branches
     .map((branch) => ({
       id: branch.id,
-      name: branch.name,
+      name: branchDisplayName(branch.name, item.name),
       url: branch.route.path,
       address: text(branch, "address") || null,
       latitude: num(branch, "latitude"),
@@ -822,7 +829,12 @@ async function CompanyView({ item }: { item: UmbracoItem }) {
       </h2>
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         {branches.map((branch) => (
-          <PlaceCard key={branch.id} place={branch} fallbackPhoto={logo} />
+          <PlaceCard
+            key={branch.id}
+            place={branch}
+            fallbackPhoto={logo}
+            company={item}
+          />
         ))}
         {branches.length === 0 && (
           <p className="text-neutral-500">No hay sucursales publicadas todavía.</p>
@@ -853,6 +865,9 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
   const company = parent?.contentType === "company" ? parent : null;
   const inherited = (alias: string) =>
     text(item, alias) || (company ? text(company, alias) : "");
+  // "Oficina Principal" or "Sucursal Naco" says nothing on its own: a branch is
+  // shown under its company's name unless it already carries it.
+  const displayName = branchDisplayName(item.name, company?.name);
   const ownPhoto = photoUrl(item);
   const inheritedPhoto = ownPhoto ?? (company ? photoUrl(company) : null);
   // No photo and no company logo: fall back to the section's image.
@@ -868,6 +883,7 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
       <JsonLd
         data={placeJsonLd({
           item,
+          name: displayName,
           cityName: cityItem?.name ?? "",
           country: text(cityItem ?? item, "country"),
           description: inherited("description"),
@@ -877,7 +893,7 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
           image: inheritedPhoto,
         })}
       />
-      <h1 className="mt-4 text-3xl font-bold">{item.name}</h1>
+      <h1 className="mt-4 text-3xl font-bold">{displayName}</h1>
       <div className="mt-1">
         <Rating place={item} />
       </div>
@@ -890,7 +906,7 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
           >
             <Image
               src={photo}
-              alt={item.name}
+              alt={displayName}
               fill
               unoptimized={photo.endsWith(".svg")}
               className={isLogo ? "object-contain p-6" : "object-cover"}
@@ -971,7 +987,7 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
           <div className="mt-4">
             <PlaceMap
               id={item.id}
-              name={item.name}
+              name={displayName}
               latitude={latitude}
               longitude={longitude}
               photo={mapPinIcon(item.route.path, company ? photoUrl(company) : null)}

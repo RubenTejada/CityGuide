@@ -6,6 +6,7 @@
 // noIndex), which is what `seoTitle`, `seoDescription` and `isNoIndex` read.
 
 import type { Metadata } from "next";
+import { branchDisplayName } from "./branches";
 import { num, photoUrl, text, type UmbracoItem } from "./umbraco";
 
 export const SITE_NAME = "QueHacerRD";
@@ -321,6 +322,8 @@ function aggregateRating(item: UmbracoItem): JsonLd | undefined {
 
 export interface PlaceJsonLdInput {
   item: UmbracoItem;
+  /** Overrides the node name (a branch is named under its company). */
+  name?: string;
   cityName: string;
   country: string;
   /** Resolved values (a branch inherits phone/hours/… from its company). */
@@ -336,6 +339,7 @@ export interface PlaceJsonLdInput {
 /** A physical venue: place, company branch, mall or attraction. */
 export function placeJsonLd({
   item,
+  name,
   cityName,
   country,
   description,
@@ -350,7 +354,7 @@ export function placeJsonLd({
     "@context": "https://schema.org",
     "@type": type ?? businessType(item.route.path),
     "@id": url,
-    name: item.name,
+    name: name ?? item.name,
     url,
     description: firstText(description ?? text(item, "description")) || undefined,
     image: absoluteImage(image ?? photoUrl(item)),
@@ -390,7 +394,7 @@ export function organizationJsonLd(
     location: branches.map((branch) =>
       prune({
         "@type": "Place",
-        name: branch.name,
+        name: branchDisplayName(branch.name, item.name),
         url: absoluteUrl(branch.route.path),
         address: postalAddress(text(branch, "address"), cityName, country),
         geo: geo(branch),

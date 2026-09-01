@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { facilities, photoUrl, text, type UmbracoItem } from "@/lib/umbraco";
+import { branchDisplayName } from "@/lib/branches";
 import { sectionListImage } from "@/lib/sections";
 import FacilityBadges from "./FacilityBadges";
 import Rating from "./Rating";
@@ -8,10 +9,14 @@ import Rating from "./Rating";
 export default function PlaceCard({
   place,
   fallbackPhoto,
+  company,
 }: {
   place: UmbracoItem;
   fallbackPhoto?: string | null;
+  /** Company this place is a branch of: its name qualifies the branch's own. */
+  company?: UmbracoItem | null;
 }) {
+  const name = branchDisplayName(place.name, company?.name);
   const ownPhoto = photoUrl(place);
   const inherited = ownPhoto ?? fallbackPhoto ?? null;
   // No photo and no inheritable logo: fall back to the section's image.
@@ -32,7 +37,7 @@ export default function PlaceCard({
       >
         <Image
           src={photo}
-          alt={place.name}
+          alt={name}
           fill
           unoptimized={photo.endsWith(".svg")}
           className={isLogo ? "object-contain p-2" : "object-cover"}
@@ -41,7 +46,7 @@ export default function PlaceCard({
       </div>
       <div className="min-w-0">
         <h3 className="truncate font-semibold group-hover:text-brand-600">
-          {place.name}
+          {name}
         </h3>
         <Rating place={place} />
         <p className="mt-0.5 truncate text-sm text-neutral-500">

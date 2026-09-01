@@ -73,6 +73,16 @@ export default async function SearchPage({
 
   const total = places.length + companies.length + events.length;
 
+  // Branch names repeat across chains ("Oficina Principal"): the card shows the
+  // company that owns the branch, found by path prefix among the same results.
+  const allCompanies = needle
+    ? await getDescendantsOfType(city.route.path, "company")
+    : [];
+  const companyOf = (place: UmbracoItem) =>
+    allCompanies.find((c) =>
+      place.route.path.startsWith(c.route.path),
+    ) ?? null;
+
   return (
     <main className="mx-auto max-w-6xl px-6 py-10">
       {!needle ? (
@@ -92,7 +102,11 @@ export default async function SearchPage({
           {[...companies, ...places].length > 0 && (
             <div className="mt-6 grid gap-4 md:grid-cols-2">
               {[...companies, ...places].map((item) => (
-                <PlaceCard key={item.id} place={item} />
+                <PlaceCard
+                  key={item.id}
+                  place={item}
+                  company={item.contentType === "place" ? companyOf(item) : null}
+                />
               ))}
             </div>
           )}
