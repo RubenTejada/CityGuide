@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { useState } from "react";
 import { type MovieCardProps } from "@/lib/cinema";
+import { sectionIcon } from "@/lib/sections";
 import { type UmbracoItem } from "@/lib/umbraco";
 import AttractionCard from "./AttractionCard";
 import MovieCard from "./cine/MovieCard";
 import MarkersMap, { type MapMarker } from "./MarkersMap";
 import { EventCard, eventMarkers, type EventEntry } from "./EventsList";
-import FilterPills from "./FilterPills";
+import FilterDropdown from "./FilterDropdown";
 import PlaceCard from "./PlaceCard";
 import ViewToggle, { type ListingView } from "./ViewToggle";
 
@@ -43,19 +44,31 @@ export default function ThingsToDoExplorer({
   moviesHref: string | null;
   sections: GuideSection[];
 }) {
-  // null = everything; otherwise "eventos", "atracciones", "cines" or a
-  // section slug.
-  const [activity, setActivity] = useState<string | null>(null);
+  // Empty = everything; otherwise "eventos", "atracciones", "cines" and/or
+  // section slugs, as many as the visitor ticks.
+  const [activities, setActivities] = useState<string[]>([]);
   const [view, setView] = useState<ListingView>("lista");
 
+  const shows = (slug: string) =>
+    activities.length === 0 || activities.includes(slug);
   const visibleSections = sections.filter(
-    (s) =>
-      s.entries.length > 0 && (activity === null || activity === s.slug),
+    (s) => s.entries.length > 0 && shows(s.slug),
   );
-  const showEvents = activity === null || activity === "eventos";
-  const showAttractions = activity === null || activity === "atracciones";
-  const showMovies =
-    movies.length > 0 && (activity === null || activity === "cines");
+  const showEvents = shows("eventos");
+  const showAttractions = shows("atracciones");
+  const showMovies = movies.length > 0 && shows("cines");
+
+  // What the "Actividad" dropdown offers: the two aggregations, the cartelera
+  // when there is one, and every section that has entries. The dropdown ticks
+  // by label, so each option carries the slug the filters are keyed by.
+  const activityOptions: { slug: string; label: string }[] = [
+    { slug: "atracciones", label: "Atracciones" },
+    { slug: "eventos", label: "Eventos" },
+    ...(movies.length > 0 ? [{ slug: "cines", label: "Cines" }] : []),
+    ...sections
+      .filter((s) => s.entries.length > 0)
+      .map((s) => ({ slug: s.slug, label: s.name })),
+  ];
 
   const nothingVisible =
     !showEvents &&
@@ -100,21 +113,25 @@ export default function ThingsToDoExplorer({
   return (
     <div>
       <div className="mt-6 flex flex-wrap items-center gap-2">
-        <FilterPills
-          options={[
-            { value: "atracciones", label: "Atracciones" },
-            { value: "eventos", label: "Eventos" },
-            ...(movies.length > 0
-              ? [{ value: "cines", label: "Cines" }]
-              : []),
-            ...sections
-              .filter((s) => s.entries.length > 0)
-              .map((s) => ({ value: s.slug, label: s.name })),
-          ]}
-          value={activity}
-          onChange={setActivity}
-          allLabel="Todo"
-          className="flex flex-wrap gap-2"
+        <FilterDropdown
+          label="Actividad"
+          options={activityOptions.map((o) => o.label)}
+          selected={activityOptions
+            .filter((o) => activities.includes(o.slug))
+            .map((o) => o.label)}
+          onToggle={(label) => {
+            const slug = activityOptions.find((o) => o.label === label)?.slug;
+            if (!slug) return;
+            setActivities((picks) =>
+              picks.includes(slug)
+                ? picks.filter((p) => p !== slug)
+                : [...picks, slug],
+            );
+          }}
+          icons={Object.fromEntries(
+            activityOptions.map((o) => [o.label, sectionIcon(o.slug)]),
+          )}
+          className="relative"
         />
         {mappable && <ViewToggle value={view} onChange={setView} />}
       </div>

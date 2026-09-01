@@ -36,7 +36,7 @@ import {
   movieReviews,
   todayInDR,
 } from "@/lib/cinema";
-import { cuisineIcon, mapPinIcon, sectionListImage } from "@/lib/sections";
+import { mapPinIcon, sectionListImage, subcategoryIcon } from "@/lib/sections";
 import {
   articleJsonLd,
   breadcrumbJsonLd,
@@ -504,21 +504,26 @@ async function facilityFilter(
  * instead of a pill row, with the label that names them and the glyph each
  * subcategory is listed with.
  */
-const SUBCATEGORY_FILTERS: Record<
-  string,
-  { label: string; icon: (slug: string) => string }
-> = {
-  restaurantes: { label: "Tipo de comida", icon: cuisineIcon },
+/**
+ * What the subcategory dropdown is called per section. Every section with
+ * subcategories gets the dropdown; only its label changes.
+ */
+const SUBCATEGORY_FILTER_LABELS: Record<string, string> = {
+  restaurantes: "Tipo de comida",
+  "bares-y-clubes": "Tipo de local",
+  tiendas: "Tipo de tienda",
+  "empresas-y-servicios": "Servicio",
 };
 
 /**
- * The subcategory dropdown (cuisine type on "Restaurantes"): an entry's values
- * are the subcategories it sits under, so companies and malls match through
- * the branch that is nested there. Entries hanging straight off the category
- * carry none and drop out once something is ticked.
+ * The subcategory dropdown (cuisine type on "Restaurantes", venue kind on
+ * "Bares y Clubes", …): an entry's values are the subcategories it sits under,
+ * so companies and malls match through the branch that is nested there.
+ * Entries hanging straight off the category carry none and drop out once
+ * something is ticked.
  */
 function subcategoryFilter(
-  { label, icon }: { label: string; icon: (slug: string) => string },
+  label: string,
   entries: UmbracoItem[],
   subcategories: UmbracoItem[],
 ): FilterGroup {
@@ -541,7 +546,7 @@ function subcategoryFilter(
     icons: Object.fromEntries(
       subcategories.map((sub) => [
         sub.name,
-        icon(sub.route.path.split("/").filter(Boolean).pop() ?? ""),
+        subcategoryIcon(sub.route.path.split("/").filter(Boolean).pop() ?? ""),
       ]),
     ),
   };
@@ -601,18 +606,6 @@ async function listingMarkers(
   );
 }
 
-function SubcategoryPills({ subcategories }: { subcategories: UmbracoItem[] }) {
-  return subcategories.map((sub) => (
-    <Link
-      key={sub.id}
-      href={sub.route.path}
-      className="rounded-full border border-neutral-300 bg-white px-4 py-1.5 text-sm font-medium hover:border-brand-500 hover:text-brand-600"
-    >
-      {sub.name}
-    </Link>
-  ));
-}
-
 async function CategoryView({
   item,
   citySlug,
@@ -630,28 +623,31 @@ async function CategoryView({
   const categorySlug = item.route.path.split("/").filter(Boolean).pop();
   const showCartelera =
     categorySlug === "cines" && !!citySlug && citySlug in CINEMAS_BY_CITY;
-  const subcategoryFilterConfig = SUBCATEGORY_FILTERS[categorySlug ?? ""];
   const filters: FilterGroup[] = [
     ...(FACILITY_FILTER_SLUGS.has(categorySlug ?? "")
       ? [await facilityFilter(item.route.path, entries)]
       : []),
-    // The dropdown replaces the pill row for this category, so they never
-    // offer the same taxonomy twice.
-    ...(subcategoryFilterConfig && subcategories.length > 0
-      ? [subcategoryFilter(subcategoryFilterConfig, entries, subcategories)]
+    ...(subcategories.length > 0
+      ? [
+          subcategoryFilter(
+            SUBCATEGORY_FILTER_LABELS[categorySlug ?? ""] ?? "Categoría",
+            entries,
+            subcategories,
+          ),
+        ]
       : []),
   ];
-  const showPills = subcategories.length > 0 && !subcategoryFilterConfig;
   const markers = await listingMarkers(item.route.path, entries);
+  // Attractions use the photo card "Qué Hacer" shows, three across on a wide
+  // screen, instead of the two-column place card the other sections list.
+  const showsAttractions = categorySlug === "atracciones";
   const listing: ListingEntry[] = entries.map((entry) => ({
     id: entry.id,
-    card:
-      // Attractions use the large-photo layout, same as the events listing.
-      categorySlug === "atracciones" ? (
-        <AttractionCard key={entry.id} place={entry} />
-      ) : (
-        <PlaceCard key={entry.id} place={entry} />
-      ),
+    card: showsAttractions ? (
+      <AttractionCard key={entry.id} place={entry} compact />
+    ) : (
+      <PlaceCard key={entry.id} place={entry} />
+    ),
     markers: markers.get(entry.id) ?? [],
   }));
 
@@ -671,9 +667,15 @@ async function CategoryView({
       )}
       {/* The cartelera stands on its own when the section has no places yet. */}
       {(entries.length > 0 || !showCartelera) && (
-        <ListingViews entries={listing} filters={filters}>
-          {showPills && <SubcategoryPills subcategories={subcategories} />}
-        </ListingViews>
+        <ListingViews
+          entries={listing}
+          filters={filters}
+          gridClassName={
+            showsAttractions
+              ? "mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
+              : undefined
+          }
+        />
       )}
     </PageShell>
   );

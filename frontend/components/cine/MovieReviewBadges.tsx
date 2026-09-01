@@ -75,8 +75,13 @@ export default function MovieReviewBadges({
   );
 }
 
+/**
+ * es-DO's compact form switches case around ten thousand ("3,9 K" next to
+ * "183,6 k"), which reads as a typo in a row of badges. es-MX is the same
+ * Spanish with a consistent lowercase "k".
+ */
 function compactVotes(votes: number): string {
-  return new Intl.NumberFormat("es-DO", {
+  return new Intl.NumberFormat("es-MX", {
     notation: "compact",
     maximumFractionDigits: 1,
   }).format(votes);

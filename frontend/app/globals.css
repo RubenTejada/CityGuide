@@ -23,6 +23,8 @@
   --color-brand-600: #1e83b8;
   --color-brand-700: #196b96;
   --color-brand-800: #175877;
+  /* Tinta sobre el azul claro de los filtros: negro azulado, no gris puro. */
+  --color-brand-ink: #0b2b3d;
   --color-sun-300: #ffce4d;
   --color-sun-400: #f5b301;
   --color-sun-500: #d99e00;
@@ -116,6 +118,14 @@ html.dark .hover\:text-brand-600:hover,
 html.dark .hover\:text-brand-700:hover,
 html.dark .group:hover .group-hover\:text-brand-600 {
   color: var(--color-brand-300);
+}
+
+/* Salvo lo que va *sobre* el azul de marca (el contador del filtro): el botón
+   no se oscurece, así que aclarar su contenido abriría un hueco ilegible.
+   Va después del bloque anterior porque lo desanda. */
+html.dark .on-brand {
+  background-color: #ffffff;
+  color: var(--color-brand-700);
 }
 
 /* Bordes y separadores */

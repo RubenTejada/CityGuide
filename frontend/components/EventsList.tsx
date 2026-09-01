@@ -3,7 +3,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import FilterPills from "./FilterPills";
+import { eventCategoryIcon } from "@/lib/sections";
+import FilterDropdown from "./FilterDropdown";
 import MarkersMap, { type MapMarker } from "./MarkersMap";
 import ViewToggle, { type ListingView } from "./ViewToggle";
 
@@ -134,7 +135,8 @@ export function EventCard({
 }
 
 export default function EventsList({ events }: { events: EventEntry[] }) {
-  const [category, setCategory] = useState<string | null>(null);
+  // Empty = every category, which is what the dropdown shows unticked.
+  const [categoryPicks, setCategoryPicks] = useState<string[]>([]);
   const [view, setView] = useState<ListingView>("lista");
 
   const categories = useMemo(
@@ -153,8 +155,8 @@ export default function EventsList({ events }: { events: EventEntry[] }) {
     [events],
   );
 
-  const filtered = category
-    ? sorted.filter((e) => e.category === category)
+  const filtered = categoryPicks.length
+    ? sorted.filter((e) => categoryPicks.includes(e.category))
     : sorted;
 
   const upcoming = filtered.filter((e) => !isPast(e));
@@ -176,12 +178,21 @@ export default function EventsList({ events }: { events: EventEntry[] }) {
       {(categories.length > 1 || mappable) && (
         <div className="mt-6 flex flex-wrap items-center gap-2">
           {categories.length > 1 && (
-            <FilterPills
-              options={categories.map((c) => ({ value: c, label: c }))}
-              value={category}
-              onChange={setCategory}
-              allLabel="Todas"
-              className="flex flex-wrap gap-2"
+            <FilterDropdown
+              label="Categoría"
+              options={categories}
+              selected={categoryPicks}
+              onToggle={(value) =>
+                setCategoryPicks((picks) =>
+                  picks.includes(value)
+                    ? picks.filter((p) => p !== value)
+                    : [...picks, value],
+                )
+              }
+              icons={Object.fromEntries(
+                categories.map((c) => [c, eventCategoryIcon(c)]),
+              )}
+              className="relative"
             />
           )}
           {mappable && <ViewToggle value={view} onChange={setView} />}

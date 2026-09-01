@@ -12,8 +12,8 @@ import { type MovieCardProps } from "@/lib/cinema";
  * expandable detail with per-cinema showtimes (booking links) and a map of the
  * cinemas showing it. The map only mounts when the detail is opened.
  * The title links to the movie's own page when the CMS catalog has it.
- * `compact` stacks the poster over the text so the card fits a grid column
- * ("Qué Hacer"); the wide layout is the cartelera's own list.
+ * `compact` stacks the poster over the text so the card fits a grid column,
+ * which is how both the cartelera and "Qué Hacer" lay their movies out.
  */
 export default function MovieCard({
   movie,

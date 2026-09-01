@@ -39,16 +39,20 @@ export interface ListingEntry {
  * same results — with one multi-select dropdown per filter group, rendered in
  * a single row with whatever is passed as `children` (the subcategory pills)
  * to their left. Filters narrow both views at once.
+ * `gridClassName` is the grid the cards sit in: two wide columns by default,
+ * overridden by listings whose cards are the narrower "Qué Hacer" ones.
  */
 export default function ListingViews({
   entries,
   filters = [],
   emptyLabel = "No hay lugares publicados todavía.",
+  gridClassName = "mt-8 grid gap-4 md:grid-cols-2",
   children,
 }: {
   entries: ListingEntry[];
   filters?: FilterGroup[];
   emptyLabel?: string;
+  gridClassName?: string;
   children?: ReactNode;
 }) {
   const [selected, setSelected] = useState<Record<string, string[]>>({});
@@ -139,7 +143,7 @@ export default function ListingViews({
           key={groups
             .map((group) => (selected[group.key] ?? []).join("|"))
             .join("&&")}
-          className="mt-8 grid gap-4 md:grid-cols-2"
+          className={gridClassName}
         >
           {filtered.map((entry) => entry.card)}
         </PaginatedList>

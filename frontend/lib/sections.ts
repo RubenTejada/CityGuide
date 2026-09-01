@@ -28,11 +28,14 @@ export const SECTION_LIST_IMAGES: Record<string, string> = {
 };
 
 /**
- * Glyphs for the cuisine subcategories of "Restaurantes", keyed by slug and
- * used in the "Tipo de comida" filter dropdown. A dish reads at any size and
- * on any platform; flag emoji degrade to bare letters on Windows.
+ * Glyphs for the subcategories every section filters by, keyed by slug: the
+ * cuisines of "Restaurantes", the venue kinds of "Bares y Clubes", the shop
+ * kinds of "Tiendas" and the groups a mall files its establishments under.
+ * A concrete object reads at any size and on any platform; flag emoji degrade
+ * to bare letters on Windows.
  */
-const CUISINE_ICONS: Record<string, string> = {
+const SUBCATEGORY_ICONS: Record<string, string> = {
+  // Restaurantes
   criolla: "🍲",
   china: "🥡",
   italiana: "🍝",
@@ -44,16 +47,76 @@ const CUISINE_ICONS: Record<string, string> = {
   francesa: "🥐",
   peruana: "🐟",
   mariscos: "🦐",
+  mediterranea: "🫒",
   pizzeria: "🍕",
   parrilla: "🥩",
   vegetariana: "🥗",
   cafeteria: "☕",
   postres: "🍰",
+  "comida-rapida": "🍟",
+  // Bares y Clubes
+  bares: "🍺",
+  discotecas: "🪩",
+  "lounges-y-rooftops": "🍸",
+  // Tiendas
+  supermercados: "🛒",
+  farmacias: "💊",
+  "plazas-comerciales-y-malls": "🏬",
+  // Empresas y Servicios
+  bancos: "🏦",
+  // Mall groups
+  comida: "🍽",
+  restaurantes: "🍽",
+  moda: "👗",
+  entretenimiento: "🎮",
+  servicios: "🛠",
 };
 
-/** Cuisine glyph for a subcategory slug; a plate for anything unlisted. */
-export function cuisineIcon(slug: string): string {
-  return CUISINE_ICONS[slug] ?? "🍽";
+/** Glyph of a subcategory slug; a dot for anything unlisted. */
+export function subcategoryIcon(slug: string): string {
+  return SUBCATEGORY_ICONS[slug] ?? "•";
+}
+
+/**
+ * Glyphs for the sections themselves, used by the "Qué Hacer" activity filter
+ * (its options are sections, not subcategories).
+ */
+const SECTION_ICONS: Record<string, string> = {
+  restaurantes: "🍽",
+  "bares-y-clubes": "🍹",
+  tiendas: "🛍",
+  cines: "🎬",
+  "empresas-y-servicios": "🏢",
+  atracciones: "🏛",
+  eventos: "🎉",
+  articulos: "📰",
+};
+
+/** Glyph of a section slug; a pin for anything unlisted. */
+export function sectionIcon(slug: string): string {
+  return SECTION_ICONS[slug] ?? "📍";
+}
+
+/**
+ * Glyphs for the event categories the agent classifies into (`EventCategories`
+ * in the agent) plus the ones seeded events use.
+ */
+const EVENT_CATEGORY_ICONS: Record<string, string> = {
+  Conciertos: "🎤",
+  "Música": "🎵",
+  "Teatro y Danza": "🎭",
+  "Arte y Cultura": "🎨",
+  "Gastronomía": "🍽",
+  Deportes: "⚽",
+  "Ferias y Exposiciones": "🎪",
+  "Espectáculos": "✨",
+  Familia: "👨‍👩‍👧",
+  Fiestas: "🥳",
+};
+
+/** Glyph of an event category; a ticket for anything unlisted. */
+export function eventCategoryIcon(category: string): string {
+  return EVENT_CATEGORY_ICONS[category] ?? "🎟";
 }
 
 /** Section slugs that have a bundled map icon in /public/sections/icons/. */

@@ -13,10 +13,11 @@ import {
 
 /**
  * Live cartelera from Caribbean Cinemas, grouped by movie (most cinemas and
- * showtimes first). Each movie expands into per-cinema showtimes with booking
- * links and a map of the cinemas showing it. Date via ?fecha=YYYY-MM-DD.
- * With `cinema` set, only that cinema's showings are listed (branch page)
- * and the per-movie map is omitted — the branch page has its own map.
+ * showtimes first), as the same grid of poster cards "Qué Hacer" shows. Each
+ * movie expands into its per-cinema showtimes with booking links; the map of
+ * those cinemas lives on the movie's own page, too wide for a grid column.
+ * Date via ?fecha=YYYY-MM-DD. With `cinema` set, only that cinema's showings
+ * are listed (branch page).
  */
 export default async function Cartelera({
   citySlug,
@@ -100,9 +101,9 @@ export default async function Cartelera({
           .
         </p>
       ) : (
-        <div className="mt-6 space-y-4">
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {cards.map((card) => (
-            <MovieCard key={card.name} movie={card} showMap={!cinema} />
+            <MovieCard key={card.name} movie={card} compact showMap={false} />
           ))}
         </div>
       )}

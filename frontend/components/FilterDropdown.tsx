@@ -6,6 +6,10 @@ import { useState } from "react";
  * Multi-select dropdown used by the listing filters and by the
  * "¿Qué está cerca?" panel. Selection is owned by the caller: `selected`
  * carries the current picks and `onToggle` adds or removes one.
+ * The trigger wears the light logo blue in both themes — dark mode leaves
+ * `bg-brand-500` alone, so the filters read as the same control there — with
+ * near-black `brand-ink` on it (white on this tone falls under 3:1), and the
+ * number of picks rides in a white counter instead of a second colour.
  */
 export default function FilterDropdown({
   label,
@@ -30,15 +34,11 @@ export default function FilterDropdown({
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className={`inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-sm font-medium transition ${
-          selected.length > 0
-            ? "border-brand-600 bg-brand-50 text-brand-700"
-            : "border-neutral-300 bg-white text-neutral-700 hover:border-brand-600 hover:text-brand-700"
-        }`}
+        className="inline-flex items-center gap-2 rounded-full border border-brand-600 bg-brand-500 px-4 py-1.5 text-sm font-semibold text-brand-ink transition hover:bg-brand-400"
       >
         {label}
         {selected.length > 0 && (
-          <span className="rounded-full bg-brand-600 px-2 py-0.5 text-xs font-semibold text-white">
+          <span className="on-brand rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-brand-700">
             {selected.length}
           </span>
         )}

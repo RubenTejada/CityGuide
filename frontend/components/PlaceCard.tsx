@@ -37,7 +37,7 @@ export default function PlaceCard({
     >
       <div
         className={`relative flex-none overflow-hidden rounded-lg ${
-          compact ? "h-20 w-20" : "h-24 w-24"
+          compact ? "h-20 w-20" : "h-28 w-28 sm:h-36 sm:w-36"
         } ${
           isLogo ? "logo-plate border border-neutral-200 bg-white" : "bg-neutral-200"
         }`}
@@ -48,7 +48,7 @@ export default function PlaceCard({
           fill
           unoptimized={photo.endsWith(".svg")}
           className={isLogo ? "object-contain p-2" : "object-cover"}
-          sizes={compact ? "80px" : "96px"}
+          sizes={compact ? "80px" : "(min-width: 640px) 144px, 112px"}
         />
       </div>
       <div className="min-w-0">
