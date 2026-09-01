@@ -1,8 +1,9 @@
 import Link from "next/link";
+import CityBadge from "@/components/CityBadge";
 import JsonLd from "@/components/JsonLd";
 import SiteLogo from "@/components/SiteLogo";
 import { itemListJsonLd } from "@/lib/seo";
-import { getCities, slugOf, text } from "@/lib/umbraco";
+import { getCities, isComingSoon, slugOf } from "@/lib/umbraco";
 
 export const revalidate = 600;
 
@@ -30,15 +31,14 @@ export default async function HomePage() {
             <Link
               key={city.id}
               href={`/${slugOf(city)}`}
-              className="group rounded-xl border border-neutral-200 bg-white p-6 shadow-sm transition hover:shadow-md"
+              className="relative block rounded-3xl shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
             >
-              <h3 className="text-lg font-semibold group-hover:text-brand-600">
-                {city.name}
-              </h3>
-              <p className="mt-1 text-sm text-neutral-500">{text(city, "country")}</p>
-              <p className="mt-3 line-clamp-2 text-sm text-neutral-600">
-                {text(city, "intro")}
-              </p>
+              <CityBadge city={city} />
+              {isComingSoon(city) && (
+                <span className="absolute top-3 right-3 rounded-full bg-sun-400 px-2 py-0.5 text-[11px] font-semibold tracking-wide text-neutral-900 uppercase">
+                  Próximamente
+                </span>
+              )}
             </Link>
           ))}
           {cities.length === 0 && (

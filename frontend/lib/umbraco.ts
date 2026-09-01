@@ -130,6 +130,15 @@ export function photoUrl(item: UmbracoItem, alias = "photo"): string | null {
   return media?.url || null;
 }
 
+/**
+ * A city that is offered in the city switcher but has no content yet: its page
+ * shows an "en construcción" notice instead of its sections, and it is kept out
+ * of the sitemap and of search engines.
+ */
+export function isComingSoon(item: UmbracoItem): boolean {
+  return item.properties["comingSoon"] === true;
+}
+
 /** Last non-empty segment of a route path (the item's own slug). */
 export function slugOf(item: UmbracoItem): string {
   const segments = item.route.path.split("/").filter(Boolean);

@@ -1,3 +1,5 @@
+import { CityEmblem } from "./CityBadge";
+
 /**
  * Logo de QueHacerRD.com — recreación SVG del logo (arco solar, iglesia
  * colonial, palma y olas + wordmark). Pensado para fondos oscuros.
@@ -42,17 +44,47 @@ export function LogoIcon({ className }: { className?: string }) {
   );
 }
 
+/**
+ * Wordmark del portal. Con `citySlug` el glifo pasa a ser el emblema de esa
+ * ciudad (el mismo dibujo del selector), así el encabezado de cada ciudad
+ * lleva su propio logo; sin él se usa el glifo del sitio.
+ */
 export default function SiteLogo({
   className,
   tagline = false,
+  glyph = true,
+  citySlug,
+  cityName,
 }: {
   className?: string;
   tagline?: boolean;
+  /** Con `false` queda solo el wordmark: para encabezados que ya llevan otro dibujo. */
+  glyph?: boolean;
+  citySlug?: string;
+  cityName?: string;
 }) {
   return (
     <span className={`flex items-center gap-3 ${className ?? ""}`}>
-      <LogoIcon className="h-[2.6em] w-[2.6em] shrink-0" />
-      <span className="flex flex-col">
+      {!glyph ? null : citySlug ? (
+        // El emblema y el nombre forman una columna: el dibujo se centra sobre
+        // el rótulo y la columna entera se alinea con el wordmark.
+        <span className="flex shrink-0 flex-col items-center">
+          <CityEmblem slug={citySlug} ring={false} className="h-[2.6em] w-[3.38em]" />
+          {cityName && (
+            <span className="mt-[0.15em] text-center text-[max(0.3em,10px)] font-light tracking-[0.28em] text-white uppercase">
+              {cityName}
+            </span>
+          )}
+        </span>
+      ) : (
+        <LogoIcon className="h-[2.6em] w-[2.6em] shrink-0" />
+      )}
+      {/* Separador: el emblema de la ciudad y el wordmark son dos logos
+          distintos, así que en las páginas de ciudad los divide una línea. */}
+      {glyph && citySlug && (
+        <span aria-hidden className="h-[2.6em] w-px shrink-0 bg-white/30" />
+      )}
+      <span className={`flex flex-col ${glyph && citySlug ? "mt-[0.3em]" : ""}`}>
         <span className="font-logo text-[1.15em] leading-none font-semibold tracking-wide text-white">
           QuéHacer<span className="text-brand-500">RD</span>
           <span className="align-baseline text-[0.5em] font-medium text-neutral-400">

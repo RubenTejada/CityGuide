@@ -1,6 +1,11 @@
 import type { MetadataRoute } from "next";
 import { cleanPath, SITE_URL } from "@/lib/seo";
-import { getCities, getDescendants, type UmbracoItem } from "@/lib/umbraco";
+import {
+  getCities,
+  getDescendants,
+  isComingSoon,
+  type UmbracoItem,
+} from "@/lib/umbraco";
 
 export const revalidate = 600;
 
@@ -40,7 +45,8 @@ function entry(item: UmbracoItem): MetadataRoute.Sitemap[number] {
  * next revalidation without any code change.
  */
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const cities = await getCities();
+  // A city under construction has nothing worth indexing yet.
+  const cities = (await getCities()).filter((city) => !isComingSoon(city));
   const perCity = await Promise.all(
     cities.map((city) => getDescendants(city.route.path)),
   );

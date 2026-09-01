@@ -129,9 +129,13 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
 
         await EnsureAgentSchemaAsync();
 
+        await EnsureCityStatusSchemaAsync();
+
         await EnsureSeoSchemaAsync();
 
         await EnsureAgentApiUserAsync();
+
+        bool citiesSeeded = EnsureCitiesSeeded();
 
         bool agentConfigSeeded = EnsureAgentConfigSeeded();
 
@@ -158,6 +162,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         // (content published during boot is not picked up by the index event handlers).
         if (_examineManager.TryGetIndex(Constants.UmbracoIndexes.DeliveryApiContentIndexName, out IIndex index)
             && (banksSeeded
+                || citiesSeeded
                 || logosRestored
                 || agentConfigSeeded
                 || thingsToDoMigrated
@@ -761,6 +766,38 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
     }
 
     /// <summary>
+    /// Adds the "comingSoon" flag to the "city" document type: a city that is offered in
+    /// the city switcher but has no content yet shows an "en construcción" notice instead
+    /// of its sections. Guarded and run every startup so existing installations pick it up.
+    /// </summary>
+    private async Task EnsureCityStatusSchemaAsync()
+    {
+        IContentType? city = _contentTypeService.Get("city");
+        if (city is null || city.PropertyTypeExists("comingSoon"))
+        {
+            return;
+        }
+
+        IDataType checkbox = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.CheckboxGuid))!;
+
+        _logger.LogInformation("CityGuide: adding 'comingSoon' to 'city'");
+        city.AddPropertyType(new PropertyType(_shortStringHelper, checkbox, "comingSoon")
+        {
+            Name = "En construcción",
+            Description = "La ciudad se puede elegir en el selector de ciudades, pero su página "
+                + "muestra un aviso de \"en construcción\" en lugar de sus secciones.",
+            SortOrder = 6,
+        }, "content", "Content");
+
+        Attempt<ContentTypeOperationStatus> attempt =
+            await _contentTypeService.UpdateAsync(city, Constants.Security.SuperUserKey);
+        if (!attempt.Success)
+        {
+            throw new InvalidOperationException($"Failed to add 'comingSoon' to 'city': {attempt.Result}");
+        }
+    }
+
+    /// <summary>
     /// Creates the API user the ingestion agent authenticates with, when
     /// CityGuide:AgentClientSecret is configured (in Azure: an App Service setting).
     /// Lets a freshly seeded database accept the agent without manual backoffice
@@ -864,6 +901,55 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         _contentService.Save(city);
         _contentService.Publish(city, ["*"]);
         return true;
+    }
+
+    /// <summary>
+    /// The cities the portal offers besides the seeded Santo Domingo. They hold no content
+    /// yet: they exist so a visitor can pick them in the city switcher, and their page says
+    /// as much.
+    /// </summary>
+    private static readonly (string Name, string Country, decimal Latitude, decimal Longitude, string Intro)[] ComingSoonCities =
+    [
+        ("Santiago", "República Dominicana", 19.4517m, -70.6970m,
+            "Santiago de los Caballeros: bares, restaurantes y atracciones. Estamos armando la guía."),
+        ("Punta Cana", "República Dominicana", 18.5820m, -68.4055m,
+            "Playas, resorts, restaurantes y vida nocturna de Punta Cana. Estamos armando la guía."),
+    ];
+
+    /// <summary>
+    /// Idempotent, runs every startup: creates the announced-but-empty cities, each flagged
+    /// "comingSoon". Only missing ones are created, so a city an editor later fills (and
+    /// unflags) is left alone.
+    /// </summary>
+    private bool EnsureCitiesSeeded()
+    {
+        IContent? site = _contentService.GetRootContent().FirstOrDefault(c => c.ContentType.Alias == "site");
+        if (site is null)
+        {
+            return false;
+        }
+
+        var created = new List<IContent>();
+        foreach ((string name, string country, decimal latitude, decimal longitude, string intro) in ComingSoonCities)
+        {
+            if (Descendant(site, "city", name) is not null)
+            {
+                continue;
+            }
+
+            _logger.LogInformation("CityGuide: seeding city '{City}' (en construcción)", name);
+            IContent city = _contentService.Create(name, site.Id, "city");
+            city.SetValue("intro", intro);
+            city.SetValue("country", country);
+            city.SetValue("latitude", latitude);
+            city.SetValue("longitude", longitude);
+            city.SetValue("comingSoon", true);
+            _contentService.Save(city);
+            created.Add(city);
+        }
+
+        PublishSeeded(created);
+        return created.Count > 0;
     }
 
     private static readonly string ThingsToDoIntro =

@@ -11,6 +11,7 @@ import {
   getChildren,
   getDescendantsOfType,
   getItem,
+  isComingSoon,
   photoUrl,
   text,
   type UmbracoItem,
@@ -51,7 +52,7 @@ export async function generateMetadata({
     ),
     path: city.route.path,
     image: photoUrl(city),
-    noIndex: isNoIndex(city),
+    noIndex: isNoIndex(city) || isComingSoon(city),
   });
 }
 
@@ -78,6 +79,38 @@ function formatDate(value: unknown): string {
   return new Intl.DateTimeFormat("es-DO", { dateStyle: "long" }).format(date);
 }
 
+/** A city announced in the switcher whose guide is not written yet. */
+function ComingSoon({ city }: { city: UmbracoItem }) {
+  return (
+    <main>
+      <JsonLd
+        data={breadcrumbJsonLd([
+          { name: "Inicio", path: "/" },
+          { name: city.name, path: city.route.path },
+        ])}
+      />
+      <section className="mx-auto max-w-2xl px-6 py-20 text-center">
+        <p className="text-sm font-semibold uppercase tracking-wide text-brand-600">
+          Próximamente
+        </p>
+        <h1 className="mt-3 text-3xl font-bold sm:text-4xl">
+          {city.name} está en construcción
+        </h1>
+        <p className="mt-4 text-neutral-600">
+          {text(city, "intro") ||
+            `Todavía estamos armando la guía de ${city.name}. Vuelve pronto.`}
+        </p>
+        <Link
+          href="/"
+          className="mt-8 inline-block rounded-full bg-sun-400 px-5 py-2.5 text-sm font-semibold text-neutral-900 shadow-sm transition-colors hover:bg-sun-300"
+        >
+          Elegir otra ciudad
+        </Link>
+      </section>
+    </main>
+  );
+}
+
 export default async function CityLandingPage({
   params,
 }: {
@@ -86,6 +119,8 @@ export default async function CityLandingPage({
   const { city: citySlug } = await params;
   const city = await getItem(`/${citySlug}`);
   if (!city || city.contentType !== "city") notFound();
+
+  if (isComingSoon(city)) return <ComingSoon city={city} />;
 
   const [sections, allPlaces, events, allArticles] = await Promise.all([
     getChildren(city.route.path),
