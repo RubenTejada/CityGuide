@@ -91,17 +91,24 @@ public class CinemaSync(
                 new { alias = "source", value = (object)"agent" },
             ];
 
-            UmbracoClient.ChildDocument? match = existing.FirstOrDefault(c =>
-                c.Name.Equals(site.Name, StringComparison.OrdinalIgnoreCase));
-            if (match is null)
+            try
             {
-                await umbraco.CreateDocumentAsync(companyId, placeTypeId, site.Name, values);
-                Console.WriteLine($"  + branch {site.Name}");
+                UmbracoClient.ChildDocument? match = existing.FirstOrDefault(c =>
+                    c.Name.Equals(site.Name, StringComparison.OrdinalIgnoreCase));
+                if (match is null)
+                {
+                    await umbraco.CreateDocumentAsync(companyId, placeTypeId, site.Name, values);
+                    Console.WriteLine($"  + branch {site.Name}");
+                }
+                else
+                {
+                    await umbraco.UpdateDocumentAsync(match.Id, site.Name, values);
+                    Console.WriteLine($"  ~ branch {site.Name}");
+                }
             }
-            else
+            catch (Exception ex)
             {
-                await umbraco.UpdateDocumentAsync(match.Id, site.Name, values);
-                Console.WriteLine($"  ~ branch {site.Name}");
+                Console.Error.WriteLine($"  ! branch {site.Name} failed: {ex.Message}");
             }
         }
     }

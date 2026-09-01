@@ -94,6 +94,12 @@ public partial class EventSync(HttpClient http, UmbracoClient umbraco, EventsCon
             Console.WriteLine($"  {source.Name}: {events.Count} eventos futuros");
             foreach (ScrapedEvent ev in events)
             {
+                if (ev.Name.Contains("cancelado", StringComparison.OrdinalIgnoreCase)
+                    || ev.Name.Contains("pospuesto", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue; // portals keep cancelled/postponed events listed for refunds
+                }
+
                 if (byUrl.ContainsKey(ev.Url) || !byNameDate.Add(NameDateKey(ev.Name, ev.Start)))
                 {
                     continue; // already in CMS, or same event seen via another portal

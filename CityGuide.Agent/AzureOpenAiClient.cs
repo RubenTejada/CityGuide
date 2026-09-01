@@ -81,11 +81,20 @@ public class AzureOpenAiClient(HttpClient http, AzureOpenAiConfig config) : IEnr
                     break;
                 }
 
+                string body = await response.Content.ReadAsStringAsync();
+                if (body.Contains("content_filter", StringComparison.Ordinal))
+                {
+                    // Azure's content filter occasionally trips on nightlife venues;
+                    // create the draft without a description rather than losing the place.
+                    Console.Error.WriteLine($"    (content filter en '{place.Name}' — draft sin descripción)");
+                    return new Enrichment("", []);
+                }
+
                 bool retryable = (int)response.StatusCode is 429 or >= 500;
                 if (!retryable || attempt == 3)
                 {
                     throw new InvalidOperationException(
-                        $"Azure OpenAI failed ({(int)response.StatusCode}): {await response.Content.ReadAsStringAsync()}");
+                        $"Azure OpenAI failed ({(int)response.StatusCode}): {body}");
                 }
 
                 TimeSpan delay = response.Headers.RetryAfter?.Delta ?? TimeSpan.FromSeconds(30 * attempt);
