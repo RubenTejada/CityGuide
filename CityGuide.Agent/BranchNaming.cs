@@ -49,6 +49,11 @@ public static class BranchNaming
         return string.Join(' ', kept).Trim(' ', '-', '–', '—', ',');
     }
 
+    /// <summary>Words that only introduce the cross street. Google's own street line
+    /// often ends on one because it never got the second street ("Av. John F. Kennedy
+    /// esq"), leaving them dangling at the end of the name.</summary>
+    private static readonly string[] Connectors = ["esq", "esquina", "casi", "con", "c", "y"];
+
     /// <summary>First line of a formatted address ("Av. Winston Churchill 1099,
     /// Santo Domingo…"), skipping a leading plus code, which names no street.</summary>
     private static string? StreetOf(string? address)
@@ -60,7 +65,7 @@ public static class BranchNaming
 
         foreach (string part in address.Split(','))
         {
-            string segment = part.Trim();
+            string segment = TrimConnectors(part.Trim());
             if (segment.Length > 3 && !segment.Contains('+'))
             {
                 return segment;
@@ -68,5 +73,17 @@ public static class BranchNaming
         }
 
         return null;
+    }
+
+    private static string TrimConnectors(string street)
+    {
+        string[] words = street.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        int end = words.Length;
+        while (end > 1 && Connectors.Contains(TextMatch.Normalize(words[end - 1]).Trim('.', '/', ',')))
+        {
+            end--;
+        }
+
+        return string.Join(' ', words[..end]);
     }
 }
