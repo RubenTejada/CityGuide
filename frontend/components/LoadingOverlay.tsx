@@ -6,6 +6,7 @@ import {
   createContext,
   useContext,
   useTransition,
+  type ComponentPropsWithoutRef,
   type ReactNode,
 } from "react";
 
@@ -119,16 +120,17 @@ export function PendingLink({
   href,
   className,
   children,
-}: {
-  href: string;
-  className?: string;
-  children: ReactNode;
-}) {
+  ...rest
+}: { href: string; className?: string; children: ReactNode } & Omit<
+  ComponentPropsWithoutRef<"a">,
+  "href" | "className" | "children" | "onClick"
+>) {
   const navigate = useContext(NavigateContext);
   return (
     <Link
       href={href}
       className={className}
+      {...rest}
       onClick={(e) => {
         // Let the browser handle new-tab/window clicks.
         if (!navigate || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)

@@ -1,0 +1,74 @@
+"use client";
+
+import { usePathname } from "next/navigation";
+import { PendingLink } from "@/components/LoadingOverlay";
+
+export type SectionTab = { id: string; href: string; label: string };
+
+/**
+ * The header's section bar. The tab of the section you are in stays lit —
+ * including on the pages below it (a subcategory, a place) — so the bar says
+ * where you are and not only where you can go.
+ */
+export default function SectionTabs({
+  home,
+  sections,
+}: {
+  /** "Inicio": selected only on the city page itself. */
+  home: string;
+  sections: SectionTab[];
+}) {
+  // The CMS gives section paths with a trailing slash; `usePathname` never has
+  // one, so both sides are trimmed before comparing.
+  const pathname = trim(usePathname());
+  const inSection = (href: string) =>
+    pathname === trim(href) || pathname.startsWith(`${trim(href)}/`);
+
+  return (
+    <nav className="border-t border-neutral-800">
+      <div className="mx-auto flex max-w-6xl flex-wrap gap-1 px-6">
+        <Tab href={home} active={pathname === trim(home)}>
+          Inicio
+        </Tab>
+        {sections.map((section) => (
+          <Tab
+            key={section.id}
+            href={section.href}
+            active={inSection(section.href)}
+          >
+            {section.label}
+          </Tab>
+        ))}
+      </div>
+    </nav>
+  );
+}
+
+/** "/a/b/" and "/a/b" are the same section. The site root stays "/". */
+function trim(path: string) {
+  return path.length > 1 ? path.replace(/\/+$/, "") : path;
+}
+
+function Tab({
+  href,
+  active,
+  children,
+}: {
+  href: string;
+  active: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <PendingLink
+      href={href}
+      aria-current={active ? "page" : undefined}
+      className={`-mt-px rounded-t-md border-t-2 px-3 py-3 text-sm font-medium tracking-wide uppercase transition-colors ${
+        active
+          ? "border-sun-300 bg-neutral-800 text-white"
+          : "border-transparent text-neutral-300 hover:bg-neutral-800/60 hover:text-white"
+      }`}
+    >
+      {children}
+    </PendingLink>
+  );
+}

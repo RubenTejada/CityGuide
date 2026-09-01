@@ -7,6 +7,7 @@ import {
 } from "@/components/LoadingOverlay";
 import SearchAutocomplete from "@/components/SearchAutocomplete";
 import { CityEmblem } from "@/components/CityBadge";
+import SectionTabs from "@/components/SectionTabs";
 import SiteLogo from "@/components/SiteLogo";
 import { getChildren, getItem, isComingSoon } from "@/lib/umbraco";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -76,25 +77,14 @@ export default async function CityLayout({
             </Link>
           </div>
           {!comingSoon && (
-            <nav className="border-t border-neutral-800">
-              <div className="mx-auto flex max-w-6xl flex-wrap gap-1 px-6">
-                <PendingLink
-                  href={`/${citySlug}`}
-                  className="px-3 py-3 text-sm font-medium uppercase tracking-wide text-neutral-300 hover:bg-neutral-800 hover:text-white"
-                >
-                  Inicio
-                </PendingLink>
-                {sections.map((section) => (
-                  <PendingLink
-                    key={section.id}
-                    href={section.route.path}
-                    className="px-3 py-3 text-sm font-medium uppercase tracking-wide text-neutral-300 hover:bg-neutral-800 hover:text-white"
-                  >
-                    {navLabel(section)}
-                  </PendingLink>
-                ))}
-              </div>
-            </nav>
+            <SectionTabs
+              home={`/${citySlug}`}
+              sections={sections.map((section) => ({
+                id: section.id,
+                href: section.route.path,
+                label: navLabel(section),
+              }))}
+            />
           )}
         </header>
         <PendingRegion className="flex-1" label="Cargando sección…">
