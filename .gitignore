@@ -1,0 +1,20 @@
+# .NET
+bin/
+obj/
+*.user
+
+# Umbraco runtime data (SQLite DB, logs, media, temp)
+CityGuideWeb/umbraco/Data/
+CityGuideWeb/umbraco/Logs/
+CityGuideWeb/wwwroot/media/
+
+# Node / Next.js (frontend has its own .gitignore too)
+node_modules/
+.next/
+
+# Secrets
+*.env.local
+.env.local
+
+# OS
+.DS_Store

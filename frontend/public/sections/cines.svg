@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1026"/>
+      <stop offset="0.6" stop-color="#1e1b4b"/>
+      <stop offset="1" stop-color="#7f1d1d"/>
+    </linearGradient>
+    <linearGradient id="beam" x1="0" y1="0" x2="1" y2="0.35">
+      <stop offset="0" stop-color="#fbbf24" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#fbbf24" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="675" fill="url(#bg)"/>
+  <path d="M170 200 1200 60v420z" fill="url(#beam)"/>
+  <g fill="#ffffff" fill-opacity="0.35">
+    <circle cx="170" cy="200" r="46"/>
+    <circle cx="170" cy="200" r="70" fill="none" stroke="#ffffff" stroke-opacity="0.3" stroke-width="8"/>
+  </g>
+  <g fill="#ffffff" fill-opacity="0.3">
+    <path d="M760 240a90 90 0 1 1 0 180 90 90 0 0 1 0-180zm0 26a20 20 0 1 0 0 40 20 20 0 0 0 0-40zm-52 64a20 20 0 1 0 40 0 20 20 0 0 0-40 0zm64 0a20 20 0 1 0 40 0 20 20 0 0 0-40 0zm-32 54a20 20 0 1 0 40 0 20 20 0 0 0-40 0z"/>
+  </g>
+  <g fill="#0b1026">
+    <path d="M0 560h1200v115H0z" fill-opacity="0.6"/>
+  </g>
+  <g fill="#ffffff" fill-opacity="0.28">
+    <rect x="120" y="520" width="70" height="46" rx="8"/>
+    <rect x="210" y="520" width="70" height="46" rx="8"/>
+    <rect x="300" y="520" width="70" height="46" rx="8"/>
+    <rect x="165" y="590" width="70" height="46" rx="8"/>
+    <rect x="255" y="590" width="70" height="46" rx="8"/>
+  </g>
+  <g fill="#fbbf24" fill-opacity="0.75">
+    <path d="M980 150l12 26 26 5-26 7-12 26-12-26-26-7 26-5z"/>
+    <path d="M1080 260l9 20 20 4-20 5-9 20-9-20-20-5 20-4z" fill-opacity="0.5"/>
+  </g>
+</svg>

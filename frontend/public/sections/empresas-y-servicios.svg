@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="0.55" stop-color="#0c4a6e"/>
+      <stop offset="1" stop-color="#0284c7"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.8" cy="0.2" r="0.5">
+      <stop offset="0" stop-color="#7dd3fc" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#7dd3fc" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="675" fill="url(#bg)"/>
+  <rect width="1200" height="675" fill="url(#glow)"/>
+  <circle cx="960" cy="140" r="60" fill="#fef3c7" fill-opacity="0.6"/>
+  <g fill="#ffffff" fill-opacity="0.22">
+    <rect x="640" y="290" width="120" height="385"/>
+    <rect x="790" y="200" width="150" height="475"/>
+    <rect x="970" y="330" width="110" height="345"/>
+    <rect x="1100" y="260" width="100" height="415"/>
+  </g>
+  <g fill="#ffffff" fill-opacity="0.4">
+    <g>
+      <rect x="810" y="230" width="22" height="22"/><rect x="850" y="230" width="22" height="22"/><rect x="890" y="230" width="22" height="22"/>
+      <rect x="810" y="280" width="22" height="22"/><rect x="890" y="280" width="22" height="22"/>
+      <rect x="810" y="330" width="22" height="22"/><rect x="850" y="330" width="22" height="22"/>
+      <rect x="660" y="320" width="20" height="20"/><rect x="700" y="320" width="20" height="20"/>
+      <rect x="660" y="370" width="20" height="20"/><rect x="700" y="420" width="20" height="20"/>
+      <rect x="990" y="360" width="20" height="20"/><rect x="1030" y="360" width="20" height="20"/>
+      <rect x="990" y="410" width="20" height="20"/><rect x="1120" y="290" width="20" height="20"/>
+      <rect x="1160" y="340" width="20" height="20"/><rect x="1120" y="390" width="20" height="20"/>
+    </g>
+  </g>
+  <g fill="#0f172a" fill-opacity="0.45">
+    <rect x="0" y="560" width="1200" height="115"/>
+  </g>
+  <circle cx="150" cy="580" r="180" fill="#ffffff" fill-opacity="0.05"/>
+  <circle cx="360" cy="180" r="120" fill="#ffffff" fill-opacity="0.06"/>
+</svg>

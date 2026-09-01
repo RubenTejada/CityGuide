@@ -1,0 +1,338 @@
+{
+  "CityGuide.Agent/AgentConfig.cs": {
+    "mtime": 1788205419.3481736,
+    "seen": 1788207302.9479659,
+    "ast_hash": "dc8e5fc812ba39f6c96462e756a1b027",
+    "semantic_hash": "dc8e5fc812ba39f6c96462e756a1b027"
+  },
+  "CityGuide.Agent/CityGuide.Agent.csproj": {
+    "mtime": 1788205513.727241,
+    "seen": 1788207302.947968,
+    "ast_hash": "30b7cd411108eb04713b69d7e6882ba6",
+    "semantic_hash": "30b7cd411108eb04713b69d7e6882ba6"
+  },
+  "CityGuide.Agent/ClaudeClient.cs": {
+    "mtime": 1788205448.2466538,
+    "seen": 1788207302.947968,
+    "ast_hash": "5e732f6d9989d63b3cde843532641e13",
+    "semantic_hash": "5e732f6d9989d63b3cde843532641e13"
+  },
+  "CityGuide.Agent/GooglePlacesClient.cs": {
+    "mtime": 1788205432.977407,
+    "seen": 1788207302.947969,
+    "ast_hash": "d307f7d08d7088b117ceac551bd8b7c4",
+    "semantic_hash": "d307f7d08d7088b117ceac551bd8b7c4"
+  },
+  "CityGuide.Agent/Program.cs": {
+    "mtime": 1788205486.8402848,
+    "seen": 1788207302.947969,
+    "ast_hash": "fc7f9084fa2512af99a69eee4fa772d4",
+    "semantic_hash": "fc7f9084fa2512af99a69eee4fa772d4"
+  },
+  "CityGuide.Agent/UmbracoClient.cs": {
+    "mtime": 1788205472.7243218,
+    "seen": 1788207302.9479702,
+    "ast_hash": "3177a9d6376dc6302daac40bbaa8201f",
+    "semantic_hash": "3177a9d6376dc6302daac40bbaa8201f"
+  },
+  "CityGuide.Agent/appsettings.json": {
+    "mtime": 1788206659.3634603,
+    "seen": 1788207302.9479702,
+    "ast_hash": "698d4541c9e2dec236ba6632886f47f6",
+    "semantic_hash": "698d4541c9e2dec236ba6632886f47f6"
+  },
+  "CityGuide.slnx": {
+    "mtime": 1788205526.8345146,
+    "seen": 1788207302.947971,
+    "ast_hash": "183c1d4485bd1aaaad49a1b16fac0edb",
+    "semantic_hash": "183c1d4485bd1aaaad49a1b16fac0edb"
+  },
+  "CityGuideWeb/CityGuide/CityGuideComposer.cs": {
+    "mtime": 1788204485.751476,
+    "seen": 1788207302.947972,
+    "ast_hash": "de865be33a21ff3a349b882e9a887398",
+    "semantic_hash": "de865be33a21ff3a349b882e9a887398"
+  },
+  "CityGuideWeb/CityGuide/CityGuideSeeder.cs": {
+    "mtime": 1788206774.2555797,
+    "seen": 1788207302.947972,
+    "ast_hash": "77ed06bf86a423150528e9689365b81f",
+    "semantic_hash": "77ed06bf86a423150528e9689365b81f"
+  },
+  "CityGuideWeb/CityGuide/NearbyController.cs": {
+    "mtime": 1788204917.0691254,
+    "seen": 1788207302.947972,
+    "ast_hash": "8b70ff52eebdc7761d9c4a6d90c6e944",
+    "semantic_hash": "8b70ff52eebdc7761d9c4a6d90c6e944"
+  },
+  "CityGuideWeb/CityGuideWeb.csproj": {
+    "mtime": 1787420509.6972237,
+    "seen": 1788207302.947973,
+    "ast_hash": "86b9ba477132afc1dfc7930ad91d32e4",
+    "semantic_hash": "86b9ba477132afc1dfc7930ad91d32e4"
+  },
+  "CityGuideWeb/Program.cs": {
+    "mtime": 1788204697.2188666,
+    "seen": 1788207302.947974,
+    "ast_hash": "291199a92025de4f540ed89aa6bbebd2",
+    "semantic_hash": "291199a92025de4f540ed89aa6bbebd2"
+  },
+  "CityGuideWeb/Properties/launchSettings.json": {
+    "mtime": 1787420509.689638,
+    "seen": 1788207302.947974,
+    "ast_hash": "9240e91eeb76b8ce5d86d29a736c9391",
+    "semantic_hash": "9240e91eeb76b8ce5d86d29a736c9391"
+  },
+  "CityGuideWeb/Views/Partials/blockgrid/area.cshtml": {
+    "mtime": 1787420509.706511,
+    "seen": 1788207302.947975,
+    "ast_hash": "b4339b9c8aa8756f641ed409f954a159",
+    "semantic_hash": "b4339b9c8aa8756f641ed409f954a159"
+  },
+  "CityGuideWeb/Views/Partials/blockgrid/areas.cshtml": {
+    "mtime": 1787420509.7069492,
+    "seen": 1788207302.947975,
+    "ast_hash": "a5de4031d4b37ff6dfda71febabc896e",
+    "semantic_hash": "a5de4031d4b37ff6dfda71febabc896e"
+  },
+  "CityGuideWeb/Views/Partials/blockgrid/default.cshtml": {
+    "mtime": 1787420509.707209,
+    "seen": 1788207302.9479759,
+    "ast_hash": "0caeba80995a27760d85bf4681f8c65f",
+    "semantic_hash": "0caeba80995a27760d85bf4681f8c65f"
+  },
+  "CityGuideWeb/Views/Partials/blockgrid/items.cshtml": {
+    "mtime": 1787420509.7097664,
+    "seen": 1788207302.9479759,
+    "ast_hash": "27172f513b45fd0e0ace75a0f5b3b6a6",
+    "semantic_hash": "27172f513b45fd0e0ace75a0f5b3b6a6"
+  },
+  "CityGuideWeb/Views/Partials/blocklist/default.cshtml": {
+    "mtime": 1787420509.7101188,
+    "seen": 1788207302.947977,
+    "ast_hash": "b845f7b99b84a0e8ee46e7b5229684da",
+    "semantic_hash": "b845f7b99b84a0e8ee46e7b5229684da"
+  },
+  "CityGuideWeb/Views/Partials/singleblock/default.cshtml": {
+    "mtime": 1787420509.710722,
+    "seen": 1788207302.947977,
+    "ast_hash": "fa09661cf060d974d49aa0ba30ea2b02",
+    "semantic_hash": "fa09661cf060d974d49aa0ba30ea2b02"
+  },
+  "CityGuideWeb/Views/_ViewImports.cshtml": {
+    "mtime": 1787420509.7136898,
+    "seen": 1788207302.947978,
+    "ast_hash": "01b63700be6a97779e9b0fb5ef12bba0",
+    "semantic_hash": "01b63700be6a97779e9b0fb5ef12bba0"
+  },
+  "CityGuideWeb/appsettings.Development.json": {
+    "mtime": 1787420509.698082,
+    "seen": 1788207302.947978,
+    "ast_hash": "19130a658303618f844c5f86335587be",
+    "semantic_hash": "19130a658303618f844c5f86335587be"
+  },
+  "CityGuideWeb/appsettings.json": {
+    "mtime": 1788204593.0517094,
+    "seen": 1788207302.947979,
+    "ast_hash": "c4fb8a55387ef192bd549d7eb473108b",
+    "semantic_hash": "c4fb8a55387ef192bd549d7eb473108b"
+  },
+  "frontend/app/[city]/[...slug]/page.tsx": {
+    "mtime": 1788205234.9471774,
+    "seen": 1788207302.947979,
+    "ast_hash": "0749bfb22621d2ccdcffc43c2752abd2",
+    "semantic_hash": "0749bfb22621d2ccdcffc43c2752abd2"
+  },
+  "frontend/app/[city]/layout.tsx": {
+    "mtime": 1788205142.3787577,
+    "seen": 1788207302.94798,
+    "ast_hash": "2bed0b38429e4e775386482ea7d65f7b",
+    "semantic_hash": "2bed0b38429e4e775386482ea7d65f7b"
+  },
+  "frontend/app/[city]/page.tsx": {
+    "mtime": 1788205184.5947256,
+    "seen": 1788207302.94798,
+    "ast_hash": "e7bf7a83917e82e5c5d9d74596974ff2",
+    "semantic_hash": "e7bf7a83917e82e5c5d9d74596974ff2"
+  },
+  "frontend/app/layout.tsx": {
+    "mtime": 1788205121.9360857,
+    "seen": 1788207302.947981,
+    "ast_hash": "aada1f11c7cacef6ee391edd94af1921",
+    "semantic_hash": "aada1f11c7cacef6ee391edd94af1921"
+  },
+  "frontend/app/page.tsx": {
+    "mtime": 1788205130.5018501,
+    "seen": 1788207302.947981,
+    "ast_hash": "b940ec7139db4cb0e2e48e585839b0f3",
+    "semantic_hash": "b940ec7139db4cb0e2e48e585839b0f3"
+  },
+  "frontend/components/FacilityBadges.tsx": {
+    "mtime": 1788205149.4432487,
+    "seen": 1788207302.947982,
+    "ast_hash": "dfbdc109b1edb289fb424da3e7c4693e",
+    "semantic_hash": "dfbdc109b1edb289fb424da3e7c4693e"
+  },
+  "frontend/components/PlaceCard.tsx": {
+    "mtime": 1788205154.082608,
+    "seen": 1788207302.947982,
+    "ast_hash": "597e52582c953b477087c77f22e794d2",
+    "semantic_hash": "597e52582c953b477087c77f22e794d2"
+  },
+  "frontend/components/PlaceMap.tsx": {
+    "mtime": 1788205953.3863208,
+    "seen": 1788207302.947982,
+    "ast_hash": "68e4b7ca2cfe1fae594bf23c341b6db0",
+    "semantic_hash": "68e4b7ca2cfe1fae594bf23c341b6db0"
+  },
+  "frontend/eslint.config.mjs": {
+    "mtime": 1788204962.7862058,
+    "seen": 1788207302.947983,
+    "ast_hash": "dfa1f5f6a7037bf39dc510f30b180002",
+    "semantic_hash": "dfa1f5f6a7037bf39dc510f30b180002"
+  },
+  "frontend/lib/umbraco.ts": {
+    "mtime": 1788205075.6787484,
+    "seen": 1788207302.947983,
+    "ast_hash": "0ad0b11549d71284e73302f00631287f",
+    "semantic_hash": "0ad0b11549d71284e73302f00631287f"
+  },
+  "frontend/next.config.ts": {
+    "mtime": 1788205949.4715474,
+    "seen": 1788207302.947984,
+    "ast_hash": "2433bb58b7a537a09af2c1bf78a50878",
+    "semantic_hash": "2433bb58b7a537a09af2c1bf78a50878"
+  },
+  "frontend/package.json": {
+    "mtime": 1788205018.5838783,
+    "seen": 1788207302.947984,
+    "ast_hash": "bdbb23112539fc2293c39b1228bafe87",
+    "semantic_hash": "bdbb23112539fc2293c39b1228bafe87"
+  },
+  "frontend/postcss.config.mjs": {
+    "mtime": 1788204962.7865548,
+    "seen": 1788207302.947985,
+    "ast_hash": "239f3ebf717465dc636818a1a619398d",
+    "semantic_hash": "239f3ebf717465dc636818a1a619398d"
+  },
+  "frontend/tsconfig.json": {
+    "mtime": 1788204962.7873166,
+    "seen": 1788207302.947985,
+    "ast_hash": "02fc19ad21338c2ab820a70136310db4",
+    "semantic_hash": "02fc19ad21338c2ab820a70136310db4"
+  },
+  "CLAUDE.md": {
+    "mtime": 1788207022.1108596,
+    "seen": 1788207302.947986,
+    "ast_hash": "a379bfdd27e1a6408afd373c35651c3e",
+    "semantic_hash": "a379bfdd27e1a6408afd373c35651c3e"
+  },
+  "README.md": {
+    "mtime": 1788205547.3117137,
+    "seen": 1788207302.947986,
+    "ast_hash": "d9ea18897adc77bf6d013697f012fdfa",
+    "semantic_hash": "d9ea18897adc77bf6d013697f012fdfa"
+  },
+  "frontend/AGENTS.md": {
+    "mtime": 1788205016.8253617,
+    "seen": 1788207302.9479868,
+    "ast_hash": "01e8142356e15c3404e0d84c48187cd0",
+    "semantic_hash": "01e8142356e15c3404e0d84c48187cd0"
+  },
+  "frontend/CLAUDE.md": {
+    "mtime": 1788205016.8254411,
+    "seen": 1788207302.9479868,
+    "ast_hash": "5c27369b226fcf2be8a6cfe52224e767",
+    "semantic_hash": "5c27369b226fcf2be8a6cfe52224e767"
+  },
+  "frontend/README.md": {
+    "mtime": 1788204962.786222,
+    "seen": 1788207302.947988,
+    "ast_hash": "f15aaa42d5d299d091b1171097ea56ad",
+    "semantic_hash": "f15aaa42d5d299d091b1171097ea56ad"
+  },
+  "CityGuideWeb/CityGuide/SeedAssets/apap.png": {
+    "mtime": 1788206442.2877684,
+    "seen": 1788207302.947988,
+    "ast_hash": "e872094d5a6fc73505ad0aa2e72865f3",
+    "semantic_hash": "e872094d5a6fc73505ad0aa2e72865f3"
+  },
+  "CityGuideWeb/CityGuide/SeedAssets/banesco.png": {
+    "mtime": 1788206441.327812,
+    "seen": 1788207302.947989,
+    "ast_hash": "2fab23ae39e9572cde5d48b4e28a40f2",
+    "semantic_hash": "2fab23ae39e9572cde5d48b4e28a40f2"
+  },
+  "CityGuideWeb/CityGuide/SeedAssets/banreservas.png": {
+    "mtime": 1788206438.5974293,
+    "seen": 1788207302.94799,
+    "ast_hash": "5aa36a4199e63457a54ce90c8166a276",
+    "semantic_hash": "5aa36a4199e63457a54ce90c8166a276"
+  },
+  "CityGuideWeb/CityGuide/SeedAssets/bhd.png": {
+    "mtime": 1788206441.8460126,
+    "seen": 1788207302.94799,
+    "ast_hash": "111f7d610376ef2b46b98b648568fa6a",
+    "semantic_hash": "111f7d610376ef2b46b98b648568fa6a"
+  },
+  "CityGuideWeb/CityGuide/SeedAssets/caribe.png": {
+    "mtime": 1788206443.3716152,
+    "seen": 1788207302.9479911,
+    "ast_hash": "b8a0bf372c762e966cc99ede8682bc71",
+    "semantic_hash": "b8a0bf372c762e966cc99ede8682bc71"
+  },
+  "CityGuideWeb/CityGuide/SeedAssets/popular.png": {
+    "mtime": 1788206442.649545,
+    "seen": 1788207302.9479911,
+    "ast_hash": "ea27ad785aca74465c992ae8eb3063a8",
+    "semantic_hash": "ea27ad785aca74465c992ae8eb3063a8"
+  },
+  "CityGuideWeb/CityGuide/SeedAssets/promerica.png": {
+    "mtime": 1788206440.5759304,
+    "seen": 1788207302.947992,
+    "ast_hash": "cf68d7b403b0329a67fc3e9930ad231b",
+    "semantic_hash": "cf68d7b403b0329a67fc3e9930ad231b"
+  },
+  "CityGuideWeb/CityGuide/SeedAssets/santacruz.png": {
+    "mtime": 1788206443.0130973,
+    "seen": 1788207302.947992,
+    "ast_hash": "a7b42aed4ffd2d3545dd25db1c4ed178",
+    "semantic_hash": "a7b42aed4ffd2d3545dd25db1c4ed178"
+  },
+  "CityGuideWeb/CityGuide/SeedAssets/scotiabank.png": {
+    "mtime": 1788206439.7846918,
+    "seen": 1788207302.947993,
+    "ast_hash": "0872d0bbb50445797b204d1d1380d325",
+    "semantic_hash": "0872d0bbb50445797b204d1d1380d325"
+  },
+  "frontend/public/file.svg": {
+    "mtime": 1788204962.7864945,
+    "seen": 1788207302.947993,
+    "ast_hash": "d09f95206c3fa0bb9bd9fefabfd0ea71",
+    "semantic_hash": "d09f95206c3fa0bb9bd9fefabfd0ea71"
+  },
+  "frontend/public/globe.svg": {
+    "mtime": 1788204962.7869048,
+    "seen": 1788207302.947994,
+    "ast_hash": "2aaafa6a49b6563925fe440891e32717",
+    "semantic_hash": "2aaafa6a49b6563925fe440891e32717"
+  },
+  "frontend/public/next.svg": {
+    "mtime": 1788204962.7867484,
+    "seen": 1788207302.947994,
+    "ast_hash": "8e061864f388b47f33a1c3780831193e",
+    "semantic_hash": "8e061864f388b47f33a1c3780831193e"
+  },
+  "frontend/public/vercel.svg": {
+    "mtime": 1788204962.7869053,
+    "seen": 1788207302.947995,
+    "ast_hash": "c0af2f507b369b085b35ef4bbe3bcf1e",
+    "semantic_hash": "c0af2f507b369b085b35ef4bbe3bcf1e"
+  },
+  "frontend/public/window.svg": {
+    "mtime": 1788204962.7868042,
+    "seen": 1788207302.947995,
+    "ast_hash": "a2760511c65806022ad20adf74370ff3",
+    "semantic_hash": "a2760511c65806022ad20adf74370ff3"
+  }
+}

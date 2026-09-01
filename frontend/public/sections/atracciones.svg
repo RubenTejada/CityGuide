@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#083344"/>
+      <stop offset="0.55" stop-color="#0e7490"/>
+      <stop offset="1" stop-color="#059669"/>
+    </linearGradient>
+    <radialGradient id="sun" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#fde68a" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#fde68a" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="675" fill="url(#bg)"/>
+  <circle cx="900" cy="180" r="150" fill="url(#sun)"/>
+  <circle cx="900" cy="180" r="60" fill="#fef3c7" fill-opacity="0.85"/>
+  <g fill="#ffffff" fill-opacity="0.25">
+    <path d="M0 675l260-260 180 180 140-140 220 220z"/>
+    <path d="M540 675l260-300 400 300z" fill-opacity="0.18"/>
+  </g>
+  <g fill="#022c22" fill-opacity="0.5">
+    <path d="M300 470c-10-90 30-150 30-150s40 60 30 150c40-70 110-90 110-90s-20 80-90 120c80-10 130 30 130 30s-60 40-150 20l10 125h-60l10-125c-90 20-150-20-150-20s50-40 130-30c-70-40-90-120-90-120s70 20 100 90z" transform="translate(-90 -40) scale(0.9)"/>
+  </g>
+  <g stroke="#ffffff" stroke-opacity="0.35" stroke-width="8" fill="none" stroke-linecap="round">
+    <path d="M120 200c30-20 60-20 90 0"/>
+    <path d="M220 140c30-20 60-20 90 0"/>
+    <path d="M520 170c30-20 60-20 90 0"/>
+  </g>
+  <path d="M0 610c150-40 300-40 450 0s300 40 450 0 200-30 300-10v75H0z" fill="#022c22" fill-opacity="0.45"/>
+</svg>

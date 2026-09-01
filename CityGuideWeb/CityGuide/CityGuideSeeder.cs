@@ -1,0 +1,1566 @@
+using System.Text.Json;
+using Examine;
+using Umbraco.Cms.Core;
+using Umbraco.Cms.Core.Events;
+using Umbraco.Cms.Core.IO;
+using Umbraco.Cms.Core.Models;
+using Umbraco.Cms.Core.Notifications;
+using Umbraco.Cms.Core.PropertyEditors;
+using Umbraco.Cms.Core.Serialization;
+using Umbraco.Cms.Core.Services;
+using Umbraco.Cms.Core.Services.OperationStatus;
+using Umbraco.Cms.Core.Strings;
+using Umbraco.Cms.Infrastructure.Examine;
+using Umbraco.Extensions;
+
+namespace CityGuideWeb.CityGuide;
+
+/// <summary>
+/// Creates the CityGuide document types and seeds a sample Santo Domingo content tree.
+/// Idempotent: skips schema creation when the "place" document type exists, and skips
+/// seeding when a "site" root node already exists.
+/// </summary>
+public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStartedNotification>
+{
+    private static readonly string[] FacilityOptions =
+    [
+        "Romántico", "Aire Acondicionado", "Horario Extendido", "Restaurante en el Lugar",
+        "Parqueo", "WiFi", "Delivery", "Terraza", "Música en Vivo", "Apto para Niños",
+    ];
+
+    private readonly IRuntimeState _runtimeState;
+    private readonly IContentTypeService _contentTypeService;
+    private readonly IDataTypeService _dataTypeService;
+    private readonly IContentService _contentService;
+    private readonly IMediaService _mediaService;
+    private readonly MediaFileManager _mediaFileManager;
+    private readonly MediaUrlGeneratorCollection _mediaUrlGenerators;
+    private readonly IContentTypeBaseServiceProvider _contentTypeBaseServiceProvider;
+    private readonly IHostEnvironment _hostEnvironment;
+    private readonly IShortStringHelper _shortStringHelper;
+    private readonly PropertyEditorCollection _propertyEditors;
+    private readonly IConfigurationEditorJsonSerializer _configSerializer;
+    private readonly IExamineManager _examineManager;
+    private readonly IIndexRebuilder _indexRebuilder;
+    private readonly ILogger<CityGuideSeeder> _logger;
+
+    public CityGuideSeeder(
+        IRuntimeState runtimeState,
+        IContentTypeService contentTypeService,
+        IDataTypeService dataTypeService,
+        IContentService contentService,
+        IMediaService mediaService,
+        MediaFileManager mediaFileManager,
+        MediaUrlGeneratorCollection mediaUrlGenerators,
+        IContentTypeBaseServiceProvider contentTypeBaseServiceProvider,
+        IHostEnvironment hostEnvironment,
+        IShortStringHelper shortStringHelper,
+        PropertyEditorCollection propertyEditors,
+        IConfigurationEditorJsonSerializer configSerializer,
+        IExamineManager examineManager,
+        IIndexRebuilder indexRebuilder,
+        ILogger<CityGuideSeeder> logger)
+    {
+        _runtimeState = runtimeState;
+        _contentTypeService = contentTypeService;
+        _dataTypeService = dataTypeService;
+        _contentService = contentService;
+        _mediaService = mediaService;
+        _mediaFileManager = mediaFileManager;
+        _mediaUrlGenerators = mediaUrlGenerators;
+        _contentTypeBaseServiceProvider = contentTypeBaseServiceProvider;
+        _hostEnvironment = hostEnvironment;
+        _shortStringHelper = shortStringHelper;
+        _propertyEditors = propertyEditors;
+        _configSerializer = configSerializer;
+        _examineManager = examineManager;
+        _indexRebuilder = indexRebuilder;
+        _logger = logger;
+    }
+
+    public async Task HandleAsync(UmbracoApplicationStartedNotification notification, CancellationToken cancellationToken)
+    {
+        if (_runtimeState.Level != Umbraco.Cms.Core.RuntimeLevel.Run)
+        {
+            return;
+        }
+
+        if (_contentTypeService.Get("place") is null)
+        {
+            _logger.LogInformation("CityGuide: creating document types");
+            await CreateSchemaAsync();
+        }
+
+        if (_contentService.GetRootContent().All(c => c.ContentType.Alias != "site"))
+        {
+            _logger.LogInformation("CityGuide: seeding sample content");
+            SeedContent();
+        }
+
+        await EnsureCompanySchemaAsync();
+
+        await EnsureMallSchemaAsync();
+
+        await EnsureMovieSchemaAsync();
+
+        await EnsurePlaceRatingSchemaAsync();
+
+        await EnsureEventCategorySchemaAsync();
+
+        bool thingsToDoMigrated = await EnsureThingsToDoMigratedAsync();
+
+        bool banksSeeded = EnsureBanksSeeded();
+
+        bool eventsSeeded = EnsureEventsSeeded();
+
+        bool atraccionesSeeded = EnsureAtraccionesSeeded();
+
+        bool cinemasSeeded = EnsureCinemasSeeded();
+
+        bool mallsSeeded = EnsureMallsSeeded();
+
+        bool shoppingSeeded = EnsureShoppingChainsSeeded();
+
+        // The Delivery API query endpoint reads from this index. Rebuild it when it is
+        // empty while published content exists, or when this startup seeded new content
+        // (content published during boot is not picked up by the index event handlers).
+        if (_examineManager.TryGetIndex(Constants.UmbracoIndexes.DeliveryApiContentIndexName, out IIndex index)
+            && (banksSeeded
+                || thingsToDoMigrated
+                || eventsSeeded
+                || atraccionesSeeded
+                || cinemasSeeded
+                || mallsSeeded
+                || shoppingSeeded
+                || index.Searcher.CreateQuery().All().Execute(Examine.Search.QueryOptions.SkipTake(0, 1)).TotalItemCount == 0))
+        {
+            _logger.LogInformation("CityGuide: rebuilding empty Delivery API content index");
+            await _indexRebuilder.RebuildIndexAsync(Constants.UmbracoIndexes.DeliveryApiContentIndexName, null, false);
+        }
+    }
+
+    private async Task CreateSchemaAsync()
+    {
+        IDataType textstring = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.TextstringGuid))!;
+        IDataType textarea = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.TextareaGuid))!;
+        IDataType dateTime = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.DatePickerWithTimeGuid))!;
+        IDataType imagePicker = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.MediaPicker3SingleImageGuid))!;
+
+        IDataType coordinate = await GetOrCreateDataTypeAsync(
+            "CityGuide Coordinate", Constants.PropertyEditors.Aliases.Decimal,
+            "Umb.PropertyEditorUi.Decimal", ValueStorageType.Decimal, configurationData: null);
+
+        IDataType facilities = await GetOrCreateDataTypeAsync(
+            "CityGuide Facilities", Constants.PropertyEditors.Aliases.CheckBoxList,
+            "Umb.PropertyEditorUi.CheckBoxList", ValueStorageType.Nvarchar,
+            new Dictionary<string, object> { ["items"] = FacilityOptions });
+
+        IContentType place = NewContentType("place", "Place", "icon-map-location");
+        AddProperty(place, "description", "Descripción", textarea, 1);
+        AddProperty(place, "address", "Dirección", textstring, 2);
+        AddProperty(place, "phone", "Teléfono", textstring, 3);
+        AddProperty(place, "website", "Sitio Web", textstring, 4);
+        AddProperty(place, "hours", "Horario", textarea, 5);
+        AddProperty(place, "photo", "Foto", imagePicker, 6);
+        AddProperty(place, "latitude", "Latitud", coordinate, 7);
+        AddProperty(place, "longitude", "Longitud", coordinate, 8);
+        AddProperty(place, "facilities", "Facilidades del Lugar", facilities, 9);
+        AddProperty(place, "googlePlaceId", "Google Place ID", textstring, 10);
+        AddProperty(place, "source", "Fuente (manual | agent)", textstring, 11);
+        await CreateAsync(place);
+
+        IContentType eventItem = NewContentType("eventItem", "Event", "icon-calendar");
+        AddProperty(eventItem, "description", "Descripción", textarea, 1);
+        AddProperty(eventItem, "startDate", "Fecha Inicio", dateTime, 2);
+        AddProperty(eventItem, "endDate", "Fecha Fin", dateTime, 3);
+        AddProperty(eventItem, "venueName", "Lugar", textstring, 4);
+        AddProperty(eventItem, "address", "Dirección", textstring, 5);
+        AddProperty(eventItem, "photo", "Foto", imagePicker, 6);
+        AddProperty(eventItem, "latitude", "Latitud", coordinate, 7);
+        AddProperty(eventItem, "longitude", "Longitud", coordinate, 8);
+        AddProperty(eventItem, "category", "Categoría", textstring, 9);
+        AddProperty(eventItem, "website", "Sitio Web / Entradas", textstring, 10);
+        AddProperty(eventItem, "phone", "Teléfono", textstring, 11);
+        await CreateAsync(eventItem);
+
+        IContentType subcategory = NewContentType("subcategory", "Subcategory", "icon-folder");
+        subcategory.AllowedContentTypes = [new ContentTypeSort(place.Key, 0, place.Alias)];
+        await CreateAsync(subcategory);
+
+        IContentType categoryPage = NewContentType("categoryPage", "Category Page", "icon-list");
+        AddProperty(categoryPage, "intro", "Introducción", textarea, 1);
+        categoryPage.AllowedContentTypes =
+        [
+            new ContentTypeSort(subcategory.Key, 0, subcategory.Alias),
+            new ContentTypeSort(place.Key, 1, place.Alias),
+        ];
+        await CreateAsync(categoryPage);
+
+        IContentType eventsPage = NewContentType("eventsPage", "Events Page", "icon-calendar-alt");
+        eventsPage.AllowedContentTypes = [new ContentTypeSort(eventItem.Key, 0, eventItem.Alias)];
+        await CreateAsync(eventsPage);
+
+        IContentType thingsToDoPage = NewContentType("thingsToDoPage", "Things To Do Page", "icon-compass");
+        AddProperty(thingsToDoPage, "intro", "Introducción", textarea, 1);
+        await CreateAsync(thingsToDoPage);
+
+        IContentType city = NewContentType("city", "City", "icon-globe");
+        AddProperty(city, "intro", "Introducción", textarea, 1);
+        AddProperty(city, "country", "País", textstring, 2);
+        AddProperty(city, "heroImage", "Imagen Principal", imagePicker, 3);
+        AddProperty(city, "latitude", "Latitud (centro del mapa)", coordinate, 4);
+        AddProperty(city, "longitude", "Longitud (centro del mapa)", coordinate, 5);
+        city.AllowedContentTypes =
+        [
+            new ContentTypeSort(categoryPage.Key, 0, categoryPage.Alias),
+            new ContentTypeSort(eventsPage.Key, 1, eventsPage.Alias),
+            new ContentTypeSort(thingsToDoPage.Key, 2, thingsToDoPage.Alias),
+        ];
+        await CreateAsync(city);
+
+        IContentType site = NewContentType("site", "Site", "icon-home");
+        site.AllowedAsRoot = true;
+        AddProperty(site, "siteName", "Nombre del Sitio", textstring, 1);
+        site.AllowedContentTypes = [new ContentTypeSort(city.Key, 0, city.Alias)];
+        await CreateAsync(site);
+    }
+
+    private async Task<IDataType> GetOrCreateDataTypeAsync(
+        string name, string editorAlias, string editorUiAlias, ValueStorageType storageType,
+        IDictionary<string, object>? configurationData)
+    {
+        IDataType? existing = await _dataTypeService.GetAsync(name);
+        if (existing is not null)
+        {
+            return existing;
+        }
+
+        if (!_propertyEditors.TryGet(editorAlias, out IDataEditor? editor))
+        {
+            throw new InvalidOperationException($"Property editor '{editorAlias}' not found.");
+        }
+
+        var dataType = new DataType(editor!, _configSerializer, -1)
+        {
+            Name = name,
+            EditorUiAlias = editorUiAlias,
+            DatabaseType = storageType,
+        };
+        if (configurationData is not null)
+        {
+            dataType.ConfigurationData = configurationData;
+        }
+
+        Attempt<IDataType, DataTypeOperationStatus> attempt =
+            await _dataTypeService.CreateAsync(dataType, Constants.Security.SuperUserKey);
+        return attempt.Success
+            ? attempt.Result
+            : throw new InvalidOperationException($"Failed to create data type '{name}': {attempt.Status}");
+    }
+
+    private ContentType NewContentType(string alias, string name, string icon) =>
+        new(_shortStringHelper, -1) { Alias = alias, Name = name, Icon = icon };
+
+    private void AddProperty(IContentType contentType, string alias, string name, IDataType dataType, int sortOrder)
+    {
+        var propertyType = new PropertyType(_shortStringHelper, dataType, alias)
+        {
+            Name = name,
+            SortOrder = sortOrder,
+        };
+        contentType.AddPropertyType(propertyType, "content", "Content");
+    }
+
+    private async Task CreateAsync(IContentType contentType)
+    {
+        Attempt<ContentTypeOperationStatus> attempt =
+            await _contentTypeService.CreateAsync(contentType, Constants.Security.SuperUserKey);
+        if (!attempt.Success)
+        {
+            throw new InvalidOperationException($"Failed to create document type '{contentType.Alias}': {attempt.Result}");
+        }
+    }
+
+    private void SeedContent()
+    {
+        IContent site = _contentService.Create("TuCiudad", -1, "site");
+        site.SetValue("siteName", "TuCiudad.com");
+        _contentService.Save(site);
+
+        IContent city = _contentService.Create("Santo Domingo", site.Id, "city");
+        city.SetValue("intro", "Bares, restaurantes, atracciones y un poco más de Santo Domingo. Ubícate con un clic.");
+        city.SetValue("country", "República Dominicana");
+        city.SetValue("latitude", 18.4718m);
+        city.SetValue("longitude", -69.9312m);
+        _contentService.Save(city);
+
+        IContent restaurantes = CreateCategory(city, "Restaurantes", "Los mejores restaurantes de la ciudad.");
+        IContent bares = CreateCategory(city, "Bares y Clubes", "Vida nocturna: bares, lounges y discotecas.");
+        IContent tiendas = CreateCategory(city, "Tiendas", "Tiendas y centros comerciales.");
+        IContent cines = CreateCategory(city, "Cines", "Carteleras y salas de cine.");
+        IContent servicios = CreateCategory(city, "Empresas y Servicios", "Empresas y servicios locales.");
+
+        IContent china = _contentService.Create("China", restaurantes.Id, "subcategory");
+        _contentService.Save(china);
+        IContent criolla = _contentService.Create("Criolla", restaurantes.Id, "subcategory");
+        _contentService.Save(criolla);
+        IContent italiana = _contentService.Create("Italiana", restaurantes.Id, "subcategory");
+        _contentService.Save(italiana);
+
+        CreatePlace(china.Id, "Pan Oliva",
+            "Cocina asiática con un toque criollo en el corazón de La Julia. Rollitos primavera y especialidades cantonesas en un ambiente acogedor.",
+            "Av. Sarasota, Santo Domingo DN", "809-533-7380",
+            "Dom - Juev 11:00AM - 12:00AM\nVier - Sáb 11:00AM - 2:00AM",
+            18.4557m, -69.9282m,
+            ["Romántico", "Aire Acondicionado", "Horario Extendido", "Restaurante en el Lugar", "Parqueo"]);
+
+        CreatePlace(criolla.Id, "El Conuco",
+            "Comida típica dominicana con espectáculo folclórico. La bandera dominicana, sancocho y mofongo en un ambiente tradicional.",
+            "Calle Casimiro de Moya 152, Gazcue", "809-686-0129",
+            "Lun - Dom 11:30AM - 11:00PM",
+            18.4645m, -69.9095m,
+            ["Aire Acondicionado", "Restaurante en el Lugar", "Parqueo", "Música en Vivo", "Apto para Niños"]);
+
+        CreatePlace(italiana.Id, "Trattoria Vesuvio",
+            "Clásico italiano del Malecón con más de 60 años de historia. Pastas artesanales y mariscos frescos.",
+            "Av. George Washington 521, Malecón", "809-221-1954",
+            "Lun - Dom 12:00PM - 12:00AM",
+            18.4602m, -69.9180m,
+            ["Romántico", "Aire Acondicionado", "Restaurante en el Lugar", "Parqueo", "WiFi"]);
+
+        CreatePlace(bares.Id, "Onno's Bar",
+            "Bar y lounge en la Zona Colonial, punto de encuentro nocturno con música y coctelería.",
+            "Calle Hostos esq. El Conde, Zona Colonial", "809-689-1183",
+            "Mar - Dom 6:00PM - 3:00AM",
+            18.4734m, -69.8849m,
+            ["Aire Acondicionado", "Horario Extendido", "Música en Vivo"]);
+
+        CreatePlace(tiendas.Id, "Ágora Mall",
+            "Centro comercial moderno en el corazón de Naco: moda, tecnología, food court y cine.",
+            "Av. John F. Kennedy esq. Abraham Lincoln", "809-363-2323",
+            "Lun - Sáb 9:00AM - 9:00PM\nDom 11:00AM - 8:00PM",
+            18.4826m, -69.9401m,
+            ["Aire Acondicionado", "Parqueo", "WiFi", "Apto para Niños"]);
+
+        CreatePlace(cines.Id, "Caribbean Cinemas Downtown Center",
+            "Salas de cine con tecnología CXC y VIP en Downtown Center, Piantini.",
+            "Av. Núñez de Cáceres esq. Rómulo Betancourt", "809-688-8710",
+            "Lun - Dom 11:00AM - 11:00PM",
+            18.4520m, -69.9584m,
+            ["Aire Acondicionado", "Parqueo", "Apto para Niños"]);
+
+        CreatePlace(servicios.Id, "Farmacia Carol",
+            "Cadena de farmacias con servicio 24 horas y delivery.",
+            "Av. 27 de Febrero 241", "809-563-0000",
+            "Abierto 24 horas",
+            18.4680m, -69.9390m,
+            ["Aire Acondicionado", "Parqueo", "Delivery", "Horario Extendido"]);
+
+        IContent eventos = _contentService.Create("Eventos", city.Id, "eventsPage");
+        _contentService.Save(eventos);
+        IContent evento = _contentService.Create("Festival Gastronómico Dominicano", eventos.Id, "eventItem");
+        evento.SetValue("description", "Una semana dedicada a la cocina dominicana con los mejores chefs de la ciudad.");
+        evento.SetValue("startDate", new DateTime(2026, 10, 5, 18, 0, 0));
+        evento.SetValue("endDate", new DateTime(2026, 10, 11, 23, 0, 0));
+        evento.SetValue("venueName", "Plaza España");
+        evento.SetValue("address", "Plaza España, Zona Colonial");
+        evento.SetValue("latitude", 18.4773m);
+        evento.SetValue("longitude", -69.8822m);
+        evento.SetValue("category", "Gastronomía");
+        _contentService.Save(evento);
+
+        IContent queHacer = _contentService.Create("Qué Hacer", city.Id, "thingsToDoPage");
+        queHacer.SetValue("intro", ThingsToDoIntro);
+        _contentService.Save(queHacer);
+
+        _contentService.PublishBranch(site, PublishBranchFilter.IncludeUnpublished, ["*"]);
+    }
+
+    private IContent CreateCategory(IContent city, string name, string intro)
+    {
+        IContent category = _contentService.Create(name, city.Id, "categoryPage");
+        category.SetValue("intro", intro);
+        _contentService.Save(category);
+        return category;
+    }
+
+    private void CreatePlace(
+        int parentId, string name, string description, string address, string phone,
+        string hours, decimal latitude, decimal longitude, string[] facilities,
+        string? website = null, string? photoValue = null)
+    {
+        IContent place = _contentService.Create(name, parentId, "place");
+        place.SetValue("description", description);
+        place.SetValue("address", address);
+        place.SetValue("phone", phone);
+        place.SetValue("hours", hours);
+        place.SetValue("latitude", latitude);
+        place.SetValue("longitude", longitude);
+        place.SetValue("facilities", JsonSerializer.Serialize(facilities));
+        place.SetValue("source", "manual");
+        if (website is not null)
+        {
+            place.SetValue("website", website);
+        }
+
+        if (photoValue is not null)
+        {
+            place.SetValue("photo", photoValue);
+        }
+
+        _contentService.Save(place);
+    }
+
+    // ---- Company level (empresa -> sucursales) ----
+
+    /// <summary>
+    /// Idempotent, runs every startup: creates the "company" document type (empresa with
+    /// logo and general info, branches as child places) if missing, and allows it under
+    /// "subcategory" and "categoryPage" so existing installations pick it up.
+    /// </summary>
+    private async Task EnsureCompanySchemaAsync()
+    {
+        IContentType? place = _contentTypeService.Get("place");
+        if (place is null)
+        {
+            return;
+        }
+
+        if (_contentTypeService.Get("company") is null)
+        {
+            _logger.LogInformation("CityGuide: creating 'company' document type");
+            IDataType textstring = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.TextstringGuid))!;
+            IDataType textarea = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.TextareaGuid))!;
+            IDataType imagePicker = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.MediaPicker3SingleImageGuid))!;
+
+            IContentType company = NewContentType("company", "Company", "icon-company");
+            AddProperty(company, "description", "Descripción", textarea, 1);
+            AddProperty(company, "address", "Dirección (oficina principal)", textstring, 2);
+            AddProperty(company, "phone", "Teléfono", textstring, 3);
+            AddProperty(company, "website", "Sitio Web", textstring, 4);
+            AddProperty(company, "hours", "Horario", textarea, 5);
+            AddProperty(company, "photo", "Logo", imagePicker, 6);
+            company.AllowedContentTypes = [new ContentTypeSort(place.Key, 0, place.Alias)];
+            await CreateAsync(company);
+        }
+
+        IContentType companyType = _contentTypeService.Get("company")!;
+        foreach (string parentAlias in new[] { "subcategory", "categoryPage" })
+        {
+            IContentType? parent = _contentTypeService.Get(parentAlias);
+            if (parent is null || parent.AllowedContentTypes!.Any(c => c.Key == companyType.Key))
+            {
+                continue;
+            }
+
+            _logger.LogInformation("CityGuide: allowing 'company' under '{Parent}'", parentAlias);
+            int nextSort = parent.AllowedContentTypes!.Count();
+            parent.AllowedContentTypes =
+                [.. parent.AllowedContentTypes!, new ContentTypeSort(companyType.Key, nextSort, companyType.Alias)];
+            Attempt<ContentTypeOperationStatus> attempt =
+                await _contentTypeService.UpdateAsync(parent, Constants.Security.SuperUserKey);
+            if (!attempt.Success)
+            {
+                throw new InvalidOperationException(
+                    $"Failed to allow 'company' under '{parentAlias}': {attempt.Result}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Adds the Google rating properties to the existing "place" document type.
+    /// Guarded and run every startup so existing installations pick it up.
+    /// </summary>
+    private async Task EnsurePlaceRatingSchemaAsync()
+    {
+        IContentType? place = _contentTypeService.Get("place");
+        if (place is null || place.PropertyTypeExists("googleRating"))
+        {
+            return;
+        }
+
+        _logger.LogInformation("CityGuide: adding Google rating properties to 'place'");
+        IDataType rating = await GetOrCreateDataTypeAsync(
+            "CityGuide Rating", Constants.PropertyEditors.Aliases.Decimal,
+            "Umb.PropertyEditorUi.Decimal", ValueStorageType.Decimal, configurationData: null);
+        IDataType numeric = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.NumericGuid))!;
+
+        AddProperty(place, "googleRating", "Rating Google", rating, 12);
+        AddProperty(place, "googleRatingCount", "Reseñas Google (cantidad)", numeric, 13);
+        Attempt<ContentTypeOperationStatus> attempt =
+            await _contentTypeService.UpdateAsync(place, Constants.Security.SuperUserKey);
+        if (!attempt.Success)
+        {
+            throw new InvalidOperationException(
+                $"Failed to add rating properties to 'place': {attempt.Result}");
+        }
+    }
+
+    /// <summary>
+    /// Adds the "category", "website" and "phone" properties to the existing
+    /// "eventItem" document type. Guarded per property and run every startup
+    /// so existing installations pick them up.
+    /// </summary>
+    private async Task EnsureEventCategorySchemaAsync()
+    {
+        IContentType? eventItem = _contentTypeService.Get("eventItem");
+        if (eventItem is null)
+        {
+            return;
+        }
+
+        (string Alias, string Name, int Sort)[] missing =
+            new[] { ("category", "Categoría", 9), ("website", "Sitio Web / Entradas", 10), ("phone", "Teléfono", 11) }
+                .Where(p => !eventItem.PropertyTypeExists(p.Item1))
+                .ToArray();
+        if (missing.Length == 0)
+        {
+            return;
+        }
+
+        IDataType textstring = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.TextstringGuid))!;
+        foreach ((string alias, string name, int sort) in missing)
+        {
+            _logger.LogInformation("CityGuide: adding '{Alias}' property to 'eventItem'", alias);
+            AddProperty(eventItem, alias, name, textstring, sort);
+        }
+
+        Attempt<ContentTypeOperationStatus> attempt =
+            await _contentTypeService.UpdateAsync(eventItem, Constants.Security.SuperUserKey);
+        if (!attempt.Success)
+        {
+            throw new InvalidOperationException(
+                $"Failed to add event properties to 'eventItem': {attempt.Result}");
+        }
+    }
+
+    private static readonly string ThingsToDoIntro =
+        "Ideas para disfrutar la ciudad hoy: eventos, parques y atracciones abiertos, cines, bares, restaurantes y más.";
+
+    /// <summary>
+    /// Idempotent, runs every startup: replaces the retired "Especiales" section with the
+    /// "Qué Hacer" guide. Creates the "thingsToDoPage" document type if missing, allows it
+    /// under "city", deletes the legacy "specialsPage"/"specialItem" document types (which
+    /// also removes their content), and seeds the "Qué Hacer" node under Santo Domingo.
+    /// </summary>
+    private async Task<bool> EnsureThingsToDoMigratedAsync()
+    {
+        if (_contentTypeService.Get("city") is null)
+        {
+            return false;
+        }
+
+        bool changed = false;
+
+        if (_contentTypeService.Get("thingsToDoPage") is null)
+        {
+            _logger.LogInformation("CityGuide: creating 'thingsToDoPage' document type");
+            IDataType textarea = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.TextareaGuid))!;
+            IContentType thingsToDo = NewContentType("thingsToDoPage", "Things To Do Page", "icon-compass");
+            AddProperty(thingsToDo, "intro", "Introducción", textarea, 1);
+            await CreateAsync(thingsToDo);
+        }
+
+        IContentType thingsToDoType = _contentTypeService.Get("thingsToDoPage")!;
+        IContentType cityType = _contentTypeService.Get("city")!;
+        if (!cityType.AllowedContentTypes!.Any(c => c.Key == thingsToDoType.Key))
+        {
+            _logger.LogInformation("CityGuide: allowing 'thingsToDoPage' under 'city'");
+            int nextSort = cityType.AllowedContentTypes!.Count();
+            cityType.AllowedContentTypes =
+                [.. cityType.AllowedContentTypes!, new ContentTypeSort(thingsToDoType.Key, nextSort, thingsToDoType.Alias)];
+            Attempt<ContentTypeOperationStatus> attempt =
+                await _contentTypeService.UpdateAsync(cityType, Constants.Security.SuperUserKey);
+            if (!attempt.Success)
+            {
+                throw new InvalidOperationException(
+                    $"Failed to allow 'thingsToDoPage' under 'city': {attempt.Result}");
+            }
+        }
+
+        // Retire "Especiales": delete the child type first, then the page type.
+        // Deleting a document type also deletes all content of that type.
+        foreach (string alias in new[] { "specialItem", "specialsPage" })
+        {
+            if (_contentTypeService.Get(alias) is { } legacy)
+            {
+                _logger.LogInformation("CityGuide: deleting legacy '{Alias}' document type", alias);
+                _contentTypeService.Delete(legacy);
+                changed = true;
+            }
+        }
+
+        IContent? site = _contentService.GetRootContent().FirstOrDefault(c => c.ContentType.Alias == "site");
+        if (site is null)
+        {
+            return changed;
+        }
+
+        IContent? city = Descendant(site, "city", "Santo Domingo");
+        if (city is null || Descendant(city, "thingsToDoPage", "Qué Hacer") is not null)
+        {
+            return changed;
+        }
+
+        _logger.LogInformation("CityGuide: seeding 'Qué Hacer' page");
+        IContent queHacer = _contentService.Create("Qué Hacer", city.Id, "thingsToDoPage");
+        queHacer.SetValue("intro", ThingsToDoIntro);
+        _contentService.Save(queHacer);
+        _contentService.PublishBranch(queHacer, PublishBranchFilter.IncludeUnpublished, ["*"]);
+        return true;
+    }
+
+    private sealed record SeedEvent(
+        string Name, string Category, string Description,
+        DateTime Start, DateTime End, string Venue, string Address,
+        decimal Latitude, decimal Longitude,
+        string? Website = null, string? Phone = null, string? Photo = null);
+
+    private static readonly SeedEvent[] Events =
+    [
+        new("Concierto de Merengue en el Malecón", "Música",
+            "Gran tarima libre de costo con orquestas de merengue y bachata frente al mar Caribe.",
+            new DateTime(2026, 9, 12, 19, 0, 0), new DateTime(2026, 9, 12, 23, 30, 0),
+            "Malecón de Santo Domingo", "Av. George Washington", 18.4636m, -69.8990m, Photo: "merengue-malecon.jpg"),
+        new("Feria del Libro Santo Domingo", "Arte y Cultura",
+            "La cita anual de la literatura dominicana e internacional: presentaciones, firmas de autores y actividades infantiles.",
+            new DateTime(2026, 9, 24, 10, 0, 0), new DateTime(2026, 10, 4, 21, 0, 0),
+            "Plaza de la Cultura", "Av. Máximo Gómez esq. Pedro Henríquez Ureña", 18.4708m, -69.9105m, Photo: "feria-libro.jpg"),
+        new("Ballet Nacional Dominicano: Gala de Temporada", "Teatro y Danza",
+            "Gala de clausura de temporada con obras clásicas y contemporáneas del repertorio nacional.",
+            new DateTime(2026, 10, 17, 20, 30, 0), new DateTime(2026, 10, 18, 22, 30, 0),
+            "Teatro Nacional Eduardo Brito", "Av. Máximo Gómez 35, Plaza de la Cultura", 18.4703m, -69.9120m, Photo: "ballet-nacional.jpg"),
+        new("Maratón Ciudad Colonial 10K", "Deportes",
+            "Carrera 10K y 5K por las calles históricas de la Ciudad Colonial. Inscripción abierta hasta una semana antes.",
+            new DateTime(2026, 10, 25, 6, 0, 0), new DateTime(2026, 10, 25, 11, 0, 0),
+            "Parque Colón", "Calle El Conde, Ciudad Colonial", 18.4734m, -69.8849m, Photo: "maraton-10k.jpg"),
+        new("Festival de Jazz de Santo Domingo", "Música",
+            "Tres noches de jazz con artistas locales e invitados internacionales en un ambiente al aire libre.",
+            new DateTime(2026, 11, 6, 19, 0, 0), new DateTime(2026, 11, 8, 23, 0, 0),
+            "Plaza España", "Plaza España, Ciudad Colonial", 18.4773m, -69.8822m, Photo: "festival-jazz.jpg"),
+        new("Expo Artesanía Dominicana", "Ferias y Exposiciones",
+            "Exposición y venta de artesanía en ámbar, larimar, cerámica y madera de artesanos de todo el país.",
+            new DateTime(2026, 11, 13, 10, 0, 0), new DateTime(2026, 11, 15, 20, 0, 0),
+            "Centro de Convenciones del MIREX", "Av. Independencia, Centro de los Héroes", 18.4520m, -69.9126m, Photo: "expo-artesania.jpg"),
+        new("Serie del Béisbol Invernal: Licey vs. Escogido", "Deportes",
+            "El clásico eterno del béisbol dominicano en el inicio de la temporada invernal.",
+            new DateTime(2026, 11, 21, 19, 30, 0), new DateTime(2026, 11, 21, 23, 0, 0),
+            "Estadio Quisqueya Juan Marichal", "Av. Tiradentes, Ensanche La Fe", 18.4830m, -69.9092m, Photo: "beisbol-invernal.jpg"),
+        new("Encendido del Árbol de Navidad", "Ferias y Exposiciones",
+            "Encendido navideño con villancicos, food trucks y actividades para toda la familia.",
+            new DateTime(2026, 12, 1, 18, 0, 0), new DateTime(2026, 12, 1, 22, 0, 0),
+            "Plaza de la Bandera", "Av. 27 de Febrero esq. Luperón", 18.4560m, -69.9670m, Photo: "arbol-navidad.jpg"),
+        new("Concierto Sinfónico de Navidad", "Música",
+            "La Orquesta Sinfónica Nacional interpreta el repertorio navideño clásico y criollo.",
+            new DateTime(2026, 12, 18, 20, 30, 0), new DateTime(2026, 12, 18, 22, 30, 0),
+            "Teatro Nacional Eduardo Brito", "Av. Máximo Gómez 35, Plaza de la Cultura", 18.4703m, -69.9120m,
+            Phone: "809-687-3191", Photo: "sinfonico-navidad.jpg"),
+        // Conciertos, espectáculos y obras de teatro
+        new("Juan Luis Guerra en Concierto", "Conciertos",
+            "El máximo exponente de la música dominicana presenta sus éxitos junto a 4.40 en una noche única.",
+            new DateTime(2026, 11, 28, 20, 30, 0), new DateTime(2026, 11, 28, 23, 59, 0),
+            "Estadio Olímpico Félix Sánchez", "Av. John F. Kennedy, Centro Olímpico", 18.4855m, -69.9179m,
+            Website: "https://www.uepatickets.com", Photo: "juan-luis-guerra.jpg"),
+        new("Romeo Santos: Fórmula Tour", "Conciertos",
+            "El Rey de la Bachata regresa a Santo Domingo con su gira internacional.",
+            new DateTime(2026, 12, 12, 20, 0, 0), new DateTime(2026, 12, 12, 23, 59, 0),
+            "Estadio Quisqueya Juan Marichal", "Av. Tiradentes, Ensanche La Fe", 18.4830m, -69.9092m,
+            Website: "https://www.uepatickets.com", Photo: "romeo-santos.jpg"),
+        new("Navidad Merenguera: Milly Quezada y Los Hermanos Rosario", "Conciertos",
+            "Concierto navideño al aire libre con dos leyendas del merengue frente al mar.",
+            new DateTime(2026, 12, 20, 19, 0, 0), new DateTime(2026, 12, 20, 23, 0, 0),
+            "Anfiteatro Plaza Juan Barón", "Av. George Washington, Malecón", 18.4600m, -69.8930m,
+            Website: "https://www.tuboleta.com.do", Photo: "navidad-merenguera.jpg"),
+        new("La Casa de Bernarda Alba", "Teatro y Danza",
+            "La obra maestra de Federico García Lorca puesta en escena por la Compañía Nacional de Teatro.",
+            new DateTime(2026, 9, 18, 20, 30, 0), new DateTime(2026, 9, 20, 22, 30, 0),
+            "Palacio de Bellas Artes", "Av. Máximo Gómez esq. Independencia", 18.4666m, -69.9026m,
+            Phone: "809-687-0504", Photo: "bernarda-alba.jpg"),
+        new("Don Juan Tenorio", "Teatro y Danza",
+            "El clásico de Zorrilla en temporada de Día de los Muertos, montaje de la Sala Ravelo.",
+            new DateTime(2026, 10, 31, 20, 30, 0), new DateTime(2026, 11, 2, 22, 30, 0),
+            "Sala Ravelo, Teatro Nacional", "Av. Máximo Gómez 35, Plaza de la Cultura", 18.4703m, -69.9120m,
+            Phone: "809-687-3191", Photo: "don-juan-tenorio.jpg"),
+        new("Ópera: Carmen de Bizet", "Teatro y Danza",
+            "Producción completa de la ópera Carmen con solistas internacionales, coro y orquesta en vivo.",
+            new DateTime(2026, 12, 5, 20, 0, 0), new DateTime(2026, 12, 6, 22, 30, 0),
+            "Teatro Nacional Eduardo Brito", "Av. Máximo Gómez 35, Plaza de la Cultura", 18.4703m, -69.9120m,
+            Phone: "809-687-3191", Photo: "opera-carmen.jpg"),
+        new("Noche de Comedia Dominicana", "Espectáculos",
+            "Los mejores comediantes del país en una noche de stand-up para reír sin parar.",
+            new DateTime(2026, 10, 9, 21, 0, 0), new DateTime(2026, 10, 9, 23, 30, 0),
+            "Teatro La Fiesta, Hotel Jaragua", "Av. George Washington 367", 18.4620m, -69.9080m,
+            Website: "https://www.uepatickets.com", Phone: "809-221-2222", Photo: "noche-comedia.jpg"),
+        new("Circo Fantástico Internacional", "Espectáculos",
+            "Acróbatas, malabaristas y payasos de gira internacional bajo la gran carpa. Funciones diarias.",
+            new DateTime(2026, 10, 30, 18, 0, 0), new DateTime(2026, 11, 8, 21, 0, 0),
+            "Carpa junto a Sambil Santo Domingo", "Av. John F. Kennedy esq. Paseo de los Aviadores", 18.4829m, -69.9410m,
+            Website: "https://www.tuboleta.com.do", Photo: "circo-fantastico.jpg"),
+    ];
+
+    /// <summary>
+    /// Seeds the event catalog (with categories) under Santo Domingo's "Eventos" page.
+    /// Idempotent per event: only creates the seed events whose name is missing, so new
+    /// entries added to <see cref="Events"/> reach existing installations. Also backfills
+    /// the "category" value on pre-existing events that lack it.
+    /// </summary>
+    private bool EnsureEventsSeeded()
+    {
+        IContent? site = _contentService.GetRootContent().FirstOrDefault(c => c.ContentType.Alias == "site");
+        if (site is null)
+        {
+            return false;
+        }
+
+        IContent? eventos = Descendant(site, "city", "Santo Domingo") is { } city
+            ? Descendant(city, "eventsPage", "Eventos")
+            : null;
+        if (eventos is null)
+        {
+            return false;
+        }
+
+        List<IContent> existing = _contentService
+            .GetPagedChildren(eventos.Id, 0, 500, out _, null, null, null, false)
+            .Where(c => c.ContentType.Alias == "eventItem")
+            .ToList();
+
+        bool changed = false;
+
+        // Seed photo per event name; the festival is created in SeedContent, not in Events.
+        Dictionary<string, string> photosByName = Events
+            .Where(s => s.Photo is not null)
+            .ToDictionary(s => s.Name, s => s.Photo!);
+        photosByName["Festival Gastronómico Dominicano"] = "festival-gastronomico.jpg";
+
+        IMedia? photoFolder = null;
+        IMedia PhotoFolder() => photoFolder ??= GetOrCreateRootMediaFolder("Eventos");
+
+        foreach (IContent item in existing.Where(c => string.IsNullOrEmpty(c.GetValue<string>("category"))))
+        {
+            item.SetValue("category", "Gastronomía");
+            _contentService.Save(item);
+            changed = true;
+        }
+
+        // Backfill the photo on pre-existing events that lack one.
+        foreach (IContent item in existing.Where(c => string.IsNullOrEmpty(c.GetValue<string>("photo"))))
+        {
+            if (!photosByName.TryGetValue(item.Name!, out string? file))
+            {
+                continue;
+            }
+
+            string? photoValue = CreateSeedMedia(PhotoFolder(), $"Foto {item.Name}", $"events/{file}");
+            if (photoValue is null)
+            {
+                continue;
+            }
+
+            _logger.LogInformation("CityGuide: adding photo to event '{Name}'", item.Name);
+            item.SetValue("photo", photoValue);
+            _contentService.Save(item);
+            changed = true;
+        }
+
+        HashSet<string> existingNames = existing.Select(c => c.Name!).ToHashSet();
+        foreach (SeedEvent seed in Events.Where(s => !existingNames.Contains(s.Name)))
+        {
+            _logger.LogInformation("CityGuide: seeding event '{Name}'", seed.Name);
+            IContent evento = _contentService.Create(seed.Name, eventos.Id, "eventItem");
+            evento.SetValue("description", seed.Description);
+            evento.SetValue("startDate", seed.Start);
+            evento.SetValue("endDate", seed.End);
+            evento.SetValue("venueName", seed.Venue);
+            evento.SetValue("address", seed.Address);
+            evento.SetValue("latitude", seed.Latitude);
+            evento.SetValue("longitude", seed.Longitude);
+            evento.SetValue("category", seed.Category);
+            if (seed.Website is not null)
+            {
+                evento.SetValue("website", seed.Website);
+            }
+            if (seed.Phone is not null)
+            {
+                evento.SetValue("phone", seed.Phone);
+            }
+            if (seed.Photo is not null
+                && CreateSeedMedia(PhotoFolder(), $"Foto {seed.Name}", $"events/{seed.Photo}") is { } newPhoto)
+            {
+                evento.SetValue("photo", newPhoto);
+            }
+            _contentService.Save(evento);
+            changed = true;
+        }
+
+        if (changed)
+        {
+            _contentService.PublishBranch(eventos, PublishBranchFilter.IncludeUnpublished, ["*"]);
+        }
+        return changed;
+    }
+
+    // ---- Company chains (empresa -> sucursales), shared by banks/supermarkets/pharmacies ----
+
+    private sealed record ChainBranch(string Name, string Address, decimal Latitude, decimal Longitude);
+
+    private sealed record Chain(
+        string Name, string LogoFile, string Website, string Phone, string Hours,
+        string Description, ChainBranch[] Branches);
+
+    /// <summary>One "company" node per chain (logo + general info), branches as child places.</summary>
+    private void SeedChainCompanies(int parentId, IMedia logoFolder, Chain[] chains, string[] branchFacilities)
+    {
+        foreach (Chain chain in chains)
+        {
+            string? photoValue = CreateLogoMedia(logoFolder, chain.Name, chain.LogoFile);
+
+            IContent company = _contentService.Create(chain.Name, parentId, "company");
+            company.SetValue("description", chain.Description);
+            company.SetValue("address", chain.Branches[0].Address);
+            company.SetValue("phone", chain.Phone);
+            company.SetValue("website", chain.Website);
+            company.SetValue("hours", chain.Hours);
+            if (photoValue is not null)
+            {
+                company.SetValue("photo", photoValue);
+            }
+
+            _contentService.Save(company);
+
+            // Branches carry only their own data; phone/hours/website/logo are
+            // inherited from the company by the frontend when empty.
+            foreach (ChainBranch branch in chain.Branches)
+            {
+                CreatePlace(company.Id, branch.Name, string.Empty,
+                    branch.Address, string.Empty, string.Empty,
+                    branch.Latitude, branch.Longitude, branchFacilities);
+            }
+        }
+    }
+
+    private IMedia GetOrCreateRootMediaFolder(string name)
+    {
+        if (_mediaService.GetRootMedia().FirstOrDefault(m => m.Name == name) is { } existing)
+        {
+            return _mediaService.GetById(existing.Id)!;
+        }
+
+        IMedia folder = _mediaService.CreateMedia(name, Constants.System.Root, Constants.Conventions.MediaTypes.Folder);
+        _mediaService.Save(folder);
+        return folder;
+    }
+
+    // ---- Banks ----
+
+    private static readonly string BankHours = "Lun - Vie 8:30AM - 5:00PM\nSáb 9:00AM - 1:00PM";
+
+    private static readonly Chain[] Banks =
+    [
+        new("Banreservas", "banreservas.png", "https://www.banreservas.com", "809-960-2121", BankHours,
+            "Banco de Reservas de la República Dominicana, el banco estatal y uno de los más grandes del país.",
+            [
+                new("Oficina Principal — Torre Banreservas", "Av. Winston Churchill esq. Porfirio Herrera, Piantini", 18.4676m, -69.9406m),
+                new("Sucursal Zona Colonial", "Calle Isabel La Católica esq. Las Mercedes, Zona Colonial", 18.4735m, -69.8830m),
+                new("Sucursal 27 de Febrero", "Av. 27 de Febrero, La Esperilla", 18.4623m, -69.9151m),
+                new("Sucursal Sambil", "Av. John F. Kennedy, Plaza Sambil", 18.4830m, -69.9260m),
+                new("Sucursal Megacentro", "Av. San Vicente de Paúl, Megacentro, Santo Domingo Este", 18.5057m, -69.8570m),
+            ]),
+        new("Banco Popular Dominicano", "popular.png", "https://www.popularenlinea.com", "809-544-5555", BankHours,
+            "El mayor banco privado del país, con amplia red de sucursales y cajeros.",
+            [
+                new("Casa Matriz — Torre Popular", "Av. John F. Kennedy 20 esq. Máximo Gómez", 18.4749m, -69.9120m),
+                new("Sucursal El Conde", "Calle El Conde, Zona Colonial", 18.4723m, -69.8870m),
+                new("Sucursal Ágora Mall", "Av. John F. Kennedy esq. Abraham Lincoln, Naco", 18.4826m, -69.9401m),
+                new("Sucursal Blue Mall", "Av. Winston Churchill esq. Gustavo Mejía Ricart, Piantini", 18.4720m, -69.9410m),
+                new("Sucursal Núñez de Cáceres", "Av. Núñez de Cáceres, Mirador Norte", 18.4550m, -69.9570m),
+            ]),
+        new("Banco BHD", "bhd.png", "https://www.bhd.com.do", "809-243-3232", BankHours,
+            "Banco múltiple dominicano con fuerte presencia en banca personal y empresarial.",
+            [
+                new("Oficina Principal — Plaza BHD", "Av. 27 de Febrero esq. Winston Churchill", 18.4653m, -69.9401m),
+                new("Sucursal Gustavo Mejía Ricart", "Av. Gustavo Mejía Ricart, Piantini", 18.4700m, -69.9350m),
+                new("Sucursal Zona Colonial", "Calle El Conde, Zona Colonial", 18.4723m, -69.8860m),
+                new("Sucursal Sambil", "Av. John F. Kennedy, Plaza Sambil", 18.4830m, -69.9250m),
+            ]),
+        new("Scotiabank", "scotiabank.png", "https://do.scotiabank.com", "809-689-5151", BankHours,
+            "Banco internacional canadiense con décadas de presencia en República Dominicana.",
+            [
+                new("Oficina Principal", "Av. 27 de Febrero esq. Winston Churchill", 18.4650m, -69.9390m),
+                new("Sucursal Abraham Lincoln", "Av. Abraham Lincoln, Piantini", 18.4740m, -69.9450m),
+                new("Sucursal Bella Vista Mall", "Av. Sarasota, Bella Vista", 18.4530m, -69.9450m),
+                new("Sucursal Santo Domingo Este", "Av. San Vicente de Paúl, Santo Domingo Este", 18.5050m, -69.8580m),
+            ]),
+        new("Banco Santa Cruz", "santacruz.png", "https://www.bsc.com.do", "809-726-2727", BankHours,
+            "Banco múltiple dominicano en crecimiento, enfocado en servicio personalizado.",
+            [
+                new("Oficina Principal", "Av. Lope de Vega, Piantini", 18.4780m, -69.9380m),
+                new("Sucursal Naco", "Av. Tiradentes, Naco", 18.4770m, -69.9330m),
+                new("Sucursal 27 de Febrero", "Av. 27 de Febrero", 18.4630m, -69.9200m),
+            ]),
+        new("Banco Caribe", "caribe.png", "https://www.bancocaribe.com.do", "809-378-9000", BankHours,
+            "Banco múltiple dominicano con servicios de banca personal, empresarial y de inversión.",
+            [
+                new("Oficina Principal", "Av. 27 de Febrero 208, La Esperilla", 18.4640m, -69.9230m),
+                new("Sucursal Naco", "Av. Tiradentes, Naco", 18.4780m, -69.9320m),
+                new("Sucursal Santo Domingo Este", "Av. Venezuela, Santo Domingo Este", 18.4940m, -69.8560m),
+            ]),
+        new("Banco Promerica", "promerica.png", "https://www.promerica.com.do", "809-732-1100", BankHours,
+            "Parte del grupo regional Promerica, con presencia en nueve países.",
+            [
+                new("Oficina Principal", "Av. Pedro Henríquez Ureña, La Esperilla", 18.4700m, -69.9330m),
+                new("Sucursal Bella Vista", "Av. Sarasota, Bella Vista", 18.4520m, -69.9440m),
+            ]),
+        new("Banesco", "banesco.png", "https://www.banesco.com.do", "809-732-3232", BankHours,
+            "Banco múltiple de capital internacional con operaciones en República Dominicana.",
+            [
+                new("Oficina Principal", "Av. Abraham Lincoln esq. Gustavo Mejía Ricart, Piantini", 18.4720m, -69.9430m),
+                new("Sucursal Naco", "Av. Tiradentes, Naco", 18.4790m, -69.9340m),
+            ]),
+        new("APAP", "apap.png", "https://www.apap.com.do", "809-689-0171", BankHours,
+            "Asociación Popular de Ahorros y Préstamos, líder en ahorro y crédito hipotecario.",
+            [
+                new("Oficina Principal", "Av. Máximo Gómez esq. 27 de Febrero", 18.4650m, -69.9110m),
+                new("Sucursal John F. Kennedy", "Av. John F. Kennedy", 18.4800m, -69.9300m),
+            ]),
+    ];
+
+    /// <summary>
+    /// Idempotent: creates the "Bancos" subcategory under "Empresas y Servicios" with one
+    /// "company" node per bank (logo + general info) and its branches as child places.
+    /// Runs on every startup so existing installations pick it up without reseeding.
+    /// A pre-company flat "Bancos" (places directly under the subcategory) is deleted and
+    /// reseeded with the nested structure.
+    /// </summary>
+    private bool EnsureBanksSeeded()
+    {
+        IContent? site = _contentService.GetRootContent().FirstOrDefault(c => c.ContentType.Alias == "site");
+        if (site is null)
+        {
+            return false;
+        }
+
+        IContent? servicios = Descendant(site, "city", "Santo Domingo") is { } city
+            ? Descendant(city, "categoryPage", "Empresas y Servicios")
+            : null;
+        if (servicios is null)
+        {
+            return false;
+        }
+
+        if (Descendant(servicios, "subcategory", "Bancos") is { } existing)
+        {
+            bool hasCompanies = _contentService
+                .GetPagedChildren(existing.Id, 0, 1, out _, null, null, null, false)
+                .Any(c => c.ContentType.Alias == "company");
+            if (hasCompanies)
+            {
+                return false;
+            }
+
+            _logger.LogInformation("CityGuide: migrating flat 'Bancos' to company/branch structure");
+            _contentService.Delete(existing);
+            if (_mediaService.GetRootMedia().FirstOrDefault(m => m.Name == "Bancos") is { } oldLogos)
+            {
+                _mediaService.Delete(oldLogos);
+            }
+        }
+        else
+        {
+            _logger.LogInformation("CityGuide: seeding banks under 'Empresas y Servicios'");
+        }
+
+        IContent bancos = _contentService.Create("Bancos", servicios.Id, "subcategory");
+        _contentService.Save(bancos);
+
+        IMedia logoFolder = GetOrCreateRootMediaFolder("Bancos");
+
+        SeedChainCompanies(bancos.Id, logoFolder, Banks, ["Aire Acondicionado", "Parqueo"]);
+
+        _contentService.PublishBranch(bancos, PublishBranchFilter.IncludeUnpublished, ["*"]);
+        return true;
+    }
+
+    /// <summary>
+    /// Idempotent, runs every startup: creates the "movie" document type (cartelera
+    /// catalog entry maintained by the agent: synopsis, poster, YouTube trailer) if
+    /// missing, and allows it under "categoryPage" so existing installations pick it up.
+    /// </summary>
+    private async Task EnsureMovieSchemaAsync()
+    {
+        if (_contentTypeService.Get("categoryPage") is null)
+        {
+            return;
+        }
+
+        if (_contentTypeService.Get("movie") is null)
+        {
+            _logger.LogInformation("CityGuide: creating 'movie' document type");
+            IDataType textstring = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.TextstringGuid))!;
+            IDataType textarea = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.TextareaGuid))!;
+
+            IContentType movie = NewContentType("movie", "Movie", "icon-movie");
+            AddProperty(movie, "synopsis", "Sinopsis", textarea, 1);
+            AddProperty(movie, "posterUrl", "Afiche (URL)", textstring, 2);
+            AddProperty(movie, "trailerYoutubeId", "Trailer (YouTube ID)", textstring, 3);
+            AddProperty(movie, "genre", "Género", textstring, 4);
+            AddProperty(movie, "rating", "Clasificación", textstring, 5);
+            AddProperty(movie, "duration", "Duración (min)", textstring, 6);
+            AddProperty(movie, "caribbeanSlug", "Slug en Caribbean Cinemas", textstring, 7);
+            await CreateAsync(movie);
+        }
+
+        IContentType movieType = _contentTypeService.Get("movie")!;
+        IContentType categoryPage = _contentTypeService.Get("categoryPage")!;
+        if (!categoryPage.AllowedContentTypes!.Any(c => c.Key == movieType.Key))
+        {
+            _logger.LogInformation("CityGuide: allowing 'movie' under 'categoryPage'");
+            int nextSort = categoryPage.AllowedContentTypes!.Count();
+            categoryPage.AllowedContentTypes =
+                [.. categoryPage.AllowedContentTypes!, new ContentTypeSort(movieType.Key, nextSort, movieType.Alias)];
+            Attempt<ContentTypeOperationStatus> attempt =
+                await _contentTypeService.UpdateAsync(categoryPage, Constants.Security.SuperUserKey);
+            if (!attempt.Success)
+            {
+                throw new InvalidOperationException(
+                    $"Failed to allow 'movie' under 'categoryPage': {attempt.Result}");
+            }
+        }
+    }
+
+    // ---- Cinemas ----
+
+    private sealed record CinemaBranch(string Name, string Address, decimal Latitude, decimal Longitude);
+
+    /// <summary>
+    /// Caribbean Cinemas locations in Santo Domingo. Names must match the frontend's
+    /// CINEMAS_BY_CITY entries (frontend/lib/cinema.ts) — the branch page shows the
+    /// live cartelera for the cinema whose name matches the place name.
+    /// </summary>
+    private static readonly CinemaBranch[] CaribbeanCinemasBranches =
+    [
+        new("Downtown Center", "Av. Núñez de Cáceres esq. Rómulo Betancourt", 18.4541m, -69.9545m),
+        new("Galería 360", "Av. John F. Kennedy, 2do nivel", 18.4857m, -69.9362m),
+        new("Novo-Centro VIP", "Av. Lope de Vega 29, Edificio Novo-Centro", 18.4734m, -69.9310m),
+        new("Ágora Mall", "Av. John F. Kennedy esq. Abraham Lincoln", 18.4835m, -69.9393m),
+        new("Sambil", "Av. John F. Kennedy, Sambil Santo Domingo", 18.4830m, -69.9119m),
+        new("Megaplex-10", "Av. San Vicente de Paúl, Plaza Megacentro", 18.5072m, -69.8566m),
+        new("Coral Mall", "Autopista de San Isidro, Coral Mall", 18.4864m, -69.8323m),
+        new("Plaza Duarte", "Av. Duarte, Plaza Galería Duarte", 18.4934m, -69.8991m),
+    ];
+
+    /// <summary>
+    /// Idempotent: creates the "Caribbean Cinemas" company under the "Cines" category
+    /// with each Santo Domingo cinema as a child place (branch pages, like banks).
+    /// Runs on every startup so existing installations pick it up without reseeding.
+    /// The pre-company flat place ("Caribbean Cinemas Downtown Center") is deleted.
+    /// </summary>
+    private bool EnsureCinemasSeeded()
+    {
+        IContent? site = _contentService.GetRootContent().FirstOrDefault(c => c.ContentType.Alias == "site");
+        if (site is null)
+        {
+            return false;
+        }
+
+        IContent? cines = Descendant(site, "city", "Santo Domingo") is { } city
+            ? Descendant(city, "categoryPage", "Cines")
+            : null;
+        if (cines is null)
+        {
+            return false;
+        }
+
+        if (Descendant(cines, "company", "Caribbean Cinemas") is not null)
+        {
+            return false;
+        }
+
+        _logger.LogInformation("CityGuide: seeding Caribbean Cinemas branches under 'Cines'");
+
+        if (Descendant(cines, "place", "Caribbean Cinemas Downtown Center") is { } legacyFlat)
+        {
+            _contentService.Delete(legacyFlat);
+        }
+
+        IMedia logoFolder = _mediaService.GetRootMedia().FirstOrDefault(m => m.Name == "Cines")
+            is { } existingFolder
+            ? _mediaService.GetById(existingFolder.Id)!
+            : _mediaService.CreateMedia("Cines", Constants.System.Root, Constants.Conventions.MediaTypes.Folder);
+        _mediaService.Save(logoFolder);
+
+        string? photoValue = CreateLogoMedia(logoFolder, "Caribbean Cinemas", "caribbean-cinemas.png");
+
+        IContent company = _contentService.Create("Caribbean Cinemas", cines.Id, "company");
+        company.SetValue("description",
+            "La cadena de cines líder del Caribe: salas CXC, 4DX y VIP con la cartelera "
+            + "más completa de estrenos en Santo Domingo.");
+        company.SetValue("address", CaribbeanCinemasBranches[0].Address);
+        company.SetValue("website", "https://rd.caribbeancinemas.com");
+        if (photoValue is not null)
+        {
+            company.SetValue("photo", photoValue);
+        }
+
+        _contentService.Save(company);
+
+        // Branches carry only their own data; website/logo/description are inherited
+        // from the company by the frontend when empty.
+        foreach (CinemaBranch branch in CaribbeanCinemasBranches)
+        {
+            CreatePlace(company.Id, branch.Name, string.Empty,
+                branch.Address, string.Empty, string.Empty,
+                branch.Latitude, branch.Longitude,
+                ["Aire Acondicionado", "Parqueo", "Apto para Niños"]);
+        }
+
+        _contentService.PublishBranch(company, PublishBranchFilter.IncludeUnpublished, ["*"]);
+        return true;
+    }
+
+    /// <summary>
+    /// Idempotent: creates the "Atracciones" category under Santo Domingo with sample
+    /// places (Malecón, parques). Runs on every startup so existing installations pick
+    /// it up without reseeding.
+    /// </summary>
+    private bool EnsureAtraccionesSeeded()
+    {
+        IContent? site = _contentService.GetRootContent().FirstOrDefault(c => c.ContentType.Alias == "site");
+        if (site is null)
+        {
+            return false;
+        }
+
+        IContent? city = Descendant(site, "city", "Santo Domingo");
+        if (city is null || Descendant(city, "categoryPage", "Atracciones") is not null)
+        {
+            return false;
+        }
+
+        _logger.LogInformation("CityGuide: seeding 'Atracciones' category");
+
+        IContent atracciones = _contentService.Create("Atracciones", city.Id, "categoryPage");
+        atracciones.SetValue("intro", "Parques, monumentos y lugares emblemáticos para disfrutar la ciudad.");
+        _contentService.Save(atracciones);
+
+        CreatePlace(atracciones.Id, "Malecón de Santo Domingo",
+            "El paseo marítimo de la ciudad a lo largo de la Av. George Washington: kilómetros de vista al mar Caribe, monumentos, kioscos y vida al aire libre. Ideal para caminar al atardecer.",
+            "Av. George Washington, Santo Domingo DN", string.Empty,
+            "Abierto 24 horas",
+            18.4622m, -69.9120m,
+            ["Apto para Niños", "Terraza"]);
+
+        CreatePlace(atracciones.Id, "Parque Zoológico Nacional",
+            "El zoológico nacional (ZOODOM): más de 1 millón de metros cuadrados con especies nativas y exóticas en ambientes abiertos, tren interno y áreas familiares.",
+            "Av. La Vega Real, Arroyo Hondo", "809-378-2149",
+            "Mar - Dom 9:00AM - 5:00PM",
+            18.5107m, -69.9418m,
+            ["Parqueo", "Apto para Niños"],
+            website: "https://zoodom.gob.do");
+
+        CreatePlace(atracciones.Id, "Jardín Botánico Nacional",
+            "Jardín Botánico Nacional Dr. Rafael María Moscoso: el pulmón verde de la ciudad, con el famoso reloj floral, jardín japonés y paseos en trencito.",
+            "Av. República de Colombia, Los Ríos", "809-385-2611",
+            "Lun - Dom 9:00AM - 5:00PM",
+            18.4944m, -69.9530m,
+            ["Parqueo", "Apto para Niños"],
+            website: "https://jbn.gob.do");
+
+        CreatePlace(atracciones.Id, "Parque Mirador Sur",
+            "Extenso parque lineal sobre el acantilado del sur: ciclovía, áreas de picnic, cuevas y kilómetros de senderos para correr y patinar.",
+            "Av. Mirador Sur, Santo Domingo DN", string.Empty,
+            "Lun - Dom 5:00AM - 9:00PM",
+            18.4443m, -69.9550m,
+            ["Parqueo", "Apto para Niños"]);
+
+        _contentService.PublishBranch(atracciones, PublishBranchFilter.IncludeUnpublished, ["*"]);
+        return true;
+    }
+
+    // ---- Supermarkets & pharmacies (Tiendas) ----
+
+    private static readonly string SupermarketHours = "Lun - Sáb 8:00AM - 10:00PM\nDom 8:00AM - 8:00PM";
+    private static readonly string PharmacyHours = "Lun - Dom 8:00AM - 10:00PM";
+
+    private static readonly Chain[] Supermarkets =
+    [
+        new("Supermercados Nacional", "nacional.png", "https://supermercadosnacional.com", "809-565-5541", SupermarketHours,
+            "La cadena de supermercados premium del Grupo CCN, con productos gourmet e importados.",
+            [
+                new("Nacional 27 de Febrero", "Av. 27 de Febrero esq. Abraham Lincoln", 18.4571m, -69.9413m),
+                new("Nacional Tiradentes", "Av. Tiradentes, Naco", 18.4781m, -69.9330m),
+                new("Nacional Arroyo Hondo", "Av. República de Colombia, Arroyo Hondo", 18.4972m, -69.9470m),
+                new("Nacional Bella Vista", "Av. Sarasota, Bella Vista", 18.4523m, -69.9468m),
+                new("Nacional San Isidro", "Autopista de San Isidro, Santo Domingo Este", 18.4880m, -69.8320m),
+            ]),
+        new("Jumbo", "jumbo.png", "https://jumbo.com.do", "809-566-5866", SupermarketHours,
+            "Hipermercados del Grupo CCN: supermercado y tienda por departamentos bajo un mismo techo.",
+            [
+                new("Jumbo Luperón", "Av. Luperón esq. Gustavo Mejía Ricart", 18.4437m, -69.9720m),
+                new("Jumbo Galería 360", "Av. John F. Kennedy 62, Galería 360", 18.4857m, -69.9362m),
+                new("Jumbo Megacentro", "Av. San Vicente de Paúl, Megacentro, Santo Domingo Este", 18.5072m, -69.8566m),
+                new("Jumbo Av. Venezuela", "Av. Venezuela, Santo Domingo Este", 18.4940m, -69.8560m),
+            ]),
+        new("Supermercados Bravo", "bravo.png", "https://bravo.com.do", "809-227-1000", SupermarketHours,
+            "Cadena dominicana de supermercados con precios competitivos y amplia red de sucursales.",
+            [
+                new("Bravo 27 de Febrero", "Av. 27 de Febrero esq. Caonabo", 18.4632m, -69.9130m),
+                new("Bravo Núñez de Cáceres", "Av. Núñez de Cáceres, Mirador Norte", 18.4552m, -69.9560m),
+                new("Bravo Av. Venezuela", "Av. Venezuela, Santo Domingo Este", 18.4925m, -69.8530m),
+                new("Bravo Charles de Gaulle", "Av. Charles de Gaulle, Santo Domingo Norte", 18.5170m, -69.8370m),
+            ]),
+        new("La Sirena", "sirena.png", "https://lasirena.com.do", "809-616-1000", SupermarketHours,
+            "La tienda por departamentos y supermercado del Grupo Ramos, presente en todo el país.",
+            [
+                new("La Sirena Churchill", "Av. Winston Churchill esq. 27 de Febrero", 18.4680m, -69.9400m),
+                new("La Sirena Mella", "Av. Mella, Villa Francisca", 18.4780m, -69.8810m),
+                new("La Sirena Av. Venezuela", "Av. Venezuela, Santo Domingo Este", 18.4930m, -69.8510m),
+                new("La Sirena San Isidro", "Autopista de San Isidro, Santo Domingo Este", 18.4870m, -69.8280m),
+                new("La Sirena Villa Mella", "Av. Hermanas Mirabal, Villa Mella", 18.5350m, -69.9100m),
+            ]),
+    ];
+
+    private static readonly Chain[] Pharmacies =
+    [
+        new("Farmacia Carol", "carol.png", "https://farmaciacarol.com", "809-563-0000",
+            "Abierto 24 horas",
+            "Cadena de farmacias con servicio 24 horas, delivery y amplia red de sucursales.",
+            [
+                new("Carol 27 de Febrero", "Av. 27 de Febrero 241", 18.4680m, -69.9390m),
+                new("Carol Naco", "Av. Tiradentes, Naco", 18.4770m, -69.9320m),
+                new("Carol Bella Vista", "Av. Sarasota, Bella Vista", 18.4525m, -69.9440m),
+                new("Carol Gazcue", "Av. Independencia, Gazcue", 18.4660m, -69.9050m),
+            ]),
+        new("Farmacias Los Hidalgos", "hidalgos.png", "https://farmacialoshidalgos.com", "809-537-7887", PharmacyHours,
+            "Una de las cadenas de farmacias más grandes del país, con décadas sirviendo a la capital.",
+            [
+                new("Los Hidalgos Av. Duarte", "Av. Duarte, Villa Francisca", 18.4850m, -69.8980m),
+                new("Los Hidalgos 27 de Febrero", "Av. 27 de Febrero, El Vergel", 18.4620m, -69.9300m),
+                new("Los Hidalgos Los Mina", "Av. San Vicente de Paúl, Los Mina", 18.4970m, -69.8670m),
+            ]),
+        new("Farmacia GBC", "gbc.png", "https://www.farmaciagbc.com.do", "809-682-9000", PharmacyHours,
+            "Cadena de farmacias dominicana con servicio a domicilio y programas de lealtad.",
+            [
+                new("GBC Av. Bolívar", "Av. Bolívar, La Julia", 18.4620m, -69.9180m),
+                new("GBC Abraham Lincoln", "Av. Abraham Lincoln, Piantini", 18.4720m, -69.9440m),
+                new("GBC Ensanche Ozama", "Av. Presidente Estrella Ureña, Ensanche Ozama", 18.4890m, -69.8600m),
+            ]),
+        new("Farmax", "farmax.png", "https://farmax.com.do", "809-334-3000", "Abierto 24 horas",
+            "Farmacias modernas 24 horas con autoservicio, delivery y amplio surtido.",
+            [
+                new("Farmax Núñez de Cáceres", "Av. Núñez de Cáceres esq. Sarasota", 18.4530m, -69.9560m),
+                new("Farmax 27 de Febrero", "Av. 27 de Febrero, La Esperilla", 18.4630m, -69.9210m),
+                new("Farmax Independencia", "Av. Independencia, Zona Universitaria", 18.4590m, -69.9130m),
+            ]),
+    ];
+
+    /// <summary>
+    /// Idempotent: creates the "Supermercados" and "Farmacias" subcategories under
+    /// "Tiendas", each with one "company" node per chain (logo + general info) and its
+    /// branches as child places. Runs on every startup so existing installations pick it
+    /// up without reseeding. The pre-chain flat place ("Farmacia Carol" under "Empresas
+    /// y Servicios") is deleted.
+    /// </summary>
+    private bool EnsureShoppingChainsSeeded()
+    {
+        IContent? site = _contentService.GetRootContent().FirstOrDefault(c => c.ContentType.Alias == "site");
+        if (site is null || Descendant(site, "city", "Santo Domingo") is not { } city)
+        {
+            return false;
+        }
+
+        IContent? tiendas = Descendant(city, "categoryPage", "Tiendas");
+        if (tiendas is null)
+        {
+            return false;
+        }
+
+        bool seeded = false;
+
+        if (Descendant(tiendas, "subcategory", "Supermercados") is null)
+        {
+            _logger.LogInformation("CityGuide: seeding supermarkets under 'Tiendas'");
+            IContent supermercados = _contentService.Create("Supermercados", tiendas.Id, "subcategory");
+            _contentService.Save(supermercados);
+            SeedChainCompanies(supermercados.Id, GetOrCreateRootMediaFolder("Supermercados"),
+                Supermarkets, ["Aire Acondicionado", "Parqueo"]);
+            _contentService.PublishBranch(supermercados, PublishBranchFilter.IncludeUnpublished, ["*"]);
+            seeded = true;
+        }
+
+        if (Descendant(tiendas, "subcategory", "Farmacias") is null)
+        {
+            _logger.LogInformation("CityGuide: seeding pharmacies under 'Tiendas'");
+
+            if (Descendant(city, "categoryPage", "Empresas y Servicios") is { } servicios
+                && Descendant(servicios, "place", "Farmacia Carol") is { } legacyFlat)
+            {
+                _contentService.Delete(legacyFlat);
+            }
+
+            IContent farmacias = _contentService.Create("Farmacias", tiendas.Id, "subcategory");
+            _contentService.Save(farmacias);
+            SeedChainCompanies(farmacias.Id, GetOrCreateRootMediaFolder("Farmacias"),
+                Pharmacies, ["Aire Acondicionado", "Delivery"]);
+            _contentService.PublishBranch(farmacias, PublishBranchFilter.IncludeUnpublished, ["*"]);
+            seeded = true;
+        }
+
+        return seeded;
+    }
+
+    // ---- Malls (plazas comerciales) ----
+
+    /// <summary>
+    /// Idempotent, runs every startup: creates the "mall" document type (plaza comercial
+    /// with its own location data; establishments grouped in child subcategories) if
+    /// missing, and allows it under "subcategory" and "categoryPage" so existing
+    /// installations pick it up.
+    /// </summary>
+    private async Task EnsureMallSchemaAsync()
+    {
+        IContentType? place = _contentTypeService.Get("place");
+        IContentType? subcategory = _contentTypeService.Get("subcategory");
+        if (place is null || subcategory is null)
+        {
+            return;
+        }
+
+        if (_contentTypeService.Get("mall") is null)
+        {
+            _logger.LogInformation("CityGuide: creating 'mall' document type");
+            IDataType textstring = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.TextstringGuid))!;
+            IDataType textarea = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.TextareaGuid))!;
+            IDataType imagePicker = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.MediaPicker3SingleImageGuid))!;
+            IDataType coordinate = await GetOrCreateDataTypeAsync(
+                "CityGuide Coordinate", Constants.PropertyEditors.Aliases.Decimal,
+                "Umb.PropertyEditorUi.Decimal", ValueStorageType.Decimal, configurationData: null);
+
+            IContentType mall = NewContentType("mall", "Mall / Plaza Comercial", "icon-store");
+            AddProperty(mall, "description", "Descripción", textarea, 1);
+            AddProperty(mall, "address", "Dirección", textstring, 2);
+            AddProperty(mall, "phone", "Teléfono", textstring, 3);
+            AddProperty(mall, "website", "Sitio Web", textstring, 4);
+            AddProperty(mall, "hours", "Horario", textarea, 5);
+            AddProperty(mall, "photo", "Foto", imagePicker, 6);
+            AddProperty(mall, "latitude", "Latitud", coordinate, 7);
+            AddProperty(mall, "longitude", "Longitud", coordinate, 8);
+            mall.AllowedContentTypes =
+            [
+                new ContentTypeSort(subcategory.Key, 0, subcategory.Alias),
+                new ContentTypeSort(place.Key, 1, place.Alias),
+            ];
+            await CreateAsync(mall);
+        }
+
+        IContentType mallType = _contentTypeService.Get("mall")!;
+        foreach (string parentAlias in new[] { "subcategory", "categoryPage" })
+        {
+            IContentType? parent = _contentTypeService.Get(parentAlias);
+            if (parent is null || parent.AllowedContentTypes!.Any(c => c.Key == mallType.Key))
+            {
+                continue;
+            }
+
+            _logger.LogInformation("CityGuide: allowing 'mall' under '{Parent}'", parentAlias);
+            int nextSort = parent.AllowedContentTypes!.Count();
+            parent.AllowedContentTypes =
+                [.. parent.AllowedContentTypes!, new ContentTypeSort(mallType.Key, nextSort, mallType.Alias)];
+            Attempt<ContentTypeOperationStatus> attempt =
+                await _contentTypeService.UpdateAsync(parent, Constants.Security.SuperUserKey);
+            if (!attempt.Success)
+            {
+                throw new InvalidOperationException(
+                    $"Failed to allow 'mall' under '{parentAlias}': {attempt.Result}");
+            }
+        }
+    }
+
+    private sealed record MallStore(string Name, string Description, string Level);
+
+    private sealed record MallGroup(string Name, MallStore[] Stores);
+
+    private sealed record Mall(
+        string Name, string Address, string Phone, string Website, string Hours,
+        string Description, decimal Latitude, decimal Longitude, MallGroup[] Groups);
+
+    private static readonly string MallHours = "Lun - Sáb 9:00AM - 9:00PM\nDom 11:00AM - 8:00PM";
+
+    private static readonly Mall[] Malls =
+    [
+        new("Ágora Mall", "Av. John F. Kennedy esq. Abraham Lincoln, Naco", "809-363-2323",
+            "https://agora.com.do", MallHours,
+            "Centro comercial moderno en el corazón de Naco: moda, tecnología, food court y cine.",
+            18.4826m, -69.9401m,
+            [
+                new("Moda", [
+                    new("Zara", "Moda española para toda la familia.", "Nivel 1, Ágora Mall"),
+                    new("Aldo", "Calzado y accesorios de tendencia.", "Nivel 1, Ágora Mall"),
+                ]),
+                new("Comida", [
+                    new("Helados Bon", "La heladería dominicana de siempre.", "Food Court, Ágora Mall"),
+                    new("Wing's To Go", "Alitas y picadera estilo americano.", "Food Court, Ágora Mall"),
+                ]),
+                new("Entretenimiento", [
+                    new("Caribbean Cinemas Ágora", "Salas de cine con tecnología CXC.", "Nivel 4, Ágora Mall"),
+                ]),
+            ]),
+        new("Blue Mall", "Av. Winston Churchill esq. Gustavo Mejía Ricart, Piantini", "809-955-3000",
+            "https://bluemall.com.do", MallHours,
+            "Centro comercial de lujo en Piantini: marcas internacionales premium y alta gastronomía.",
+            18.4720m, -69.9410m,
+            [
+                new("Moda", [
+                    new("Louis Vuitton", "Marroquinería y moda de lujo.", "Nivel 1, Blue Mall"),
+                    new("Carolina Herrera", "Moda y fragancias de diseñador.", "Nivel 1, Blue Mall"),
+                ]),
+                new("Restaurantes", [
+                    new("SBG", "Cocina internacional con terraza.", "Nivel 5, Blue Mall"),
+                ]),
+            ]),
+        new("Sambil Santo Domingo", "Av. John F. Kennedy, Los Prados", "809-620-6000",
+            "https://sambil.com.do", "Lun - Dom 10:00AM - 10:00PM",
+            "Uno de los malls más grandes del país: tiendas, food court, cine y entretenimiento familiar.",
+            18.4830m, -69.9119m,
+            [
+                new("Moda", [
+                    new("Skechers", "Calzado deportivo y casual.", "Nivel 1, Sambil"),
+                ]),
+                new("Comida", [
+                    new("KFC", "Pollo frito estilo americano.", "Food Court, Sambil"),
+                    new("Burger King", "Hamburguesas a la parrilla.", "Food Court, Sambil"),
+                ]),
+                new("Entretenimiento", [
+                    new("Caribbean Cinemas Sambil", "Cine con salas CXC y 4DX.", "Nivel 2, Sambil"),
+                ]),
+            ]),
+        new("Galería 360", "Av. John F. Kennedy 62", "809-566-3360",
+            "https://galeria360.com.do", MallHours,
+            "Mall familiar sobre la Kennedy: tiendas, supermercado, cine y amplio food court.",
+            18.4857m, -69.9362m,
+            [
+                new("Comida", [
+                    new("Krispy Kreme", "Donas y café.", "Nivel 1, Galería 360"),
+                ]),
+                new("Servicios", [
+                    new("Jumbo", "Supermercado y tienda por departamentos.", "Nivel 1, Galería 360"),
+                ]),
+                new("Entretenimiento", [
+                    new("Caribbean Cinemas Galería 360", "Salas de cine en el segundo nivel.", "Nivel 2, Galería 360"),
+                ]),
+            ]),
+        new("Acrópolis Center", "Av. Winston Churchill esq. Rafael Augusto Sánchez, Piantini", "809-955-2020",
+            "https://acropoliscenter.com", MallHours,
+            "Centro comercial y torre empresarial en Piantini con tiendas, restaurantes y cine.",
+            18.4693m, -69.9399m, []),
+        new("Downtown Center", "Av. Núñez de Cáceres esq. Rómulo Betancourt", "809-534-7873",
+            "https://downtowncenter.com.do", MallHours,
+            "Plaza comercial al oeste de la ciudad con cine, tiendas y zona gastronómica.",
+            18.4541m, -69.9545m, []),
+        new("Megacentro", "Av. San Vicente de Paúl, Santo Domingo Este", "809-236-3232",
+            "https://megacentro.com.do", MallHours,
+            "El mall de referencia de Santo Domingo Este: tiendas, bancos, food court y cine.",
+            18.5072m, -69.8566m, []),
+        new("Bella Vista Mall", "Av. Sarasota 62, Bella Vista", "809-255-0665",
+            "https://bellavistamall.com.do", MallHours,
+            "Mall de barrio consolidado en Bella Vista con tiendas, servicios y restaurantes.",
+            18.4530m, -69.9450m, []),
+    ];
+
+    /// <summary>
+    /// Idempotent: creates the "Plazas Comerciales y Malls" subcategory under "Tiendas"
+    /// with one "mall" node per plaza (own location data) and its establishments grouped
+    /// in child subcategories. Runs on every startup so existing installations pick it up
+    /// without reseeding. The pre-mall flat place ("Ágora Mall") is deleted.
+    /// </summary>
+    private bool EnsureMallsSeeded()
+    {
+        if (_contentTypeService.Get("mall") is null)
+        {
+            return false;
+        }
+
+        IContent? site = _contentService.GetRootContent().FirstOrDefault(c => c.ContentType.Alias == "site");
+        if (site is null)
+        {
+            return false;
+        }
+
+        IContent? tiendas = Descendant(site, "city", "Santo Domingo") is { } city
+            ? Descendant(city, "categoryPage", "Tiendas")
+            : null;
+        if (tiendas is null || Descendant(tiendas, "subcategory", "Plazas Comerciales y Malls") is not null)
+        {
+            return false;
+        }
+
+        _logger.LogInformation("CityGuide: seeding malls under 'Tiendas'");
+
+        if (Descendant(tiendas, "place", "Ágora Mall") is { } legacyFlat)
+        {
+            _contentService.Delete(legacyFlat);
+        }
+
+        IContent plazas = _contentService.Create("Plazas Comerciales y Malls", tiendas.Id, "subcategory");
+        _contentService.Save(plazas);
+
+        foreach (Mall mall in Malls)
+        {
+            IContent mallContent = _contentService.Create(mall.Name, plazas.Id, "mall");
+            mallContent.SetValue("description", mall.Description);
+            mallContent.SetValue("address", mall.Address);
+            mallContent.SetValue("phone", mall.Phone);
+            mallContent.SetValue("website", mall.Website);
+            mallContent.SetValue("hours", mall.Hours);
+            mallContent.SetValue("latitude", mall.Latitude);
+            mallContent.SetValue("longitude", mall.Longitude);
+            _contentService.Save(mallContent);
+
+            foreach (MallGroup group in mall.Groups)
+            {
+                IContent groupContent = _contentService.Create(group.Name, mallContent.Id, "subcategory");
+                _contentService.Save(groupContent);
+
+                foreach (MallStore store in group.Stores)
+                {
+                    CreatePlace(groupContent.Id, store.Name, store.Description,
+                        store.Level, string.Empty, string.Empty, 0m, 0m, []);
+                }
+            }
+        }
+
+        _contentService.PublishBranch(plazas, PublishBranchFilter.IncludeUnpublished, ["*"]);
+        return true;
+    }
+
+    private IContent? Descendant(IContent parent, string contentTypeAlias, string name) =>
+        _contentService
+            .GetPagedChildren(parent.Id, 0, 100, out _, null, null, null, false)
+            .FirstOrDefault(c => c.ContentType.Alias == contentTypeAlias
+                && string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Creates an image media item from SeedAssets and returns a MediaPicker3 value, or null.</summary>
+    private string? CreateLogoMedia(IMedia folder, string name, string logoFile) =>
+        CreateSeedMedia(folder, $"Logo {name}", logoFile);
+
+    /// <summary>Imports a SeedAssets file into the Media library; returns a MediaPicker3 value.</summary>
+    private string? CreateSeedMedia(IMedia folder, string mediaName, string assetFile)
+    {
+        string path = Path.Combine(_hostEnvironment.ContentRootPath, "CityGuide", "SeedAssets", assetFile);
+        if (!System.IO.File.Exists(path))
+        {
+            _logger.LogWarning("CityGuide: seed asset not found, '{Name}' seeded without it: {Path}", mediaName, path);
+            return null;
+        }
+
+        IMedia media = _mediaService.CreateMedia(mediaName, folder.Id, Constants.Conventions.MediaTypes.Image);
+        using (FileStream stream = System.IO.File.OpenRead(path))
+        {
+            media.SetValue(_mediaFileManager, _mediaUrlGenerators, _shortStringHelper,
+                _contentTypeBaseServiceProvider, Constants.Conventions.Media.File, Path.GetFileName(assetFile), stream);
+        }
+
+        _mediaService.Save(media);
+        return JsonSerializer.Serialize(new[] { new { key = Guid.NewGuid(), mediaKey = media.Key } });
+    }
+}

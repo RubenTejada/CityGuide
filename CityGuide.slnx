@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="CityGuide.Agent/CityGuide.Agent.csproj" />
+  <Project Path="CityGuideWeb/CityGuideWeb.csproj" />
+</Solution>
