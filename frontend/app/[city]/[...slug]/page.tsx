@@ -374,26 +374,56 @@ async function listingEntries(path: string): Promise<UmbracoItem[]> {
 }
 
 /**
- * Listing entries ordered best rated first. Companies and malls carry no rating
- * of their own, so they rank by their best-rated nested place — the same
- * parent/branch inheritance listingFacilities uses.
+ * Sections listed by how many branches each entry has, biggest chain first.
+ * In retail and services the useful answer to "where do I buy this" or "where
+ * do I get this done" is the chain with a branch near you, not the single
+ * best-rated shop; elsewhere the rating leads.
  */
-async function listingEntriesByRating(path: string): Promise<UmbracoItem[]> {
+const BRANCH_COUNT_SECTIONS = new Set(["tiendas", "empresas-y-servicios"]);
+
+/** The city section a route path belongs to (`/santo-domingo/tiendas/...`). */
+function sectionSlug(path: string): string {
+  return path.split("/").filter(Boolean)[1] ?? "";
+}
+
+/**
+ * Listing entries in display order. Companies and malls carry no rating of
+ * their own, so they rank by their best-rated nested place — the same
+ * parent/branch inheritance listingFacilities uses. Inside
+ * `BRANCH_COUNT_SECTIONS` the number of branches leads and the rating only
+ * breaks ties, so a place (no branches) sorts after every chain.
+ */
+async function listingEntriesOrdered(path: string): Promise<UmbracoItem[]> {
   const [entries, allPlaces] = await Promise.all([
     listingEntries(path),
     getDescendantsOfType(path, "place"),
   ]);
-  const ratedBy = new Map(
+  const nested = new Map(
     entries.map((entry) => {
-      if (entry.contentType === "place") return [entry.id, entry] as const;
+      if (entry.contentType === "place") {
+        return [entry.id, [] as UmbracoItem[]] as const;
+      }
       const prefix = `${entry.route.path.replace(/\/+$/, "")}/`;
-      const nested = allPlaces.filter((p) => p.route.path.startsWith(prefix));
-      return [entry.id, [entry, ...nested].sort(byRating)[0]] as const;
+      return [
+        entry.id,
+        allPlaces.filter((p) => p.route.path.startsWith(prefix)),
+      ] as const;
     }),
   );
-  return [...entries].sort((a, b) =>
-    byRating(ratedBy.get(a.id)!, ratedBy.get(b.id)!),
+  const ratedBy = new Map(
+    entries.map(
+      (entry) =>
+        [entry.id, [entry, ...nested.get(entry.id)!].sort(byRating)[0]] as const,
+    ),
   );
+  const byBranchCount = BRANCH_COUNT_SECTIONS.has(sectionSlug(path));
+  return [...entries].sort((a, b) => {
+    if (byBranchCount) {
+      const diff = nested.get(b.id)!.length - nested.get(a.id)!.length;
+      if (diff !== 0) return diff;
+    }
+    return byRating(ratedBy.get(a.id)!, ratedBy.get(b.id)!);
+  });
 }
 
 /** Category pages that offer the "Facilidades" dropdown filter. */
@@ -574,7 +604,7 @@ async function CategoryView({
 }) {
   const [children, entries] = await Promise.all([
     getChildren(item.route.path),
-    listingEntriesByRating(item.route.path),
+    listingEntriesOrdered(item.route.path),
   ]);
   const subcategories = children.filter((c) => c.contentType === "subcategory");
   const categorySlug = item.route.path.split("/").filter(Boolean).pop();
@@ -679,7 +709,7 @@ function MovieView({ item, citySlug }: { item: UmbracoItem; citySlug: string }) 
 }
 
 async function SubcategoryView({ item }: { item: UmbracoItem }) {
-  const entries = await listingEntriesByRating(item.route.path);
+  const entries = await listingEntriesOrdered(item.route.path);
   const markers = await listingMarkers(item.route.path, entries);
   const listing: ListingEntry[] = entries.map((entry) => ({
     id: entry.id,
@@ -706,7 +736,7 @@ async function MallView({ item }: { item: UmbracoItem }) {
     (c) => c.contentType === "place" || c.contentType === "company",
   );
   const groupEntries = await Promise.all(
-    groups.map((group) => listingEntriesByRating(group.route.path)),
+    groups.map((group) => listingEntriesOrdered(group.route.path)),
   );
   const photo = photoUrl(item);
   const website = text(item, "website");
@@ -1420,7 +1450,7 @@ async function ThingsToDoView({
     (s) => s.contentType === "categoryPage" && slugOf(s) === "atracciones",
   );
   const attractions = attractionsSection
-    ? (await listingEntriesByRating(attractionsSection.route.path)).filter(
+    ? (await listingEntriesOrdered(attractionsSection.route.path)).filter(
         (entry) => openToday(text(entry, "hours")),
       )
     : [];
@@ -1434,7 +1464,7 @@ async function ThingsToDoView({
       name: section.name,
       slug: slugOf(section),
       href: section.route.path,
-      entries: (await listingEntriesByRating(section.route.path)).slice(0, 4),
+      entries: (await listingEntriesOrdered(section.route.path)).slice(0, 4),
     })),
   );
 
