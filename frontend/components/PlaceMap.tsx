@@ -126,7 +126,7 @@ export default function PlaceMap({
                 onCloseClick={() => setSelected(null)}
               >
                 <div className="text-sm">
-                  <Link href={selected.url} className="font-semibold text-amber-700">
+                  <Link href={selected.url} className="font-semibold text-brand-700">
                     {selected.name}
                   </Link>
                   <p className="text-neutral-600">{selected.address}</p>

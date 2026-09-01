@@ -14,30 +14,41 @@ import {
 
 export const revalidate = 600;
 
-/** Sections with hand-made artwork in public/sections/. */
-const SECTION_ART = new Set([
-  "restaurantes",
-  "bares-y-clubes",
-  "tiendas",
-  "cines",
-  "empresas-y-servicios",
-  "atracciones",
-  "eventos",
-  "que-hacer",
-]);
+/** Curated real photos (Wikimedia Commons) per section slug. */
+const SECTION_PHOTOS: Record<string, string> = {
+  restaurantes:
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/2/25/Sancocho_Dominicano.jpg/1280px-Sancocho_Dominicano.jpg",
+  "bares-y-clubes":
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/5/56/DFC_4574_Late-night_drinks_in_Pattaya_-_a_chilled_cocktail_with_a_slice_of_lime_and_neon_reflections.jpg/1280px-DFC_4574_Late-night_drinks_in_Pattaya_-_a_chilled_cocktail_with_a_slice_of_lime_and_neon_reflections.jpg",
+  tiendas:
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cc/Agora_Mall_EV_SDQ_07_20_4341.jpg/1280px-Agora_Mall_EV_SDQ_07_20_4341.jpg",
+  cines:
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2a/Columbia_City_Cinema_main_hall.jpg/1280px-Columbia_City_Cinema_main_hall.jpg",
+  "empresas-y-servicios":
+    "https://upload.wikimedia.org/wikipedia/commons/9/9e/View_of_Santo_Domingo_Skyline.jpg",
+  atracciones:
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9e/Santo_Domingo_-_Alcazar_de_Colon_01.JPG/1280px-Santo_Domingo_-_Alcazar_de_Colon_01.JPG",
+  eventos:
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cc/Heritage_Live_concert_crowd_and_stage_at_Sandringham_2023_-_geograph.org.uk_-_7586057.jpg/1280px-Heritage_Live_concert_crowd_and_stage_at_Sandringham_2023_-_geograph.org.uk_-_7586057.jpg",
+  "que-hacer":
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d7/Zona_Colonial%2C_Santo_Domingo%2C_Dominican_Republic_-_panoramio_%2811%29.jpg/1280px-Zona_Colonial%2C_Santo_Domingo%2C_Dominican_Republic_-_panoramio_%2811%29.jpg",
+};
 
 /**
- * Image for a section's slide/card: the first place photo found under it,
- * falling back to the bundled SVG artwork for the section.
+ * Image for a section's slide/card: the section's own photo (set in the
+ * backoffice) wins; then the first place photo found under it, then a curated
+ * real photo for the section, then bundled artwork.
  */
 function sectionImage(section: UmbracoItem, places: UmbracoItem[]): string {
+  const own = photoUrl(section);
+  if (own) return own;
   for (const place of places) {
     if (!place.route.path.startsWith(section.route.path)) continue;
     const photo = photoUrl(place);
     if (photo) return photo;
   }
   const slug = section.route.path.split("/").filter(Boolean).pop() ?? "";
-  return `/sections/${SECTION_ART.has(slug) ? slug : "default"}.svg`;
+  return SECTION_PHOTOS[slug] ?? "/sections/default.svg";
 }
 
 function formatDate(value: unknown): string {
@@ -107,7 +118,7 @@ export default async function CityLandingPage({
                       sizes="(min-width: 640px) 220px, 50vw"
                     />
                   </div>
-                  <p className="p-3 text-center font-medium group-hover:text-amber-600">
+                  <p className="p-3 text-center font-medium group-hover:text-brand-600">
                     {section.name}
                   </p>
                 </Link>
@@ -136,7 +147,7 @@ export default async function CityLandingPage({
                 className="block rounded-xl border border-neutral-200 bg-white p-4 shadow-sm transition hover:shadow-md"
               >
                 <h3 className="font-semibold">{event.name}</h3>
-                <p className="mt-0.5 text-xs font-medium uppercase tracking-wide text-amber-600">
+                <p className="mt-0.5 text-xs font-medium uppercase tracking-wide text-brand-600">
                   {formatDate(event.properties["startDate"])}
                 </p>
                 <p className="mt-0.5 text-sm text-neutral-500">
@@ -145,7 +156,7 @@ export default async function CityLandingPage({
                 <p className="mt-2 line-clamp-3 text-sm text-neutral-600">
                   {text(event, "description")}
                 </p>
-                <p className="mt-2 text-sm font-medium text-amber-600">
+                <p className="mt-2 text-sm font-medium text-brand-600">
                   Leer más…
                 </p>
               </Link>

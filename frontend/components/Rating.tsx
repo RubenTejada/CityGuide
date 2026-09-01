@@ -13,7 +13,7 @@ export default function Rating({
   const count = num(place, "googleRatingCount");
   return (
     <span className={`inline-flex items-center gap-1 text-sm ${className}`}>
-      <span aria-hidden className="text-amber-500">
+      <span aria-hidden className="text-sun-500">
         ★
       </span>
       <span className="font-medium text-neutral-800">{value.toFixed(1)}</span>

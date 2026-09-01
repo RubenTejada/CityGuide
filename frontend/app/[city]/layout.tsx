@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import SiteLogo from "@/components/SiteLogo";
 import { getChildren, getItem } from "@/lib/umbraco";
 
 export default async function CityLayout({
@@ -23,10 +24,9 @@ export default async function CityLayout({
   return (
     <div className="flex min-h-screen flex-col">
       <header className="bg-neutral-900 text-white">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-8 gap-y-4 px-6 py-5">
-          <Link href={`/${citySlug}`} className="text-2xl font-bold tracking-tight">
-            Tu{city.name.replace(/\s+/g, "")}
-            <span className="text-amber-400">.com</span>
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-8 gap-y-4 px-6 py-10">
+          <Link href={`/${citySlug}`} aria-label="QueHacerRD.com">
+            <SiteLogo className="text-[44px]" />
           </Link>
           <form
             action={`/${citySlug}/buscar`}
@@ -37,11 +37,11 @@ export default async function CityLayout({
               type="search"
               name="q"
               placeholder="Busca por nombre, sector, calle o categoría"
-              className="w-full min-w-0 rounded-l-lg border border-neutral-700 bg-neutral-800 px-4 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-amber-400 focus:outline-none"
+              className="w-full min-w-0 rounded-l-lg border border-neutral-700 bg-neutral-800 px-4 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-sun-400 focus:outline-none"
             />
             <button
               type="submit"
-              className="rounded-r-lg bg-amber-400 px-4 py-2 text-sm font-semibold text-neutral-900 transition hover:bg-amber-300"
+              className="rounded-r-lg bg-sun-400 px-4 py-2 text-sm font-semibold text-neutral-900 transition hover:bg-sun-300"
             >
               Buscar
             </button>
@@ -78,12 +78,7 @@ export default async function CityLayout({
 
       <footer className="mt-12 bg-neutral-900 text-neutral-400">
         <div className="mx-auto max-w-6xl px-6 py-10">
-          <p className="text-lg font-semibold text-white">
-            Tu{city.name.replace(/\s+/g, "")}
-          </p>
-          <p className="mt-1 text-sm">
-            Bares, restaurantes, atracciones y un poco más…
-          </p>
+          <SiteLogo className="text-lg" tagline />
           <div className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-sm">
             {sections.map((section) => (
               <Link
@@ -96,7 +91,7 @@ export default async function CityLayout({
             ))}
           </div>
           <p className="mt-8 text-xs text-neutral-600">
-            © {new Date().getFullYear()} TuCiudad.com — Todos los derechos reservados.
+            © {new Date().getFullYear()} QueHacerRD.com — Todos los derechos reservados.
           </p>
         </div>
       </footer>

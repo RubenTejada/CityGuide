@@ -14,11 +14,11 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "TuCiudad — Guía de tu ciudad",
-    template: "%s | TuCiudad",
+    default: "QueHacerRD.com — Planes, lugares y experiencias en RD",
+    template: "%s | QueHacerRD",
   },
   description:
-    "Bares, restaurantes, tiendas, cines, eventos y un poco más. Ubícate con un clic.",
+    "Planes, lugares y experiencias en República Dominicana. Bares, restaurantes, tiendas, cines, eventos y un poco más. Ubícate con un clic.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

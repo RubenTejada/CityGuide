@@ -76,7 +76,7 @@ export default function HeroCarousel({ slides }: { slides: HeroSlide[] }) {
               aria-current={i === active}
               className={`h-7 w-7 rounded text-xs font-semibold transition ${
                 i === active
-                  ? "bg-amber-400 text-neutral-900"
+                  ? "bg-sun-400 text-neutral-900"
                   : "bg-white/20 text-white hover:bg-white/40"
               }`}
             >

@@ -91,7 +91,7 @@ export default function MovieCard({
               .filter(Boolean)
               .join(" · ")}
           </p>
-          <p className="mt-1 text-sm font-medium text-amber-700">
+          <p className="mt-1 text-sm font-medium text-brand-700">
             {movie.cinemas.length}{" "}
             {movie.cinemas.length === 1 ? "cine" : "cines"} · {totalShowtimes}{" "}
             {totalShowtimes === 1 ? "función" : "funciones"}
@@ -127,7 +127,7 @@ export default function MovieCard({
                 <p className="font-semibold">
                   <Link
                     href={cinema.portalPath}
-                    className="hover:text-amber-600"
+                    className="hover:text-brand-600"
                   >
                     🎬 Caribbean Cinemas {cinema.name}
                   </Link>
@@ -141,7 +141,7 @@ export default function MovieCard({
                       target="_blank"
                       rel="noopener noreferrer"
                       title={`Reservar en ${cinema.name}`}
-                      className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium hover:border-amber-500 hover:bg-amber-50 hover:text-amber-700"
+                      className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium hover:border-brand-500 hover:bg-brand-50 hover:text-brand-700"
                     >
                       {showtime.time}
                       {showtime.badge && (

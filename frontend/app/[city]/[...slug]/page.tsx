@@ -3,6 +3,7 @@ import Image from "next/image";
 import { notFound } from "next/navigation";
 import BranchesMap, { type BranchMarker } from "@/components/BranchesMap";
 import FacilityBadges from "@/components/FacilityBadges";
+import AttractionCard from "@/components/AttractionCard";
 import PlaceCard from "@/components/PlaceCard";
 import PlaceMap from "@/components/PlaceMap";
 import Rating from "@/components/Rating";
@@ -119,7 +120,7 @@ async function Breadcrumb({ item }: { item: UmbracoItem }) {
       <ol className="flex flex-wrap items-center gap-1">
         {crumbs.filter(Boolean).map((crumb) => (
           <li key={crumb!.path} className="flex items-center gap-1">
-            <Link href={crumb!.path} className="hover:text-amber-600">
+            <Link href={crumb!.path} className="hover:text-brand-600">
               {crumb!.name}
             </Link>
             <span aria-hidden>›</span>
@@ -215,7 +216,7 @@ async function CategoryView({
             <Link
               key={sub.id}
               href={sub.route.path}
-              className="rounded-full border border-neutral-300 bg-white px-4 py-1.5 text-sm font-medium hover:border-amber-500 hover:text-amber-600"
+              className="rounded-full border border-neutral-300 bg-white px-4 py-1.5 text-sm font-medium hover:border-brand-500 hover:text-brand-600"
             >
               {sub.name}
             </Link>
@@ -231,9 +232,14 @@ async function CategoryView({
       )}
       {(entries.length > 0 || !showCartelera) && (
         <div className="mt-8 grid gap-4 md:grid-cols-2">
-          {entries.map((entry) => (
-            <PlaceCard key={entry.id} place={entry} />
-          ))}
+          {entries.map((entry) =>
+            // Attractions use the large-photo layout, same as the events listing.
+            categorySlug === "atracciones" ? (
+              <AttractionCard key={entry.id} place={entry} />
+            ) : (
+              <PlaceCard key={entry.id} place={entry} />
+            ),
+          )}
           {entries.length === 0 && (
             <p className="text-neutral-500">
               No hay lugares publicados todavía.
@@ -366,23 +372,23 @@ async function MallView({ item }: { item: UmbracoItem }) {
           <dl className="mt-3 space-y-1.5 text-sm">
             {text(item, "address") && (
               <div className="flex gap-2">
-                <dt className="font-semibold text-sky-700">Dirección</dt>
+                <dt className="font-semibold text-brand-700">Dirección</dt>
                 <dd className="text-neutral-700">{text(item, "address")}</dd>
               </div>
             )}
             {text(item, "phone") && (
               <div className="flex gap-2">
-                <dt className="font-semibold text-sky-700">Teléfono</dt>
+                <dt className="font-semibold text-brand-700">Teléfono</dt>
                 <dd className="text-neutral-700">{text(item, "phone")}</dd>
               </div>
             )}
             {website && (
               <div className="flex gap-2">
-                <dt className="font-semibold text-sky-700">Sitio Web</dt>
+                <dt className="font-semibold text-brand-700">Sitio Web</dt>
                 <dd>
                   <a
                     href={website}
-                    className="text-amber-600 hover:underline"
+                    className="text-brand-600 hover:underline"
                     rel="noopener noreferrer"
                     target="_blank"
                   >
@@ -393,7 +399,7 @@ async function MallView({ item }: { item: UmbracoItem }) {
             )}
             {text(item, "hours") && (
               <div className="flex gap-2">
-                <dt className="font-semibold text-sky-700">Horario</dt>
+                <dt className="font-semibold text-brand-700">Horario</dt>
                 <dd className="whitespace-pre-line text-neutral-700">{text(item, "hours")}</dd>
               </div>
             )}
@@ -500,17 +506,17 @@ async function CompanyView({ item }: { item: UmbracoItem }) {
           <dl className="mt-3 space-y-1.5 text-sm">
             {text(item, "phone") && (
               <div className="flex gap-2">
-                <dt className="font-semibold text-sky-700">Teléfono</dt>
+                <dt className="font-semibold text-brand-700">Teléfono</dt>
                 <dd className="text-neutral-700">{text(item, "phone")}</dd>
               </div>
             )}
             {website && (
               <div className="flex gap-2">
-                <dt className="font-semibold text-sky-700">Sitio Web</dt>
+                <dt className="font-semibold text-brand-700">Sitio Web</dt>
                 <dd>
                   <a
                     href={website}
-                    className="text-amber-600 hover:underline"
+                    className="text-brand-600 hover:underline"
                     rel="noopener noreferrer"
                     target="_blank"
                   >
@@ -521,7 +527,7 @@ async function CompanyView({ item }: { item: UmbracoItem }) {
             )}
             {text(item, "hours") && (
               <div className="flex gap-2">
-                <dt className="font-semibold text-sky-700">Horario</dt>
+                <dt className="font-semibold text-brand-700">Horario</dt>
                 <dd className="whitespace-pre-line text-neutral-700">{text(item, "hours")}</dd>
               </div>
             )}
@@ -617,28 +623,28 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
         <div>
           <dl className="space-y-1.5 text-sm">
             <div className="flex gap-2">
-              <dt className="font-semibold text-sky-700">Dirección</dt>
+              <dt className="font-semibold text-brand-700">Dirección</dt>
               <dd className="text-neutral-700">{text(item, "address")}</dd>
             </div>
             <div className="flex gap-2">
-              <dt className="font-semibold text-sky-700">
+              <dt className="font-semibold text-brand-700">
                 {company ? "Empresa" : "Categoría"}
               </dt>
               <dd className="text-neutral-700">{categoryName}</dd>
             </div>
             {inherited("phone") && (
               <div className="flex gap-2">
-                <dt className="font-semibold text-sky-700">Teléfono</dt>
+                <dt className="font-semibold text-brand-700">Teléfono</dt>
                 <dd className="text-neutral-700">{inherited("phone")}</dd>
               </div>
             )}
             {website && (
               <div className="flex gap-2">
-                <dt className="font-semibold text-sky-700">Sitio Web</dt>
+                <dt className="font-semibold text-brand-700">Sitio Web</dt>
                 <dd>
                   <a
                     href={website}
-                    className="text-amber-600 hover:underline"
+                    className="text-brand-600 hover:underline"
                     rel="noopener noreferrer"
                     target="_blank"
                   >
@@ -731,7 +737,7 @@ async function EventView({ item }: { item: UmbracoItem }) {
     <PageShell item={item}>
       <h1 className="mt-4 text-3xl font-bold">{item.name}</h1>
       {text(item, "category") && (
-        <span className="mt-3 inline-block rounded-full bg-amber-100 px-3 py-1 text-sm font-medium text-amber-800">
+        <span className="mt-3 inline-block rounded-full bg-brand-100 px-3 py-1 text-sm font-medium text-brand-800">
           {text(item, "category")}
         </span>
       )}
@@ -763,29 +769,29 @@ async function EventView({ item }: { item: UmbracoItem }) {
           <dl className="space-y-1.5 text-sm">
             {text(item, "venueName") && (
               <div className="flex gap-2">
-                <dt className="font-semibold text-sky-700">Lugar</dt>
+                <dt className="font-semibold text-brand-700">Lugar</dt>
                 <dd className="text-neutral-700">{text(item, "venueName")}</dd>
               </div>
             )}
             {text(item, "address") && (
               <div className="flex gap-2">
-                <dt className="font-semibold text-sky-700">Dirección</dt>
+                <dt className="font-semibold text-brand-700">Dirección</dt>
                 <dd className="text-neutral-700">{text(item, "address")}</dd>
               </div>
             )}
             {phone && (
               <div className="flex gap-2">
-                <dt className="font-semibold text-sky-700">Teléfono</dt>
+                <dt className="font-semibold text-brand-700">Teléfono</dt>
                 <dd className="text-neutral-700">{phone}</dd>
               </div>
             )}
             {website && (
               <div className="flex gap-2">
-                <dt className="font-semibold text-sky-700">Entradas</dt>
+                <dt className="font-semibold text-brand-700">Entradas</dt>
                 <dd>
                   <a
                     href={website}
-                    className="text-amber-600 hover:underline"
+                    className="text-brand-600 hover:underline"
                     rel="noopener noreferrer"
                     target="_blank"
                   >

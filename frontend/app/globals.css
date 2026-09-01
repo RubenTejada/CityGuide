@@ -12,6 +12,22 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* Paleta del logo QueHacerRD: azul "RD", amarillo del arco, verde de la palma */
+@theme {
+  --color-brand-50: #eef7fc;
+  --color-brand-100: #d9edf8;
+  --color-brand-300: #7ec4e8;
+  --color-brand-400: #4faade;
+  --color-brand-500: #2e9fd8;
+  --color-brand-600: #1e83b8;
+  --color-brand-700: #196b96;
+  --color-brand-800: #175877;
+  --color-sun-300: #ffce4d;
+  --color-sun-400: #f5b301;
+  --color-sun-500: #d99e00;
+  --color-palm-500: #3faa4c;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;

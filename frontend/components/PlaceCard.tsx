@@ -41,7 +41,7 @@ export default function PlaceCard({
         )}
       </div>
       <div className="min-w-0">
-        <h3 className="truncate font-semibold group-hover:text-amber-600">
+        <h3 className="truncate font-semibold group-hover:text-brand-600">
           {place.name}
         </h3>
         <Rating place={place} />

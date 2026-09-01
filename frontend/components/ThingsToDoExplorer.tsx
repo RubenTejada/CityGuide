@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import type { UmbracoItem } from "@/lib/umbraco";
+import { num, text, type UmbracoItem } from "@/lib/umbraco";
+import AttractionCard from "./AttractionCard";
+import BranchesMap, { type BranchMarker } from "./BranchesMap";
 import { EventCard, type EventEntry } from "./EventsList";
 import PlaceCard from "./PlaceCard";
 
@@ -62,8 +64,8 @@ function Chip({
       onClick={onClick}
       className={`rounded-full border px-3.5 py-1.5 text-sm transition ${
         active
-          ? "border-amber-600 bg-amber-600 text-white"
-          : "border-neutral-300 bg-white text-neutral-700 hover:border-amber-600 hover:text-amber-700"
+          ? "border-brand-600 bg-brand-600 text-white"
+          : "border-neutral-300 bg-white text-neutral-700 hover:border-brand-600 hover:text-brand-700"
       }`}
     >
       {children}
@@ -102,6 +104,18 @@ export default function ThingsToDoExplorer({
 
   const nothingVisible =
     !showEvents && !showAttractions && visibleSections.length === 0;
+
+  const attractionMarkers: BranchMarker[] = attractions
+    .map((entry) => ({
+      id: entry.id,
+      name: entry.name,
+      url: entry.route.path,
+      address: text(entry, "address") || null,
+      latitude: num(entry, "latitude"),
+      longitude: num(entry, "longitude"),
+      logo: null,
+    }))
+    .filter((m) => m.latitude !== 0 && m.longitude !== 0);
 
   return (
     <div>
@@ -181,7 +195,7 @@ export default function ThingsToDoExplorer({
             {attractionsHref && (
               <Link
                 href={attractionsHref}
-                className="text-sm font-medium text-amber-600 hover:underline"
+                className="text-sm font-medium text-brand-600 hover:underline"
               >
                 Ver todas
               </Link>
@@ -189,7 +203,7 @@ export default function ThingsToDoExplorer({
           </div>
           <div className="mt-5 grid gap-4 md:grid-cols-2">
             {attractions.map((entry) => (
-              <PlaceCard key={entry.id} place={entry} />
+              <AttractionCard key={entry.id} place={entry} />
             ))}
             {attractions.length === 0 && (
               <p className="text-neutral-500">No hay atracciones abiertas hoy.</p>
@@ -204,7 +218,7 @@ export default function ThingsToDoExplorer({
             <h2 className="text-xl font-semibold">{section.name}</h2>
             <Link
               href={section.href}
-              className="text-sm font-medium text-amber-600 hover:underline"
+              className="text-sm font-medium text-brand-600 hover:underline"
             >
               Ver todos
             </Link>
@@ -216,6 +230,15 @@ export default function ThingsToDoExplorer({
           </div>
         </section>
       ))}
+
+      {showAttractions && attractionMarkers.length > 0 && (
+        <section className="mt-12">
+          <h2 className="text-xl font-semibold">Mapa de atracciones</h2>
+          <div className="mt-5">
+            <BranchesMap branches={attractionMarkers} />
+          </div>
+        </section>
+      )}
 
       {nothingVisible && (
         <p className="mt-10 text-neutral-500">

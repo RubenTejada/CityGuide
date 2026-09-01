@@ -111,7 +111,7 @@ export default async function Cartelera({
             href="https://rd.caribbeancinemas.com"
             target="_blank"
             rel="noopener noreferrer"
-            className="font-medium text-amber-600 hover:underline"
+            className="font-medium text-brand-600 hover:underline"
           >
             Caribbean Cinemas
           </a>
@@ -127,7 +127,7 @@ export default async function Cartelera({
               className={
                 d === date
                   ? "rounded-full bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white"
-                  : "rounded-full border border-neutral-300 bg-white px-4 py-1.5 text-sm font-medium hover:border-amber-500 hover:text-amber-600"
+                  : "rounded-full border border-neutral-300 bg-white px-4 py-1.5 text-sm font-medium hover:border-brand-500 hover:text-brand-600"
               }
             >
               {dateLabel(d, today)}
@@ -144,7 +144,7 @@ export default async function Cartelera({
             href="https://rd.caribbeancinemas.com"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-amber-600 hover:underline"
+            className="text-brand-600 hover:underline"
           >
             caribbeancinemas.com
           </a>

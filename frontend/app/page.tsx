@@ -1,4 +1,5 @@
 import Link from "next/link";
+import SiteLogo from "@/components/SiteLogo";
 import { getCities, slugOf, text } from "@/lib/umbraco";
 
 export const revalidate = 600;
@@ -10,10 +11,10 @@ export default async function HomePage() {
     <main className="flex-1">
       <section className="bg-neutral-900 text-white">
         <div className="mx-auto max-w-5xl px-6 py-20 text-center">
-          <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">
-            TuCiudad<span className="text-amber-400">.com</span>
+          <h1 className="flex justify-center">
+            <SiteLogo className="text-4xl sm:text-5xl" tagline />
           </h1>
-          <p className="mt-4 text-lg text-neutral-300">
+          <p className="mt-6 text-lg text-neutral-300">
             Bares, restaurantes, atracciones y un poco más — ubícate con un clic.
           </p>
         </div>
@@ -28,7 +29,7 @@ export default async function HomePage() {
               href={`/${slugOf(city)}`}
               className="group rounded-xl border border-neutral-200 bg-white p-6 shadow-sm transition hover:shadow-md"
             >
-              <h3 className="text-lg font-semibold group-hover:text-amber-600">
+              <h3 className="text-lg font-semibold group-hover:text-brand-600">
                 {city.name}
               </h3>
               <p className="mt-1 text-sm text-neutral-500">{text(city, "country")}</p>

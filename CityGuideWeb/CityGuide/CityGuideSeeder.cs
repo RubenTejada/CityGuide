@@ -109,11 +109,15 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
 
         bool thingsToDoMigrated = await EnsureThingsToDoMigratedAsync();
 
+        await EnsureSectionPhotoSchemaAsync();
+
         bool banksSeeded = EnsureBanksSeeded();
 
         bool eventsSeeded = EnsureEventsSeeded();
 
         bool atraccionesSeeded = EnsureAtraccionesSeeded();
+
+        bool baresSeeded = EnsureBaresSeeded();
 
         bool cinemasSeeded = EnsureCinemasSeeded();
 
@@ -129,6 +133,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
                 || thingsToDoMigrated
                 || eventsSeeded
                 || atraccionesSeeded
+                || baresSeeded
                 || cinemasSeeded
                 || mallsSeeded
                 || shoppingSeeded
@@ -189,6 +194,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
 
         IContentType categoryPage = NewContentType("categoryPage", "Category Page", "icon-list");
         AddProperty(categoryPage, "intro", "Introducción", textarea, 1);
+        AddProperty(categoryPage, "photo", "Foto (portada de sección)", imagePicker, 2);
         categoryPage.AllowedContentTypes =
         [
             new ContentTypeSort(subcategory.Key, 0, subcategory.Alias),
@@ -197,11 +203,13 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         await CreateAsync(categoryPage);
 
         IContentType eventsPage = NewContentType("eventsPage", "Events Page", "icon-calendar-alt");
+        AddProperty(eventsPage, "photo", "Foto (portada de sección)", imagePicker, 1);
         eventsPage.AllowedContentTypes = [new ContentTypeSort(eventItem.Key, 0, eventItem.Alias)];
         await CreateAsync(eventsPage);
 
         IContentType thingsToDoPage = NewContentType("thingsToDoPage", "Things To Do Page", "icon-compass");
         AddProperty(thingsToDoPage, "intro", "Introducción", textarea, 1);
+        AddProperty(thingsToDoPage, "photo", "Foto (portada de sección)", imagePicker, 2);
         await CreateAsync(thingsToDoPage);
 
         IContentType city = NewContentType("city", "City", "icon-globe");
@@ -531,6 +539,38 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         {
             throw new InvalidOperationException(
                 $"Failed to add event properties to 'eventItem': {attempt.Result}");
+        }
+    }
+
+    /// <summary>
+    /// Adds the "photo" (section cover) property to the city-section document types
+    /// ("categoryPage", "eventsPage", "thingsToDoPage") so editors can set the image
+    /// used on the city landing page. Guarded per type and run every startup so
+    /// existing installations pick it up.
+    /// </summary>
+    private async Task EnsureSectionPhotoSchemaAsync()
+    {
+        IDataType? imagePicker = null;
+        foreach (string alias in new[] { "categoryPage", "eventsPage", "thingsToDoPage" })
+        {
+            IContentType? sectionType = _contentTypeService.Get(alias);
+            if (sectionType is null || sectionType.PropertyTypeExists("photo"))
+            {
+                continue;
+            }
+
+            imagePicker ??= (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.MediaPicker3SingleImageGuid))!;
+            _logger.LogInformation("CityGuide: adding 'photo' property to '{Alias}'", alias);
+            AddProperty(sectionType, "photo", "Foto (portada de sección)", imagePicker,
+                sectionType.PropertyTypeExists("intro") ? 2 : 1);
+
+            Attempt<ContentTypeOperationStatus> attempt =
+                await _contentTypeService.UpdateAsync(sectionType, Constants.Security.SuperUserKey);
+            if (!attempt.Success)
+            {
+                throw new InvalidOperationException(
+                    $"Failed to add 'photo' to '{alias}': {attempt.Result}");
+            }
         }
     }
 
@@ -1118,10 +1158,50 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         return true;
     }
 
+    private sealed record Atraccion(
+        string Name, string Description, string Address, string Phone, string Hours,
+        decimal Latitude, decimal Longitude, string[] Facilities, string? Website = null);
+
+    private static readonly Atraccion[] Atracciones =
+    [
+        new("Malecón de Santo Domingo",
+            "El paseo marítimo de la ciudad a lo largo de la Av. George Washington: kilómetros de vista al mar Caribe, monumentos, kioscos y vida al aire libre. Ideal para caminar al atardecer.",
+            "Av. George Washington, Santo Domingo DN", "",
+            "Abierto 24 horas",
+            18.4622m, -69.9120m,
+            ["Apto para Niños", "Terraza"]),
+        new("Parque Zoológico Nacional",
+            "El zoológico nacional (ZOODOM): más de 1 millón de metros cuadrados con especies nativas y exóticas en ambientes abiertos, tren interno y áreas familiares.",
+            "Av. La Vega Real, Arroyo Hondo", "809-378-2149",
+            "Mar - Dom 9:00AM - 5:00PM",
+            18.5107m, -69.9418m,
+            ["Parqueo", "Apto para Niños"],
+            Website: "https://zoodom.gob.do"),
+        new("Jardín Botánico Nacional",
+            "Jardín Botánico Nacional Dr. Rafael María Moscoso: el pulmón verde de la ciudad, con el famoso reloj floral, jardín japonés y paseos en trencito.",
+            "Av. República de Colombia, Los Ríos", "809-385-2611",
+            "Lun - Dom 9:00AM - 5:00PM",
+            18.4944m, -69.9530m,
+            ["Parqueo", "Apto para Niños"],
+            Website: "https://jbn.gob.do"),
+        new("Parque Mirador Sur",
+            "Extenso parque lineal sobre el acantilado del sur: ciclovía, áreas de picnic, cuevas y kilómetros de senderos para correr y patinar.",
+            "Av. Mirador Sur, Santo Domingo DN", "",
+            "Lun - Dom 5:00AM - 9:00PM",
+            18.4443m, -69.9550m,
+            ["Parqueo", "Apto para Niños"]),
+        new("Zona Colonial",
+            "El corazón histórico de Santo Domingo, Patrimonio de la Humanidad: la Catedral Primada de América, el Alcázar de Colón, la Calle Las Damas y la peatonal El Conde entre plazas, museos y cafés en calles empedradas.",
+            "Calle El Conde, Ciudad Colonial, Santo Domingo DN", "",
+            "Abierto 24 horas",
+            18.4734m, -69.8836m,
+            ["Apto para Niños"]),
+    ];
+
     /// <summary>
-    /// Idempotent: creates the "Atracciones" category under Santo Domingo with sample
-    /// places (Malecón, parques). Runs on every startup so existing installations pick
-    /// it up without reseeding.
+    /// Idempotent: creates the "Atracciones" category under Santo Domingo and any
+    /// missing attraction place (guarded per place). Runs on every startup so new
+    /// attractions reach existing installations without reseeding.
     /// </summary>
     private bool EnsureAtraccionesSeeded()
     {
@@ -1132,49 +1212,171 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         }
 
         IContent? city = Descendant(site, "city", "Santo Domingo");
-        if (city is null || Descendant(city, "categoryPage", "Atracciones") is not null)
+        if (city is null)
         {
             return false;
         }
 
-        _logger.LogInformation("CityGuide: seeding 'Atracciones' category");
+        IContent? atracciones = Descendant(city, "categoryPage", "Atracciones");
+        bool seeded = false;
+        if (atracciones is null)
+        {
+            _logger.LogInformation("CityGuide: seeding 'Atracciones' category");
+            atracciones = _contentService.Create("Atracciones", city.Id, "categoryPage");
+            atracciones.SetValue("intro", "Parques, monumentos y lugares emblemáticos para disfrutar la ciudad.");
+            _contentService.Save(atracciones);
+            seeded = true;
+        }
 
-        IContent atracciones = _contentService.Create("Atracciones", city.Id, "categoryPage");
-        atracciones.SetValue("intro", "Parques, monumentos y lugares emblemáticos para disfrutar la ciudad.");
-        _contentService.Save(atracciones);
+        foreach (Atraccion a in Atracciones)
+        {
+            if (Descendant(atracciones, "place", a.Name) is not null)
+            {
+                continue;
+            }
 
-        CreatePlace(atracciones.Id, "Malecón de Santo Domingo",
-            "El paseo marítimo de la ciudad a lo largo de la Av. George Washington: kilómetros de vista al mar Caribe, monumentos, kioscos y vida al aire libre. Ideal para caminar al atardecer.",
-            "Av. George Washington, Santo Domingo DN", string.Empty,
-            "Abierto 24 horas",
-            18.4622m, -69.9120m,
-            ["Apto para Niños", "Terraza"]);
+            _logger.LogInformation("CityGuide: seeding attraction '{Name}'", a.Name);
+            CreatePlace(atracciones.Id, a.Name, a.Description, a.Address, a.Phone,
+                a.Hours, a.Latitude, a.Longitude, a.Facilities, website: a.Website);
+            seeded = true;
+        }
 
-        CreatePlace(atracciones.Id, "Parque Zoológico Nacional",
-            "El zoológico nacional (ZOODOM): más de 1 millón de metros cuadrados con especies nativas y exóticas en ambientes abiertos, tren interno y áreas familiares.",
-            "Av. La Vega Real, Arroyo Hondo", "809-378-2149",
-            "Mar - Dom 9:00AM - 5:00PM",
-            18.5107m, -69.9418m,
-            ["Parqueo", "Apto para Niños"],
-            website: "https://zoodom.gob.do");
+        if (seeded)
+        {
+            _contentService.PublishBranch(atracciones, PublishBranchFilter.IncludeUnpublished, ["*"]);
+        }
 
-        CreatePlace(atracciones.Id, "Jardín Botánico Nacional",
-            "Jardín Botánico Nacional Dr. Rafael María Moscoso: el pulmón verde de la ciudad, con el famoso reloj floral, jardín japonés y paseos en trencito.",
-            "Av. República de Colombia, Los Ríos", "809-385-2611",
-            "Lun - Dom 9:00AM - 5:00PM",
-            18.4944m, -69.9530m,
-            ["Parqueo", "Apto para Niños"],
-            website: "https://jbn.gob.do");
+        return seeded;
+    }
 
-        CreatePlace(atracciones.Id, "Parque Mirador Sur",
-            "Extenso parque lineal sobre el acantilado del sur: ciclovía, áreas de picnic, cuevas y kilómetros de senderos para correr y patinar.",
-            "Av. Mirador Sur, Santo Domingo DN", string.Empty,
-            "Lun - Dom 5:00AM - 9:00PM",
-            18.4443m, -69.9550m,
-            ["Parqueo", "Apto para Niños"]);
+    // ---- Bares y Clubes ----
 
-        _contentService.PublishBranch(atracciones, PublishBranchFilter.IncludeUnpublished, ["*"]);
-        return true;
+    private sealed record NightSpot(
+        string Name, string Description, string Address, string Phone, string Hours,
+        decimal Latitude, decimal Longitude, string[] Facilities, string? Website = null);
+
+    private static readonly (string Subcategory, NightSpot[] Spots)[] NightlifeSubcategories =
+    [
+        ("Bares",
+        [
+            new("El Sartén",
+                "Bar de barrio legendario de la Ciudad Colonial: son, bolero y bachata de vellonera, dominó y cerveza bien fría en un ambiente cien por ciento dominicano.",
+                "Calle Hostos 153, Zona Colonial", "",
+                "Lun - Dom 5:00PM - 12:00AM",
+                18.4746m, -69.8846m,
+                ["Música en Vivo", "Horario Extendido"]),
+            new("Parada 77",
+                "Bar de son en plena Zona Colonial: los domingos la esquina se llena de bailadores con orquesta en vivo y ron dominicano.",
+                "Calle Isabel La Católica 255, Zona Colonial", "",
+                "Mié - Dom 6:00PM - 2:00AM",
+                18.4757m, -69.8827m,
+                ["Música en Vivo", "Horario Extendido"]),
+            new("Casa de Teatro",
+                "Centro cultural con bar y patio en la Zona Colonial: peñas, trova, jazz y exposiciones en una casona colonial.",
+                "Calle Arzobispo Meriño 110, Zona Colonial", "809-689-3430",
+                "Mar - Sáb 6:00PM - 12:00AM",
+                18.4715m, -69.8832m,
+                ["Música en Vivo", "Terraza"],
+                Website: "https://casadeteatro.com.do"),
+        ]),
+        ("Lounges y Rooftops",
+        [
+            new("Lucía 203",
+                "Cóctel bar y lounge de la Zona Colonial: mixología de autor, tapas y música ambiente en una casa colonial restaurada.",
+                "Calle Hostos, Zona Colonial", "",
+                "Mar - Dom 6:00PM - 2:00AM",
+                18.4741m, -69.8848m,
+                ["Aire Acondicionado", "Horario Extendido", "Romántico"]),
+            new("Mamajuana Café",
+                "Restaurante-lounge en Naco con música en vivo, merengue y coctelería a base de mamajuana. Cena que se convierte en fiesta.",
+                "Av. Presidente González, Ensanche Naco", "",
+                "Mar - Dom 6:00PM - 2:00AM",
+                18.4741m, -69.9265m,
+                ["Música en Vivo", "Aire Acondicionado", "Restaurante en el Lugar", "Horario Extendido"]),
+            new("SBG Santo Domingo",
+                "Rooftop lounge en Piantini: terraza con vista a la ciudad, DJ, sushi y coctelería premium.",
+                "Av. Gustavo Mejía Ricart, Piantini", "",
+                "Lun - Dom 6:00PM - 2:00AM",
+                18.4685m, -69.9394m,
+                ["Terraza", "Horario Extendido", "Romántico", "Restaurante en el Lugar"]),
+        ]),
+        ("Discotecas",
+        [
+            new("Guácara Taína",
+                "Discoteca dentro de una cueva natural en el Parque Mirador Sur: un clásico único de la vida nocturna de Santo Domingo, hoy sede de fiestas y eventos especiales.",
+                "Av. Cayetano Germosén, Parque Mirador Sur", "",
+                "Vie - Sáb 9:00PM - 3:00AM",
+                18.4448m, -69.9457m,
+                ["Música en Vivo", "Horario Extendido", "Parqueo"]),
+            new("Jubilee",
+                "Discoteca del hotel Renaissance Jaragua en el Malecón: pista amplia, DJ y música variada hasta la madrugada.",
+                "Av. George Washington 367, Malecón", "809-221-2222",
+                "Jue - Sáb 10:00PM - 4:00AM",
+                18.4614m, -69.9058m,
+                ["Aire Acondicionado", "Horario Extendido", "Parqueo"]),
+        ]),
+    ];
+
+    /// <summary>
+    /// Idempotent, runs every startup: creates the nightlife subcategories under
+    /// "Bares y Clubes" and any missing place (guarded per place). A pre-subcategory
+    /// "Onno's Bar" sitting directly under the category is moved into "Bares".
+    /// </summary>
+    private bool EnsureBaresSeeded()
+    {
+        IContent? site = _contentService.GetRootContent().FirstOrDefault(c => c.ContentType.Alias == "site");
+        if (site is null)
+        {
+            return false;
+        }
+
+        IContent? bares = Descendant(site, "city", "Santo Domingo") is { } city
+            ? Descendant(city, "categoryPage", "Bares y Clubes")
+            : null;
+        if (bares is null)
+        {
+            return false;
+        }
+
+        bool seeded = false;
+        foreach ((string subcategoryName, NightSpot[] spots) in NightlifeSubcategories)
+        {
+            IContent? subcategory = Descendant(bares, "subcategory", subcategoryName);
+            if (subcategory is null)
+            {
+                _logger.LogInformation("CityGuide: seeding '{Name}' subcategory under 'Bares y Clubes'", subcategoryName);
+                subcategory = _contentService.Create(subcategoryName, bares.Id, "subcategory");
+                _contentService.Save(subcategory);
+                seeded = true;
+            }
+
+            if (subcategoryName == "Bares" && Descendant(bares, "place", "Onno's Bar") is { } onnos)
+            {
+                _logger.LogInformation("CityGuide: moving 'Onno's Bar' into 'Bares' subcategory");
+                _contentService.Move(onnos, subcategory.Id);
+                seeded = true;
+            }
+
+            foreach (NightSpot spot in spots)
+            {
+                if (Descendant(subcategory, "place", spot.Name) is not null)
+                {
+                    continue;
+                }
+
+                _logger.LogInformation("CityGuide: seeding nightlife place '{Name}'", spot.Name);
+                CreatePlace(subcategory.Id, spot.Name, spot.Description, spot.Address, spot.Phone,
+                    spot.Hours, spot.Latitude, spot.Longitude, spot.Facilities, website: spot.Website);
+                seeded = true;
+            }
+        }
+
+        if (seeded)
+        {
+            _contentService.PublishBranch(bares, PublishBranchFilter.IncludeUnpublished, ["*"]);
+        }
+
+        return seeded;
     }
 
     // ---- Supermarkets & pharmacies (Tiendas) ----

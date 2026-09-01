@@ -61,12 +61,12 @@ export function EventCard({ event }: { event: EventEntry }) {
         <div className="flex items-start justify-between gap-3">
           <h3 className="font-semibold">{event.name}</h3>
           {event.category && (
-            <span className="shrink-0 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">
+            <span className="shrink-0 rounded-full bg-brand-100 px-2.5 py-0.5 text-xs font-medium text-brand-800">
               {event.category}
             </span>
           )}
         </div>
-        <p className="mt-1 text-sm text-amber-700">{formatDate(event.startDate)}</p>
+        <p className="mt-1 text-sm text-brand-700">{formatDate(event.startDate)}</p>
         <p className="mt-1 text-sm text-neutral-500">{event.venueName}</p>
         <p className="mt-2 line-clamp-3 text-sm text-neutral-600">{event.description}</p>
       </div>
@@ -117,8 +117,8 @@ export default function EventsList({ events }: { events: EventEntry[] }) {
             onClick={() => setCategory(null)}
             className={`rounded-full border px-3.5 py-1.5 text-sm transition ${
               category === null
-                ? "border-amber-600 bg-amber-600 text-white"
-                : "border-neutral-300 bg-white text-neutral-700 hover:border-amber-600 hover:text-amber-700"
+                ? "border-brand-600 bg-brand-600 text-white"
+                : "border-neutral-300 bg-white text-neutral-700 hover:border-brand-600 hover:text-brand-700"
             }`}
           >
             Todas
@@ -130,8 +130,8 @@ export default function EventsList({ events }: { events: EventEntry[] }) {
               onClick={() => setCategory(c)}
               className={`rounded-full border px-3.5 py-1.5 text-sm transition ${
                 category === c
-                  ? "border-amber-600 bg-amber-600 text-white"
-                  : "border-neutral-300 bg-white text-neutral-700 hover:border-amber-600 hover:text-amber-700"
+                  ? "border-brand-600 bg-brand-600 text-white"
+                  : "border-neutral-300 bg-white text-neutral-700 hover:border-brand-600 hover:text-brand-700"
               }`}
             >
               {c}
