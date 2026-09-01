@@ -1,0 +1,44 @@
+name: Run agent (daily)
+
+# Daily ingestion run: 10:17 UTC = 6:17 AM in Santo Domingo (AST, UTC-4).
+# The subscription caps Container Apps environments at 1 (used by another
+# project), so the scheduled run lives here instead of a Container Apps Job.
+on:
+  schedule:
+    - cron: "17 10 * * *"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: run-agent
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      # DefaultAzureCredential in AzureOpenAiClient falls back to the Azure CLI
+      # login this step provides (the principal has Cognitive Services OpenAI User).
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Run ingestion agent
+        working-directory: CityGuide.Agent
+        env:
+          Umbraco__BaseUrl: https://quehacerrd-cms.azurewebsites.net
+          Umbraco__ClientSecret: ${{ secrets.UMBRACO_AGENT_CLIENT_SECRET }}
+          Google__ApiKey: ${{ secrets.GOOGLE_API_KEY }}
+        run: dotnet run -c Release
