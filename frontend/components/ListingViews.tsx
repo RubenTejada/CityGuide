@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import FilterDropdown from "./FilterDropdown";
 import MarkersMap, { type MapMarker } from "./MarkersMap";
 import PaginatedList from "./PaginatedList";
 import ViewToggle, { type ListingView } from "./ViewToggle";
@@ -90,7 +91,9 @@ export default function ListingViews({
           {groups.map((group) => (
             <FilterDropdown
               key={group.key}
-              group={group}
+              label={group.label}
+              options={group.options}
+              icons={group.icons}
               selected={selected[group.key] ?? []}
               onToggle={(value) => toggle(group.key, value)}
             />
@@ -140,73 +143,6 @@ export default function ListingViews({
         >
           {filtered.map((entry) => entry.card)}
         </PaginatedList>
-      )}
-    </div>
-  );
-}
-
-function FilterDropdown({
-  group,
-  selected,
-  onToggle,
-}: {
-  group: FilterGroup;
-  selected: string[];
-  onToggle: (value: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <div className="relative ml-2">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        className={`inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-sm font-medium transition ${
-          selected.length > 0
-            ? "border-brand-600 bg-brand-50 text-brand-700"
-            : "border-neutral-300 bg-white text-neutral-700 hover:border-brand-600 hover:text-brand-700"
-        }`}
-      >
-        {group.label}
-        {selected.length > 0 && (
-          <span className="rounded-full bg-brand-600 px-2 py-0.5 text-xs font-semibold text-white">
-            {selected.length}
-          </span>
-        )}
-        <span aria-hidden className="text-xs">
-          {open ? "▲" : "▼"}
-        </span>
-      </button>
-
-      {open && (
-        <>
-          <button
-            type="button"
-            aria-label="Cerrar filtro"
-            onClick={() => setOpen(false)}
-            className="fixed inset-0 z-10 cursor-default"
-          />
-          <div className="absolute left-0 z-20 mt-2 max-h-80 w-64 overflow-y-auto rounded-xl border border-neutral-200 bg-white p-2 shadow-lg">
-            {group.options.map((option) => (
-              <label
-                key={option}
-                className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
-              >
-                <input
-                  type="checkbox"
-                  checked={selected.includes(option)}
-                  onChange={() => onToggle(option)}
-                  className="h-4 w-4 accent-brand-600"
-                />
-                {group.icons && (
-                  <span aria-hidden>{group.icons[option] ?? "•"}</span>
-                )}
-                {option}
-              </label>
-            ))}
-          </div>
-        </>
       )}
     </div>
   );

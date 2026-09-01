@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   APIProvider,
@@ -9,6 +9,7 @@ import {
   Map,
   Pin,
 } from "@vis.gl/react-google-maps";
+import FilterDropdown from "./FilterDropdown";
 import LoadingOverlay from "./LoadingOverlay";
 import LogoPin from "./LogoPin";
 import MapPopupCard from "./MapPopupCard";
@@ -55,6 +56,7 @@ export default function PlaceMap({
 }: PlaceMapProps) {
   const [nearby, setNearby] = useState<NearbyPlace[]>([]);
   const [selected, setSelected] = useState<NearbyPlace | null>(null);
+  const [categories, setCategories] = useState<string[]>([]);
   // Key of the request whose result is on screen: while it differs from the
   // current one, the panel is still loading and stays covered.
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
@@ -65,7 +67,7 @@ export default function PlaceMap({
     if (!showNearby) return;
     const controller = new AbortController();
     fetch(
-      `/api/nearby?lat=${latitude}&lng=${longitude}&radius=2500&exclude=${id}`,
+      `/api/nearby?lat=${latitude}&lng=${longitude}&radius=2500&exclude=${id}&limit=60`,
       { signal: controller.signal },
     )
       .then((res) => (res.ok ? res.json() : []))
@@ -81,6 +83,23 @@ export default function PlaceMap({
     return () => controller.abort();
   }, [id, latitude, longitude, showNearby, nearbyKey]);
 
+  // Only the categories the neighbourhood actually has, in distance order so
+  // the closest kind of place heads the list.
+  const categoryOptions = useMemo(
+    () => [...new Set(nearby.map((place) => place.category).filter(Boolean))],
+    [nearby],
+  );
+  const shown = categories.length
+    ? nearby.filter((place) => categories.includes(place.category))
+    : nearby;
+
+  const toggleCategory = (value: string) =>
+    setCategories((current) =>
+      current.includes(value)
+        ? current.filter((c) => c !== value)
+        : [...current, value],
+    );
+
   if (!MAPS_KEY) {
     return (
       <div className="flex h-72 items-center justify-center rounded-xl border border-dashed border-neutral-300 bg-neutral-50 text-sm text-neutral-500">
@@ -94,14 +113,27 @@ export default function PlaceMap({
       {showNearby && (
         <aside className="relative order-2 lg:order-1">
           <LoadingOverlay show={loadingNearby} label="Buscando cerca…" />
-          <h3 className="font-semibold">¿Qué está cerca?</h3>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="font-semibold">¿Qué está cerca?</h3>
+            {categoryOptions.length > 1 && (
+              <FilterDropdown
+                label="Categorías"
+                options={categoryOptions}
+                selected={categories}
+                onToggle={toggleCategory}
+                className="relative"
+              />
+            )}
+          </div>
           <ul className="mt-2 divide-y divide-neutral-200 rounded-lg border border-neutral-200 bg-white">
-            {nearby.length === 0 && (
+            {shown.length === 0 && (
               <li className="p-3 text-sm text-neutral-500">
-                Nada cerca por ahora.
+                {nearby.length === 0
+                  ? "Nada cerca por ahora."
+                  : "Nada cerca en esas categorías."}
               </li>
             )}
-            {nearby.slice(0, 8).map((place) => (
+            {shown.slice(0, 8).map((place) => (
               <li key={place.id}>
                 <Link
                   href={place.url}
@@ -122,7 +154,7 @@ export default function PlaceMap({
           </ul>
         </aside>
       )}
-      <div className="order-1 h-72 overflow-hidden rounded-xl lg:order-2 lg:h-96">
+      <div className="order-1 aspect-square overflow-hidden rounded-xl lg:order-2">
         <APIProvider apiKey={MAPS_KEY}>
           <Map
             defaultCenter={{ lat: latitude, lng: longitude }}
@@ -137,7 +169,7 @@ export default function PlaceMap({
                 <Pin background="#f59e0b" borderColor="#b45309" glyphColor="#fff" />
               )}
             </AdvancedMarker>
-            {nearby.map((place) => (
+            {shown.map((place) => (
               <AdvancedMarker
                 key={place.id}
                 position={{ lat: place.latitude, lng: place.longitude }}
@@ -150,7 +182,7 @@ export default function PlaceMap({
                 />
               </AdvancedMarker>
             ))}
-            {selected && (
+            {selected && shown.some((place) => place.id === selected.id) && (
               <InfoWindow
                 position={{ lat: selected.latitude, lng: selected.longitude }}
                 onCloseClick={() => setSelected(null)}
