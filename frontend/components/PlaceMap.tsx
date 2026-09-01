@@ -109,12 +109,14 @@ export default function PlaceMap({
   }
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[16rem_1fr]">
+    <div className="grid gap-4 lg:grid-cols-[18rem_1fr]">
       {showNearby && (
         <aside className="relative order-2 lg:order-1">
           <LoadingOverlay show={loadingNearby} label="Buscando cerca…" />
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="font-semibold">¿Qué está cerca?</h3>
+          {/* Title and filter share one row: the column is sized to hold both,
+              so the dropdown sits beside the heading instead of under it. */}
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="whitespace-nowrap font-semibold">¿Qué está cerca?</h3>
             {categoryOptions.length > 1 && (
               <FilterDropdown
                 label="Categorías"
@@ -162,11 +164,21 @@ export default function PlaceMap({
             mapId="cityguide"
             gestureHandling="cooperative"
           >
-            <AdvancedMarker position={{ lat: latitude, lng: longitude }} title={name}>
+            {/* The place the page is about: dark pin, drawn over the rest. */}
+            <AdvancedMarker
+              position={{ lat: latitude, lng: longitude }}
+              title={name}
+              zIndex={1000}
+            >
               {photo ? (
-                <LogoPin logo={photo} name={name} />
+                <LogoPin logo={photo} name={name} current />
               ) : (
-                <Pin background="#f59e0b" borderColor="#b45309" glyphColor="#fff" />
+                <Pin
+                  background="#175877"
+                  borderColor="#ffffff"
+                  glyphColor="#ffffff"
+                  scale={1.3}
+                />
               )}
             </AdvancedMarker>
             {shown.map((place) => (
@@ -186,6 +198,9 @@ export default function PlaceMap({
               <InfoWindow
                 position={{ lat: selected.latitude, lng: selected.longitude }}
                 onCloseClick={() => setSelected(null)}
+                // Focusing the popup scrolls the page to it, moving the map
+                // out from under the pointer mid-click.
+                shouldFocus={false}
               >
                 <MapPopupCard
                   url={selected.url}

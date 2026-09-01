@@ -2,25 +2,56 @@
 
 import Image from "next/image";
 
+interface LogoPinProps {
+  logo: string;
+  name: string;
+  /**
+   * The establishment the page is about. Its pin is framed in dark brand blue
+   * and sits above the rest, so the visitor tells it apart from the white
+   * neighbourhood pins at a glance.
+   */
+  current?: boolean;
+}
+
 /** Map pin pointing at the location, showing the establishment's logo/photo. */
-export default function LogoPin({ logo, name }: { logo: string; name: string }) {
+export default function LogoPin({ logo, name, current = false }: LogoPinProps) {
   // Section map icons (bundled SVGs) carry their own background: show them
   // full-bleed; real logos/photos are letterboxed on white.
   const isSectionIcon = logo.endsWith(".svg");
-  return (
-    <div className="flex flex-col items-center drop-shadow-md">
-      <div className="relative h-11 w-11 overflow-hidden rounded-lg border border-neutral-300 bg-white">
-        <Image
-          src={logo}
-          alt={name}
-          fill
-          unoptimized={isSectionIcon}
-          className={isSectionIcon ? "object-cover" : "object-contain p-1"}
-          sizes="44px"
-        />
+  const plate = (
+    <div
+      className={`logo-plate relative overflow-hidden rounded-lg border bg-white ${
+        current ? "h-12 w-12 border-brand-800" : "h-11 w-11 border-neutral-300"
+      }`}
+    >
+      <Image
+        src={logo}
+        alt={name}
+        fill
+        unoptimized={isSectionIcon}
+        className={isSectionIcon ? "object-cover" : "object-contain p-1"}
+        sizes={current ? "48px" : "44px"}
+      />
+    </div>
+  );
+
+  if (!current) {
+    return (
+      <div className="flex flex-col items-center drop-shadow-md">
+        {plate}
+        {/* pointer tail */}
+        <div className="-mt-px h-0 w-0 border-x-[7px] border-t-[9px] border-x-transparent border-t-white" />
       </div>
-      {/* pointer tail */}
-      <div className="-mt-px h-0 w-0 border-x-[7px] border-t-[9px] border-x-transparent border-t-white" />
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-center drop-shadow-xl">
+      <div className="rounded-xl bg-brand-800 p-1 ring-2 ring-white">
+        {plate}
+      </div>
+      {/* pointer tail, in the dark frame's colour */}
+      <div className="-mt-px h-0 w-0 border-x-[9px] border-t-[12px] border-x-transparent border-t-brand-800" />
     </div>
   );
 }

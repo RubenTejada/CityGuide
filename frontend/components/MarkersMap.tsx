@@ -327,6 +327,9 @@ function ClusteredMarkers({ markers }: { markers: MapMarker[] }) {
         <InfoWindow
           position={{ lat: selected.latitude, lng: selected.longitude }}
           onCloseClick={() => setSelected(null)}
+          // Focusing the popup scrolls the page to it, moving the map out
+          // from under the pointer mid-click.
+          shouldFocus={false}
         >
           <MapPopupCard
             url={selected.url}
