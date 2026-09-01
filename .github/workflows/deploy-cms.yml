@@ -35,7 +35,16 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      # SQLite lives on the app's /home share; deploying over a running app
+      # once corrupted it mid-write. Stop, deploy, start.
+      - name: Stop app
+        run: az webapp stop -g cityguide-rg -n quehacerrd-cms
+
       - uses: azure/webapps-deploy@v3
         with:
           app-name: quehacerrd-cms
           package: publish
+
+      - name: Start app
+        if: always()
+        run: az webapp start -g cityguide-rg -n quehacerrd-cms
