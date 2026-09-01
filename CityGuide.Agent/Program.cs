@@ -115,6 +115,11 @@ Dictionary<string, Guid> knownPlaceIds = await umbraco.GetKnownGooglePlaceIdsAsy
 Console.WriteLine($"Known places in CMS: {knownPlaceIds.Count}");
 
 var created = 0;
+
+// Subtrees already scanned for draft places, so the overlapping runs that share a
+// parent path walk it once between them.
+var scannedParents = new HashSet<Guid>();
+
 foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelected(r.ParentPath)) : [])
 {
     // /santo-domingo/bares-y-clubes → city slug "santo-domingo", category slug "bares-y-clubes".
@@ -134,6 +139,27 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelec
     {
         Console.Error.WriteLine($"  Parent path not found in CMS, skipping: {run.ParentPath}");
         continue;
+    }
+
+    // The baseline above lists published places only. The agent creates places as
+    // drafts, so without this every draft from an earlier run looks new and is
+    // created again. Published ids win, keeping the rating refresh on the live node.
+    if (scannedParents.Add(parent.Value.Id))
+    {
+        Dictionary<string, Guid> drafts = await umbraco.GetDescendantPlaceIdsAsync(parent.Value.Id);
+        var added = 0;
+        foreach ((string googlePlaceId, Guid id) in drafts)
+        {
+            if (knownPlaceIds.TryAdd(googlePlaceId, id))
+            {
+                added++;
+            }
+        }
+
+        if (added > 0)
+        {
+            Console.WriteLine($"  {added} lugar(es) sin publicar ya existentes bajo {run.ParentPath}");
+        }
     }
 
     List<DiscoveredPlace> places = await google.SearchAsync(query, run.MaxPlaces);
@@ -295,6 +321,15 @@ Console.WriteLine($"\nDone. Created {created} place(s)" +
 if (!string.IsNullOrEmpty(config.Google.ApiKey))
 {
     Console.WriteLine("\n== Rating & photo backfill");
+
+    // A branch stores only its own name ("Sucursal Zona Colonial"), which on its own
+    // matches nothing on Google: the query needs the chain it belongs to. Longest path
+    // first so a company nested under another wins over its ancestor.
+    List<UmbracoClient.PublishedPlace> companyNodes = await umbraco.GetPublishedPlacesAsync("company");
+    companyNodes.Sort((a, b) => b.Path.Length.CompareTo(a.Path.Length));
+    string? CompanyOf(string path) => companyNodes
+        .FirstOrDefault(c => path.StartsWith(c.Path, StringComparison.OrdinalIgnoreCase))?.Name;
+
     foreach (string contentType in new[] { "place", "mall" })
     {
         foreach (UmbracoClient.PublishedPlace node in await umbraco.GetPublishedPlacesAsync(contentType))
@@ -306,10 +341,14 @@ if (!string.IsNullOrEmpty(config.Google.ApiKey))
 
             try
             {
+                string searchName = CompanyOf(node.Path) is { } company
+                    && !TextMatch.Matches(company, node.Name, 1.0)
+                    ? $"{company} {node.Name}"
+                    : node.Name;
                 GooglePlacesClient.RatingLookup? found = node.GooglePlaceId is not null
                     ? await google.GetRatingByIdAsync(node.GooglePlaceId)
                     : await google.FindRatingNearAsync(
-                        node.Name, node.Address, node.Latitude, node.Longitude);
+                        searchName, node.Address, node.Latitude, node.Longitude);
                 if (found is null)
                 {
                     Console.WriteLine($"  ? {node.Name}: sin match en Google, omitido");

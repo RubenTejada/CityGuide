@@ -77,9 +77,16 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         HttpResponseMessage response = await http.GetAsync(
             $"{config.BaseUrl}/umbraco/delivery/api/v2/content?filter=contentType%3Aplace&take=1000");
         var known = new Dictionary<string, Guid>(StringComparer.Ordinal);
+
+        // Never degrade to an empty baseline: with no known places every discovered
+        // place looks new and the run duplicates the whole catalogue. A CMS that
+        // cannot answer must stop the run instead.
         if (!response.IsSuccessStatusCode)
         {
-            return known;
+            throw new InvalidOperationException(
+                $"No se pudo leer los lugares publicados del CMS ({(int)response.StatusCode} "
+                + $"{response.StatusCode}). Sin esa lista el dedupe no funciona y la corrida "
+                + "duplicaría el catálogo, así que se aborta.");
         }
 
         using JsonDocument doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
@@ -171,25 +178,45 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
 
     public record ChildDocument(Guid Id, string Name, Guid DocumentTypeId);
 
-    /// <summary>Children of a document via the management tree (includes drafts).</summary>
+    /// <summary>
+    /// Children of a document via the management tree (includes drafts). Pages through
+    /// the whole list: a truncated one would silently break the dedupe that depends on it.
+    /// </summary>
     public async Task<List<ChildDocument>> GetChildrenAsync(Guid parentId)
     {
-        HttpRequestMessage request = await AuthorizedRequestAsync(
-            HttpMethod.Get,
-            $"/umbraco/management/api/v1/tree/document/children?parentId={parentId}&skip=0&take=200");
-        HttpResponseMessage response = await http.SendAsync(request);
-        response.EnsureSuccessStatusCode();
-
+        const int pageSize = 200;
         var children = new List<ChildDocument>();
-        using JsonDocument doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        foreach (JsonElement item in doc.RootElement.GetProperty("items").EnumerateArray())
+        var total = 0;
+
+        do
         {
-            string name = item.GetProperty("variants")[0].GetProperty("name").GetString() ?? "";
-            children.Add(new ChildDocument(
-                item.GetProperty("id").GetGuid(),
-                name,
-                item.GetProperty("documentType").GetProperty("id").GetGuid()));
+            HttpRequestMessage request = await AuthorizedRequestAsync(
+                HttpMethod.Get,
+                "/umbraco/management/api/v1/tree/document/children"
+                    + $"?parentId={parentId}&skip={children.Count}&take={pageSize}");
+            HttpResponseMessage response = await http.SendAsync(request);
+            response.EnsureSuccessStatusCode();
+
+            using JsonDocument doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            total = doc.RootElement.GetProperty("total").GetInt32();
+            var page = 0;
+            foreach (JsonElement item in doc.RootElement.GetProperty("items").EnumerateArray())
+            {
+                string name = item.GetProperty("variants")[0].GetProperty("name").GetString() ?? "";
+                children.Add(new ChildDocument(
+                    item.GetProperty("id").GetGuid(),
+                    name,
+                    item.GetProperty("documentType").GetProperty("id").GetGuid()));
+                page++;
+            }
+
+            // An empty page with more promised would loop forever.
+            if (page == 0)
+            {
+                break;
+            }
         }
+        while (children.Count < total);
 
         return children;
     }
@@ -310,32 +337,43 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
             doc.RootElement.GetProperty("variants")[0].GetProperty("name").GetString() ?? "", values);
     }
 
-    /// <summary>Google Place IDs of the direct child places of a document, drafts included — used for dedupe.</summary>
-    public async Task<Dictionary<string, Guid>> GetChildPlaceIdsAsync(Guid parentId)
+    /// <summary>
+    /// Google Place IDs of every place below a document, drafts included — used for dedupe.
+    /// The Delivery API only sees published content, but the agent creates places as
+    /// drafts, so without this a draft is invisible to the next run and gets recreated
+    /// on every pass. Recurses because places also sit under company and subcategory
+    /// nodes, not just directly under the run's parent.
+    /// </summary>
+    public async Task<Dictionary<string, Guid>> GetDescendantPlaceIdsAsync(Guid parentId)
     {
         var result = new Dictionary<string, Guid>(StringComparer.Ordinal);
-        foreach (ChildDocument child in await GetChildrenAsync(parentId))
-        {
-            HttpRequestMessage request = await AuthorizedRequestAsync(
-                HttpMethod.Get, $"/umbraco/management/api/v1/document/{child.Id}");
-            HttpResponseMessage response = await http.SendAsync(request);
-            if (!response.IsSuccessStatusCode)
-            {
-                continue;
-            }
+        await CollectAsync(parentId);
+        return result;
 
-            using JsonDocument doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-            foreach (JsonElement v in doc.RootElement.GetProperty("values").EnumerateArray())
+        async Task CollectAsync(Guid id)
+        {
+            foreach (ChildDocument child in await GetChildrenAsync(id))
             {
-                if (v.GetProperty("alias").GetString() == "googlePlaceId"
-                    && v.GetProperty("value").ValueKind == JsonValueKind.String)
+                HttpRequestMessage request = await AuthorizedRequestAsync(
+                    HttpMethod.Get, $"/umbraco/management/api/v1/document/{child.Id}");
+                HttpResponseMessage response = await http.SendAsync(request);
+                if (response.IsSuccessStatusCode)
                 {
-                    result[v.GetProperty("value").GetString()!] = child.Id;
+                    using JsonDocument doc = JsonDocument.Parse(
+                        await response.Content.ReadAsStringAsync());
+                    foreach (JsonElement v in doc.RootElement.GetProperty("values").EnumerateArray())
+                    {
+                        if (v.GetProperty("alias").GetString() == "googlePlaceId"
+                            && v.GetProperty("value").ValueKind == JsonValueKind.String)
+                        {
+                            result[v.GetProperty("value").GetString()!] = child.Id;
+                        }
+                    }
                 }
+
+                await CollectAsync(child.Id);
             }
         }
-
-        return result;
     }
 
     /// <summary>
