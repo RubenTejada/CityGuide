@@ -66,20 +66,26 @@ export function firstText(...candidates: (string | null | undefined)[]): string 
   return "";
 }
 
-/** The preferred title when it fits the SERP budget, else the short fallback. */
-export function clampTitle(preferred: string, fallback = preferred): string {
-  const flat = flatten(preferred);
-  if (flat.length <= TITLE_BUDGET) return flat;
-  return truncate(flatten(fallback), TITLE_BUDGET);
+/**
+ * First candidate that fits the SERP budget, from most to least descriptive.
+ * If none fit, the last (shortest) one is returned whole — a title Google
+ * truncates itself beats one we cut mid-name.
+ */
+export function clampTitle(...candidates: (string | null | undefined)[]): string {
+  const usable = candidates.map((c) => flatten(c ?? "")).filter(Boolean);
+  return usable.find((c) => c.length <= TITLE_BUDGET) ?? usable[usable.length - 1] ?? "";
 }
 
 export function clampDescription(...candidates: (string | null | undefined)[]): string {
   return truncate(firstText(...candidates), MAX_DESCRIPTION);
 }
 
-/** Editor override (SEO tab) or the derived title. */
-export function seoTitle(item: UmbracoItem, derived: string, fallback = derived): string {
-  return firstText(text(item, "metaTitle")) || clampTitle(derived, fallback);
+/** Editor override (SEO tab), else the first derived title that fits. */
+export function seoTitle(
+  item: UmbracoItem,
+  ...candidates: (string | null | undefined)[]
+): string {
+  return firstText(text(item, "metaTitle")) || clampTitle(...candidates);
 }
 
 /** Editor override (SEO tab) or the first usable body text. */

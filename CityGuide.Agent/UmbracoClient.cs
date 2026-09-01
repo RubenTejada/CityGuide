@@ -277,6 +277,33 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         return places;
     }
 
+    public record DocumentDetail(string Name, Dictionary<string, string?> TextValues);
+
+    /// <summary>Name plus every string-valued property of a document (drafts included).</summary>
+    public async Task<DocumentDetail?> GetDocumentTextValuesAsync(Guid id)
+    {
+        HttpRequestMessage request = await AuthorizedRequestAsync(
+            HttpMethod.Get, $"/umbraco/management/api/v1/document/{id}");
+        HttpResponseMessage response = await http.SendAsync(request);
+        if (!response.IsSuccessStatusCode)
+        {
+            return null;
+        }
+
+        using JsonDocument doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var values = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        foreach (JsonElement v in doc.RootElement.GetProperty("values").EnumerateArray())
+        {
+            if (v.GetProperty("value").ValueKind == JsonValueKind.String)
+            {
+                values[v.GetProperty("alias").GetString()!] = v.GetProperty("value").GetString();
+            }
+        }
+
+        return new DocumentDetail(
+            doc.RootElement.GetProperty("variants")[0].GetProperty("name").GetString() ?? "", values);
+    }
+
     /// <summary>Google Place IDs of the direct child places of a document, drafts included — used for dedupe.</summary>
     public async Task<Dictionary<string, Guid>> GetChildPlaceIdsAsync(Guid parentId)
     {

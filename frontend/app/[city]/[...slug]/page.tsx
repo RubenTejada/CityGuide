@@ -145,7 +145,11 @@ export async function generateMetadata({
 
   const [cityItem, parent] = await Promise.all([cityOf(item), parentOf(item)]);
   const cityName = cityItem?.name ?? "";
-  const inCity = cityName ? ` en ${cityName}` : "";
+  // Avoid "Malecón de Santo Domingo en Santo Domingo".
+  const inCity =
+    cityName && !item.name.toLowerCase().includes(cityName.toLowerCase())
+      ? ` en ${cityName}`
+      : "";
   // The company/subcategory/category a place hangs from, used to qualify titles.
   const parentName = parent && parent.contentType !== "city" ? parent.name : "";
   const qualified = parentName ? `${item.name} — ${parentName}${inCity}` : `${item.name}${inCity}`;
@@ -159,7 +163,7 @@ export async function generateMetadata({
 
   switch (item.contentType) {
     case "categoryPage":
-      title = `${item.name}${inCity}`;
+      title = seoTitle(item, `${item.name}${inCity}`, item.name);
       description = seoDescription(
         item,
         text(item, "intro"),
@@ -168,7 +172,7 @@ export async function generateMetadata({
       image = image ?? sectionListImage(item.route.path);
       break;
     case "subcategory":
-      title = seoTitle(item, qualified, `${item.name}${inCity}`);
+      title = seoTitle(item, qualified, `${item.name}${inCity}`, item.name);
       description = seoDescription(
         item,
         `${item.name} ${parentName ? `— ${parentName} ` : ""}${inCity}: los lugares recomendados con dirección, horario, teléfono y mapa.`,
@@ -180,7 +184,7 @@ export async function generateMetadata({
       const company = parent?.contentType === "company" ? parent : null;
       const inherited = (alias: string) =>
         text(item, alias) || (company ? text(company, alias) : "");
-      title = seoTitle(item, qualified, `${item.name}${inCity}`);
+      title = seoTitle(item, qualified, `${item.name}${inCity}`, item.name);
       description = seoDescription(
         item,
         inherited("description"),
@@ -190,7 +194,12 @@ export async function generateMetadata({
       break;
     }
     case "company":
-      title = seoTitle(item, `${item.name} — sucursales${inCity}`, `${item.name}${inCity}`);
+      title = seoTitle(
+        item,
+        `${item.name} — sucursales${inCity}`,
+        `${item.name}${inCity}`,
+        item.name,
+      );
       description = seoDescription(
         item,
         text(item, "description"),
@@ -199,7 +208,12 @@ export async function generateMetadata({
       image = image ?? sectionListImage(item.route.path);
       break;
     case "movie":
-      title = seoTitle(item, `${item.name} — cartelera${inCity}`, `${item.name} — cartelera`);
+      title = seoTitle(
+        item,
+        `${item.name} — cartelera${inCity}`,
+        `${item.name} — cartelera`,
+        item.name,
+      );
       description = seoDescription(
         item,
         text(item, "synopsis"),
@@ -222,6 +236,7 @@ export async function generateMetadata({
         item,
         dates ? `${item.name} — ${dates}${inCity}` : `${item.name}${inCity}`,
         `${item.name}${inCity}`,
+        item.name,
       );
       description = seoDescription(
         item,
@@ -240,7 +255,7 @@ export async function generateMetadata({
       image = image ?? sectionListImage(item.route.path);
       break;
     case "articlesPage":
-      title = seoTitle(item, `${item.name}${inCity}`);
+      title = seoTitle(item, `${item.name}${inCity}`, item.name);
       description = seoDescription(
         item,
         text(item, "intro"),
@@ -260,6 +275,7 @@ export async function generateMetadata({
       modifiedTime = item.updateDate;
       break;
     default:
+      title = seoTitle(item, `${item.name}${inCity}`, item.name);
       description = seoDescription(item, text(item, "description"));
   }
 
@@ -851,6 +867,7 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
               unoptimized={photo.endsWith(".svg")}
               className={isLogo ? "object-contain p-6" : "object-cover"}
               sizes="(min-width: 1024px) 20rem, 100vw"
+              priority
             />
           </div>
           {inherited("hours") && (
@@ -1000,6 +1017,7 @@ async function EventView({ item }: { item: UmbracoItem }) {
                 fill
                 className="object-cover"
                 sizes="(min-width: 1024px) 20rem, 100vw"
+                priority
               />
             ) : (
               <div className="flex h-full items-center justify-center text-6xl" aria-hidden>

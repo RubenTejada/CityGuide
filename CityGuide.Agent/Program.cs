@@ -25,7 +25,11 @@ if (string.IsNullOrEmpty(config.Umbraco.ClientSecret))
     return 1;
 }
 
-using var http = new HttpClient();
+// Every external request goes through the throttler: minimum interval + jitter
+// per host, so no portal or API ever sees a burst. Slow but never blocked.
+using var http = new HttpClient(new ThrottlingHandler(
+    TimeSpan.FromSeconds(config.Throttle.SecondsBetweenRequests),
+    new Uri(config.Umbraco.BaseUrl).Host));
 var google = new GooglePlacesClient(http, config.Google.ApiKey);
 var umbraco = new UmbracoClient(http, config.Umbraco);
 
@@ -59,6 +63,30 @@ async Task<UmbracoClient.CityAgentConfig?> CityConfigAsync(string citySlug)
     }
 
     return cached;
+}
+
+// Diagnostic: scrape the configured event sources and print, without touching the CMS.
+if (args.Contains("--scrape-events"))
+{
+    var scraper = new EventSync(http, umbraco, config.Events);
+    foreach (EventSourceConfig source in config.Events.Sources)
+    {
+        try
+        {
+            List<ScrapedEvent> scraped = await scraper.ScrapeSourceAsync(source);
+            Console.WriteLine($"\n== {source.Name}: {scraped.Count} eventos futuros");
+            foreach (ScrapedEvent ev in scraped.Take(5))
+            {
+                Console.WriteLine($"  {ev.Start:yyyy-MM-dd HH:mm}  {ev.Name}  [{ev.Venue}]  {ev.Url}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"\n== {source.Name} FAILED: {ex.Message}");
+        }
+    }
+
+    return 0;
 }
 
 Dictionary<string, Guid> knownPlaceIds = await umbraco.GetKnownGooglePlaceIdsAsync();
@@ -204,11 +232,34 @@ if (!string.IsNullOrEmpty(config.Google.ApiKey))
     }
 }
 
+// Daily job: one sync failing must not stop the others.
+int failures = 0;
 if (config.Cinemas.Enabled && config.Cinemas.Sites.Count > 0)
 {
-    var cinemaSync = new CinemaSync(
-        umbraco, new CaribbeanCinemasClient(http), new YoutubeTrailerFinder(http), config.Cinemas);
-    await cinemaSync.RunAsync();
+    try
+    {
+        var cinemaSync = new CinemaSync(
+            umbraco, new CaribbeanCinemasClient(http), new YoutubeTrailerFinder(http), config.Cinemas);
+        await cinemaSync.RunAsync();
+    }
+    catch (Exception ex)
+    {
+        failures++;
+        Console.Error.WriteLine($"\n! Cinema sync failed: {ex.Message}");
+    }
 }
 
-return 0;
+if (config.Events.Enabled && config.Events.Sources.Count > 0)
+{
+    try
+    {
+        await new EventSync(http, umbraco, config.Events).RunAsync();
+    }
+    catch (Exception ex)
+    {
+        failures++;
+        Console.Error.WriteLine($"\n! Event sync failed: {ex.Message}");
+    }
+}
+
+return failures == 0 ? 0 : 1;

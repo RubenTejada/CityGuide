@@ -8,6 +8,43 @@ public class AgentConfig
     public AnthropicConfig Anthropic { get; set; } = new();
     public List<RunConfig> Runs { get; set; } = [];
     public CinemasConfig Cinemas { get; set; } = new();
+    public EventsConfig Events { get; set; } = new();
+    public ThrottleConfig Throttle { get; set; } = new();
+}
+
+public class ThrottleConfig
+{
+    /// <summary>Minimum seconds between requests to the same external host
+    /// (plus random jitter). The CMS host is exempt. Keep this generous — the
+    /// agent is a daily batch job and must never look like a scraper attack.</summary>
+    public double SecondsBetweenRequests { get; set; } = 3;
+}
+
+public class EventsConfig
+{
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>Umbraco route path of the city whose "eventos" section is synced.</summary>
+    public string CityPath { get; set; } = "/santo-domingo";
+
+    public int MaxPerSource { get; set; } = 30;
+
+    public List<EventSourceConfig> Sources { get; set; } = [];
+}
+
+public class EventSourceConfig
+{
+    public string Name { get; set; } = "";
+
+    /// <summary>Parsing strategy: "jsonld-listing", "jsonld-detail" or "ticketexpress".</summary>
+    public string Kind { get; set; } = "jsonld-listing";
+
+    /// <summary>Listing page URL.</summary>
+    public string Url { get; set; } = "";
+
+    /// <summary>Regex whose group 1 captures detail-page links in the listing
+    /// (kinds "jsonld-detail" and "ticketexpress").</summary>
+    public string LinkPattern { get; set; } = "";
 }
 
 public class UmbracoConfig

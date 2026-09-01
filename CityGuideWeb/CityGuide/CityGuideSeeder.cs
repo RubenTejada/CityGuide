@@ -546,7 +546,11 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         }
 
         (string Alias, string Name, int Sort)[] missing =
-            new[] { ("category", "Categoría", 9), ("website", "Sitio Web / Entradas", 10), ("phone", "Teléfono", 11) }
+            new[]
+            {
+                ("category", "Categoría", 9), ("website", "Sitio Web / Entradas", 10),
+                ("phone", "Teléfono", 11), ("source", "Fuente (manual | agent:<portal>)", 12),
+            }
                 .Where(p => !eventItem.PropertyTypeExists(p.Item1))
                 .ToArray();
         if (missing.Length == 0)
