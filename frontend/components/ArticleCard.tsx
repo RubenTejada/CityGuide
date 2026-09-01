@@ -11,8 +11,18 @@ export function articleDate(article: UmbracoItem): string {
   return new Intl.DateTimeFormat("es-DO", { dateStyle: "long" }).format(date);
 }
 
-/** Full-width horizontal article card: photo left, text right (stacked on mobile). */
-export default function ArticleCard({ article }: { article: UmbracoItem }) {
+/**
+ * Full-width horizontal article card: photo left, text right (stacked on mobile).
+ * `compact` encoge la foto para las listas donde el artículo es un aparte y no
+ * el contenido principal — la portada de la ciudad.
+ */
+export default function ArticleCard({
+  article,
+  compact = false,
+}: {
+  article: UmbracoItem;
+  compact?: boolean;
+}) {
   const photo =
     text(article, "heroImageUrl") || sectionListImage(article.route.path);
   const category = text(article, "category");
@@ -21,14 +31,22 @@ export default function ArticleCard({ article }: { article: UmbracoItem }) {
       href={article.route.path}
       className="group flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm transition hover:shadow-md sm:flex-row"
     >
-      <div className="relative h-40 flex-none bg-neutral-200 sm:h-auto sm:w-48 md:w-56">
+      <div
+        className={`relative flex-none bg-neutral-200 sm:h-auto ${
+          compact ? "h-28 sm:w-32 md:w-40" : "h-40 sm:w-48 md:w-56"
+        }`}
+      >
         <Image
           src={photo}
           alt={article.name}
           fill
           unoptimized={photo.endsWith(".svg")}
           className="object-cover transition duration-300 group-hover:scale-105"
-          sizes="(min-width: 640px) 224px, 100vw"
+          sizes={
+            compact
+              ? "(min-width: 640px) 160px, 100vw"
+              : "(min-width: 640px) 224px, 100vw"
+          }
         />
         {category && (
           <span className="absolute left-3 top-3 rounded-full bg-white/90 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-brand-700">

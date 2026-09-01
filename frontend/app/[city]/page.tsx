@@ -251,7 +251,7 @@ export default async function CityLandingPage({
           </div>
           <div className="mt-5 space-y-5">
             {articles.map((article) => (
-              <ArticleCard key={article.id} article={article} />
+              <ArticleCard key={article.id} article={article} compact />
             ))}
           </div>
         </section>
