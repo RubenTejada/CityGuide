@@ -112,6 +112,13 @@ public class EventVenues(
             return null;
         }
 
+        // Excluded on the city node: the venue still gave the event its coordinates,
+        // it just never becomes a place of its own.
+        if (city?.ExcludedPlaceIds.Contains(venue.GooglePlaceId) == true)
+        {
+            return null;
+        }
+
         await LoadBaselineAsync();
         if (_knownPlaceIds.TryGetValue(venue.GooglePlaceId, out Guid existing))
         {

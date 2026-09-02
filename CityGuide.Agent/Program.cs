@@ -614,7 +614,10 @@ if (args.Contains("--purge-duplicate-places"))
 
                 bool carriesPhoto = !survivorHasPhoto && copy.PhotoMediaKey is Guid photoKey;
                 recycled++;
-                Console.WriteLine($"    x {copy.Path}{(carriesPhoto ? " (su foto pasa al que se queda)" : "")}");
+                // The id goes in the line: a copy Google keeps listing comes back on the
+                // next pass unless it is pasted into "Lugares excluidos" on the city node.
+                Console.WriteLine($"    x {copy.Path} [{copy.GooglePlaceId}]"
+                    + (carriesPhoto ? " (su foto pasa al que se queda)" : ""));
                 if (!applyPurge)
                 {
                     continue;
@@ -860,6 +863,17 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelec
 
     foreach (DiscoveredPlace place in places)
     {
+        // What an editor sent to the papelera comes back on the next pass: the dedupe
+        // reads the published places, so an id that is no longer in the CMS looks new.
+        // The city node's "Lugares excluidos" is what says otherwise — the Google
+        // listing that is a plaza, or the second listing of one branch.
+        if (cityConfig?.ExcludedPlaceIds.Contains(place.GooglePlaceId) == true)
+        {
+            runSkipped++;
+            Console.WriteLine($"  - {place.Name} (excluido en el nodo de la ciudad)");
+            continue;
+        }
+
         // A plaza comercial already stored as a "mall" node. Seeded plazas carry no
         // Google place id, so the dedupe above cannot see them and every pass would
         // add the plaza a second time — as a shop. Store the id on the plaza instead,

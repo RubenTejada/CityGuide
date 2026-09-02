@@ -735,6 +735,12 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
                 "Rectángulo al que se limitan las búsquedas de Google: esquina suroeste y "
                 + "noreste, \"lat,lng;lat,lng\". Sin él Google responde con todo el país "
                 + "(bares de Punta Cana en una búsqueda de Santo Domingo).", 3),
+            ("agentExcludedPlaces", textarea, "Lugares excluidos",
+                "Ids de Google que el agente nunca debe crear, uno por línea, con un "
+                + "comentario opcional después de #. P. ej. "
+                + "\"ChIJdTEGE6ZhpY4R... # Plaza Luperón, no es una sucursal\". "
+                + "Sin esto, lo que mandas a la papelera vuelve en la próxima pasada: "
+                + "el agente deduplica por id, y un id que ya no está en el CMS parece nuevo.", 4),
         };
 
         var added = new List<string>();

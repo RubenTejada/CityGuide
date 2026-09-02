@@ -30,13 +30,18 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         return (doc.RootElement.GetProperty("id").GetGuid(), doc.RootElement.GetProperty("name").GetString()!);
     }
 
-    public record CityAgentConfig(string CityName, Dictionary<string, string> CategoryPrompts, GeoArea? Area);
+    public record CityAgentConfig(
+        string CityName,
+        Dictionary<string, string> CategoryPrompts,
+        GeoArea? Area,
+        HashSet<string> ExcludedPlaceIds);
 
     /// <summary>
     /// Agent configuration stored on the city node ("Agente" tab): the city name
-    /// used in Google queries ({city} placeholder) and per-category editor
-    /// prompts, one "categoria-slug: instrucciones" line each. Falls back to the
-    /// node name when the tab is empty; null when the city path does not exist.
+    /// used in Google queries ({city} placeholder), per-category editor prompts,
+    /// one "categoria-slug: instrucciones" line each, and the Google place ids the
+    /// agent must never turn into content. Falls back to the node name when the tab
+    /// is empty; null when the city path does not exist.
     /// </summary>
     public async Task<CityAgentConfig?> GetCityAgentConfigAsync(string cityPath)
     {
@@ -68,7 +73,28 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
             }
         }
 
-        return new CityAgentConfig(cityName, prompts, ParseArea(Text("agentArea")));
+        return new CityAgentConfig(
+            cityName, prompts, ParseArea(Text("agentArea")), ParseExcluded(Text("agentExcludedPlaces")));
+    }
+
+    /// <summary>
+    /// The "Lugares excluidos" field: one Google place id per line, with an optional
+    /// "# por qué" an editor writes to remember what the id was. Everything after the
+    /// id on its line is a note, so a pasted line stays readable in the backoffice.
+    /// </summary>
+    private static HashSet<string> ParseExcluded(string? value)
+    {
+        var excluded = new HashSet<string>(StringComparer.Ordinal);
+        foreach (string line in (value ?? "").Split('\n'))
+        {
+            string entry = line.Split('#')[0].Trim();
+            if (entry.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() is { Length: > 0 } id)
+            {
+                excluded.Add(id);
+            }
+        }
+
+        return excluded;
     }
 
     /// <summary>"lat,lng;lat,lng" (southwest corner, then northeast) into a search
