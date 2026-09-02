@@ -120,26 +120,66 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
             : null;
     }
 
+    /// <summary>
+    /// Every item of a Delivery API filter, paged to the end. One request answers at
+    /// most a page — the catalogue outgrew any single page long ago — and a truncated
+    /// list is invisible to its callers: the dedupe would recreate the places it did
+    /// not see, and the backfill would never complete the ones past the cut.
+    /// </summary>
+    private async Task<List<JsonElement>> GetDeliveryItemsAsync(
+        string filter, Func<HttpResponseMessage, Exception>? onFailure = null)
+    {
+        // The page the server actually returns decides the stride, so a deployment
+        // that caps the page size smaller than this is paged correctly all the same.
+        const int pageSize = 500;
+        var items = new List<JsonElement>();
+        int total;
+        do
+        {
+            HttpResponseMessage response = await http.GetAsync(
+                $"{config.BaseUrl}/umbraco/delivery/api/v2/content"
+                + $"?filter={filter}&skip={items.Count}&take={pageSize}");
+            if (!response.IsSuccessStatusCode)
+            {
+                throw onFailure?.Invoke(response)
+                    ?? new HttpRequestException(
+                        $"Delivery API {filter}: {(int)response.StatusCode} {response.StatusCode}");
+            }
+
+            using JsonDocument doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            total = doc.RootElement.GetProperty("total").GetInt32();
+            int before = items.Count;
+            foreach (JsonElement item in doc.RootElement.GetProperty("items").EnumerateArray())
+            {
+                items.Add(item.Clone());
+            }
+
+            // An empty page with items still missing would otherwise loop forever.
+            if (items.Count == before)
+            {
+                break;
+            }
+        }
+        while (items.Count < total);
+
+        return items;
+    }
+
     /// <summary>Google Place ID → document id of every published place — used for dedupe and rating refresh.</summary>
     public async Task<Dictionary<string, Guid>> GetKnownGooglePlaceIdsAsync()
     {
-        HttpResponseMessage response = await http.GetAsync(
-            $"{config.BaseUrl}/umbraco/delivery/api/v2/content?filter=contentType%3Aplace&take=1000");
-        var known = new Dictionary<string, Guid>(StringComparer.Ordinal);
-
-        // Never degrade to an empty baseline: with no known places every discovered
-        // place looks new and the run duplicates the whole catalogue. A CMS that
-        // cannot answer must stop the run instead.
-        if (!response.IsSuccessStatusCode)
-        {
-            throw new InvalidOperationException(
+        // Never degrade to a partial baseline: a place the list does not carry looks
+        // new and gets created a second time, so the read is paged to the end and a
+        // CMS that cannot answer stops the run instead.
+        List<JsonElement> items = await GetDeliveryItemsAsync(
+            "contentType%3Aplace",
+            response => new InvalidOperationException(
                 $"No se pudo leer los lugares publicados del CMS ({(int)response.StatusCode} "
                 + $"{response.StatusCode}). Sin esa lista el dedupe no funciona y la corrida "
-                + "duplicaría el catálogo, así que se aborta.");
-        }
+                + "duplicaría el catálogo, así que se aborta."));
+        var known = new Dictionary<string, Guid>(StringComparer.Ordinal);
 
-        using JsonDocument doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        foreach (JsonElement item in doc.RootElement.GetProperty("items").EnumerateArray())
+        foreach (JsonElement item in items)
         {
             if (item.GetProperty("properties").TryGetProperty("googlePlaceId", out JsonElement id)
                 && id.ValueKind == JsonValueKind.String)
@@ -354,13 +394,8 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
     /// </summary>
     public async Task<List<PublishedPlace>> GetPublishedPlacesAsync(string contentType = "place")
     {
-        HttpResponseMessage response = await http.GetAsync(
-            $"{config.BaseUrl}/umbraco/delivery/api/v2/content?filter=contentType%3A{contentType}&take=1000");
-        response.EnsureSuccessStatusCode();
-
         var places = new List<PublishedPlace>();
-        using JsonDocument doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        foreach (JsonElement item in doc.RootElement.GetProperty("items").EnumerateArray())
+        foreach (JsonElement item in await GetDeliveryItemsAsync($"contentType%3A{contentType}"))
         {
             JsonElement props = item.GetProperty("properties");
             double Coord(string alias) =>
