@@ -193,7 +193,13 @@ many places — listings, company branches, malls, attractions, cinemas showing 
 are clustered by `@googlemaps/markerclusterer` into a branded bubble carrying the count, and
 with `locate` the visitor can share their position to pin it and get the same places ranked
 by distance in a side panel. That panel is deliberately *not* `/api/nearby`: it ranks the
-listing's own filtered results, not everything around the visitor.
+listing's own filtered results, not everything around the visitor. Clustering and the hover
+framing live in `components/mapPins.ts` (`useMarkerElements` + `useClusteredPins`), shared
+with `PlaceMap`'s neighbourhood pins: hovering a row in either list frames the pin it points
+at — the cluster hiding it is opened, and a pin drawn on its own but outside the viewport is
+flown to (`animateCamera` tweens the camera by hand, since the Maps API only animates
+`panTo` over short moves) — and the camera eases back to the visitor's own framing once the
+pointer leaves the list. `PlaceMap`'s subject pin is never clustered.
 
 The "¿Qué está cerca?" map panel calls `GET /api/nearby` (`CityGuideWeb/CityGuide/NearbyController.cs`, haversine scan over the published-content cache). The frontend proxies it via a Next.js rewrite so the browser call is same-origin.
 

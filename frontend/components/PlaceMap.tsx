@@ -13,6 +13,7 @@ import FilterDropdown from "./FilterDropdown";
 import LoadingOverlay from "./LoadingOverlay";
 import LogoPin from "./LogoPin";
 import MapPopupCard from "./MapPopupCard";
+import { useClusteredPins, useMarkerElements } from "./mapPins";
 import { RatingBadge } from "./Rating";
 import { mapPinIcon, sectionIconByName, sectionMapIcon } from "@/lib/sections";
 
@@ -198,22 +199,11 @@ export default function PlaceMap({
                 />
               )}
             </AdvancedMarker>
-            {shown.map((place) => (
-              <AdvancedMarker
-                key={place.id}
-                position={{ lat: place.latitude, lng: place.longitude }}
-                title={place.name}
-                // Over its neighbours, but under the place the page is about.
-                zIndex={highlighted === place.id ? 900 : undefined}
-                onClick={() => setSelected(place)}
-              >
-                <LogoPin
-                  logo={mapPinIcon(place.url, place.icon)}
-                  name={place.name}
-                  highlighted={highlighted === place.id}
-                />
-              </AdvancedMarker>
-            ))}
+            <NearbyPins
+              places={shown}
+              highlighted={highlighted}
+              onSelect={setSelected}
+            />
             {selected && shown.some((place) => place.id === selected.id) && (
               <InfoWindow
                 position={{ lat: selected.latitude, lng: selected.longitude }}
@@ -241,5 +231,48 @@ export default function PlaceMap({
         </APIProvider>
       </div>
     </div>
+  );
+}
+
+/**
+ * The neighbourhood pins: clustered, so a dense sector reads as one bubble
+ * carrying its count instead of a pile of overlapping plates, and framed on
+ * the row the "¿Qué está cerca?" list is pointing at. Its own component
+ * because the clustering hooks need the `<Map>` above them.
+ */
+function NearbyPins({
+  places,
+  highlighted,
+  onSelect,
+}: {
+  places: NearbyPlace[];
+  /** Id of the place the nearby list is pointing at, if any. */
+  highlighted: string | null;
+  onSelect: (place: NearbyPlace) => void;
+}) {
+  const { elements, refFor } = useMarkerElements();
+
+  useClusteredPins(elements, highlighted);
+
+  return (
+    <>
+      {places.map((place) => (
+        <AdvancedMarker
+          key={place.id}
+          ref={refFor(place.id)}
+          position={{ lat: place.latitude, lng: place.longitude }}
+          title={place.name}
+          // Over its neighbours, but under the place the page is about.
+          zIndex={highlighted === place.id ? 900 : undefined}
+          onClick={() => onSelect(place)}
+        >
+          <LogoPin
+            logo={mapPinIcon(place.url, place.icon)}
+            name={place.name}
+            highlighted={highlighted === place.id}
+          />
+        </AdvancedMarker>
+      ))}
+    </>
   );
 }
