@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   APIProvider,
@@ -11,7 +11,11 @@ import {
   useMap,
   useMapsLibrary,
 } from "@vis.gl/react-google-maps";
-import { MarkerClusterer, type Renderer } from "@googlemaps/markerclusterer";
+import {
+  MarkerClusterer,
+  type Cluster,
+  type Renderer,
+} from "@googlemaps/markerclusterer";
 import LogoPin from "./LogoPin";
 import MapPopupCard from "./MapPopupCard";
 import { RatingBadge } from "./Rating";
@@ -102,6 +106,64 @@ function useClusterer(
     clusterer.clearMarkers();
     clusterer.addMarkers(Object.values(markerElements));
   }, [clusterer, markerElements]);
+
+  return clusterer;
+}
+
+/**
+ * Bounds of the bubble a pin is hidden inside, or null when the pin is drawn
+ * on its own. The clusterer keeps its groups to itself (`clusters` is
+ * protected), so they are read back off the instance; a clustered pin is the
+ * one the clusterer took off the map.
+ */
+function clusterBoundsHiding(
+  clusterer: MarkerClusterer,
+  element: google.maps.marker.AdvancedMarkerElement,
+): google.maps.LatLngBounds | null {
+  if (element.map) return null;
+  const { clusters } = clusterer as unknown as { clusters?: Cluster[] };
+  const cluster = clusters?.find((group) => group.markers?.includes(element));
+  return cluster?.bounds ?? null;
+}
+
+/**
+ * Opens the cluster swallowing the pin the nearby panel points at — the same
+ * zoom clicking the bubble performs — and puts the camera back where the
+ * visitor had it once the pointer leaves the list. Hovering another row while
+ * still in the list opens that row's bubble instead; the framing to return to
+ * stays the one from before the first bubble was opened.
+ */
+function useRevealHighlighted(
+  clusterer: MarkerClusterer | null,
+  elements: Record<string, google.maps.marker.AdvancedMarkerElement>,
+  highlighted: string | null,
+) {
+  const map = useMap();
+  const framing = useRef<{
+    center: google.maps.LatLngLiteral;
+    zoom: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!map || !clusterer) return;
+
+    const element = highlighted ? elements[highlighted] : undefined;
+    const bounds = element ? clusterBoundsHiding(clusterer, element) : null;
+    if (bounds) {
+      const center = map.getCenter()?.toJSON();
+      const zoom = map.getZoom();
+      if (!framing.current && center && zoom !== undefined) {
+        framing.current = { center, zoom };
+      }
+      map.fitBounds(bounds, 64);
+      return;
+    }
+
+    if (!highlighted && framing.current) {
+      map.moveCamera(framing.current);
+      framing.current = null;
+    }
+  }, [map, clusterer, elements, highlighted]);
 }
 
 /**
@@ -155,6 +217,8 @@ export default function MarkersMap({
   const [position, setPosition] = useState<google.maps.LatLngLiteral | null>(null);
   const [locating, setLocating] = useState(false);
   const [locateError, setLocateError] = useState<string | null>(null);
+  // Row the pointer is on in the nearby panel: its pin is highlighted on the map.
+  const [highlighted, setHighlighted] = useState<string | null>(null);
 
   const askForLocation = () => {
     if (!navigator.geolocation) {
@@ -212,6 +276,18 @@ export default function MarkersMap({
                 <Link
                   href={marker.url}
                   className="block p-3 text-sm hover:bg-neutral-50"
+                  onMouseEnter={() => setHighlighted(marker.id)}
+                  onMouseLeave={() =>
+                    setHighlighted((current) =>
+                      current === marker.id ? null : current,
+                    )
+                  }
+                  onFocus={() => setHighlighted(marker.id)}
+                  onBlur={() =>
+                    setHighlighted((current) =>
+                      current === marker.id ? null : current,
+                    )
+                  }
                 >
                   <span className="font-medium">{marker.name}</span>
                   <RatingBadge
@@ -244,7 +320,7 @@ export default function MarkersMap({
             gestureHandling="cooperative"
           >
             <FitViewport markers={markers} position={position} />
-            <ClusteredMarkers markers={markers} />
+            <ClusteredMarkers markers={markers} highlighted={highlighted} />
             {position && (
               <AdvancedMarker position={position} title="Tu ubicación" zIndex={2000}>
                 <Pin background="#2563eb" borderColor="#1d4ed8" glyphColor="#fff" />
@@ -293,13 +369,21 @@ export default function MarkersMap({
 }
 
 /** The pins themselves, handed to the clusterer as they mount. */
-function ClusteredMarkers({ markers }: { markers: MapMarker[] }) {
+function ClusteredMarkers({
+  markers,
+  highlighted = null,
+}: {
+  markers: MapMarker[];
+  /** Id of the marker the nearby panel is pointing at, if any. */
+  highlighted?: string | null;
+}) {
   const [selected, setSelected] = useState<MapMarker | null>(null);
   const [elements, setElements] = useState<
     Record<string, google.maps.marker.AdvancedMarkerElement>
   >({});
 
-  useClusterer(elements);
+  const clusterer = useClusterer(elements);
+  useRevealHighlighted(clusterer, elements, highlighted);
 
   // One ref callback per pin, cached so it keeps its identity across renders:
   // a fresh callback would be detached and reattached on every render, and
@@ -328,11 +412,14 @@ function ClusteredMarkers({ markers }: { markers: MapMarker[] }) {
           ref={refFor(marker.id)}
           position={{ lat: marker.latitude, lng: marker.longitude }}
           title={marker.name}
+          // Over its neighbours, but under the clusters and the visitor's pin.
+          zIndex={highlighted === marker.id ? 900 : undefined}
           onClick={() => setSelected(marker)}
         >
           <LogoPin
             logo={mapPinIcon(marker.url, marker.logo)}
             name={marker.name}
+            highlighted={highlighted === marker.id}
           />
         </AdvancedMarker>
       ))}

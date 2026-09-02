@@ -56,6 +56,8 @@ export default function PlaceMap({
 }: PlaceMapProps) {
   const [nearby, setNearby] = useState<NearbyPlace[]>([]);
   const [selected, setSelected] = useState<NearbyPlace | null>(null);
+  // Row the pointer is on in the nearby list: its pin is highlighted on the map.
+  const [highlighted, setHighlighted] = useState<string | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
   // Key of the request whose result is on screen: while it differs from the
   // current one, the panel is still loading and stays covered.
@@ -143,6 +145,18 @@ export default function PlaceMap({
                 <Link
                   href={place.url}
                   className="block p-3 text-sm hover:bg-neutral-50"
+                  onMouseEnter={() => setHighlighted(place.id)}
+                  onMouseLeave={() =>
+                    setHighlighted((current) =>
+                      current === place.id ? null : current,
+                    )
+                  }
+                  onFocus={() => setHighlighted(place.id)}
+                  onBlur={() =>
+                    setHighlighted((current) =>
+                      current === place.id ? null : current,
+                    )
+                  }
                 >
                   <span className="font-medium">{place.name}</span>
                   <RatingBadge
@@ -189,11 +203,14 @@ export default function PlaceMap({
                 key={place.id}
                 position={{ lat: place.latitude, lng: place.longitude }}
                 title={place.name}
+                // Over its neighbours, but under the place the page is about.
+                zIndex={highlighted === place.id ? 900 : undefined}
                 onClick={() => setSelected(place)}
               >
                 <LogoPin
                   logo={mapPinIcon(place.url, place.icon)}
                   name={place.name}
+                  highlighted={highlighted === place.id}
                 />
               </AdvancedMarker>
             ))}
