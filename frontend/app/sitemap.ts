@@ -60,5 +60,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     },
     ...cities.map(entry),
     ...perCity.flat().map(entry),
+    // Página de código, no contenido del CMS: se enumera aparte.
+    ...cities.map((city) => ({
+      url: `${SITE_URL}${cleanPath(city.route.path)}/contacto`,
+      changeFrequency: "yearly" as const,
+      priority: 0.3,
+    })),
   ];
 }

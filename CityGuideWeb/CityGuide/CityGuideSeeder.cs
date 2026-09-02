@@ -137,9 +137,13 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
 
         await EnsureSeoSchemaAsync();
 
+        await EnsureContactSchemaAsync();
+
         await EnsureAgentApiUserAsync();
 
         bool citiesSeeded = EnsureCitiesSeeded();
+
+        EnsureContactInboxSeeded();
 
         bool agentConfigSeeded = EnsureAgentConfigSeeded();
 
@@ -2639,6 +2643,90 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
 
         return changed;
     }
+
+    /// <summary>
+    /// Idempotent, runs every startup: creates the "contactInbox" / "contactMessage"
+    /// document types the public contact form writes into, and allows the inbox under
+    /// "site". Messages carry personal data, so they are never published: the Delivery
+    /// API only serves published content, which keeps the inbox out of the portal while
+    /// editors read it in the backoffice.
+    /// </summary>
+    private async Task EnsureContactSchemaAsync()
+    {
+        if (_contentTypeService.Get("contactMessage") is null)
+        {
+            _logger.LogInformation("CityGuide: creating 'contactMessage' document type");
+            IDataType textstring = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.TextstringGuid))!;
+            IDataType textarea = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.TextareaGuid))!;
+            IDataType dateTime = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.DatePickerWithTimeGuid))!;
+            IDataType checkbox = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.CheckboxGuid))!;
+
+            IContentType message = NewContentType("contactMessage", "Contact Message", "icon-message");
+            AddProperty(message, "requestType", "Tipo de solicitud", textstring, 1);
+            AddProperty(message, "senderName", "Nombre", textstring, 2);
+            AddProperty(message, "email", "Correo", textstring, 3);
+            AddProperty(message, "phone", "Teléfono", textstring, 4);
+            AddProperty(message, "businessName", "Negocio", textstring, 5);
+            AddProperty(message, "businessUrl", "Enlace del negocio", textstring, 6);
+            AddProperty(message, "message", "Mensaje", textarea, 7);
+            AddProperty(message, "submittedAt", "Recibido", dateTime, 8);
+            AddProperty(message, "handled", "Atendido", checkbox, 9);
+            await CreateAsync(message);
+        }
+
+        IContentType messageType = _contentTypeService.Get("contactMessage")!;
+
+        if (_contentTypeService.Get("contactInbox") is null)
+        {
+            _logger.LogInformation("CityGuide: creating 'contactInbox' document type");
+            IContentType inbox = NewContentType("contactInbox", "Contact Inbox", "icon-inbox");
+            inbox.AllowedContentTypes = [new ContentTypeSort(messageType.Key, 0, messageType.Alias)];
+            await CreateAsync(inbox);
+        }
+
+        IContentType inboxType = _contentTypeService.Get("contactInbox")!;
+        IContentType? site = _contentTypeService.Get("site");
+        if (site is null || site.AllowedContentTypes!.Any(c => c.Key == inboxType.Key))
+        {
+            return;
+        }
+
+        _logger.LogInformation("CityGuide: allowing 'contactInbox' under 'site'");
+        int nextSort = site.AllowedContentTypes!.Count();
+        site.AllowedContentTypes =
+            [.. site.AllowedContentTypes!, new ContentTypeSort(inboxType.Key, nextSort, inboxType.Alias)];
+        Attempt<ContentTypeOperationStatus> attempt =
+            await _contentTypeService.UpdateAsync(site, Constants.Security.SuperUserKey);
+        if (!attempt.Success)
+        {
+            throw new InvalidOperationException(
+                $"Failed to allow 'contactInbox' under 'site': {attempt.Result}");
+        }
+    }
+
+    /// <summary>
+    /// Idempotent, runs every startup: creates the single "Mensajes de Contacto" node the
+    /// contact form writes into. Saved, never published — see <see cref="EnsureContactSchemaAsync"/>.
+    /// </summary>
+    private void EnsureContactInboxSeeded()
+    {
+        IContent? site = _contentService.GetRootContent().FirstOrDefault(c => c.ContentType.Alias == "site");
+        if (site is null
+            || _contentTypeService.Get("contactInbox") is null
+            || _contentService
+                .GetPagedChildren(site.Id, 0, 100, out _, null, null, null, false)
+                .Any(c => c.ContentType.Alias == "contactInbox"))
+        {
+            return;
+        }
+
+        _logger.LogInformation("CityGuide: seeding the contact inbox");
+        IContent inbox = _contentService.Create(ContactInboxName, site.Id, "contactInbox");
+        _contentService.Save(inbox);
+    }
+
+    /// <summary>Name of the node <see cref="ContactController"/> files messages under.</summary>
+    public const string ContactInboxName = "Mensajes de Contacto";
 
     private IContent? Descendant(IContent parent, string contentTypeAlias, string name) =>
         _contentService

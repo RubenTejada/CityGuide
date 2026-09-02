@@ -104,6 +104,12 @@ export default async function CityLayout({
                   {section.name}
                 </PendingLink>
               ))}
+              <PendingLink
+                href={`/${citySlug}/contacto`}
+                className="hover:text-white"
+              >
+                Contacto
+              </PendingLink>
             </div>
             <p className="mt-8 text-xs text-neutral-600">
               © {new Date().getFullYear()} QueHacerRD.com — Todos los derechos
