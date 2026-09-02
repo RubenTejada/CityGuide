@@ -43,20 +43,24 @@ public class AzureOpenAiClient(HttpClient http, AzureOpenAiConfig config) : IEnr
     {
         JsonElement? arguments = await CallToolAsync(
             EventCategories.ToolName, EventCategories.ToolDescription, EventCategories.Schema,
-            EventCategories.UserMessage(events), "cartelera");
+            EventCategories.UserMessage(events), "cartelera", temperature: 0);
         return arguments is null ? [] : EventCategories.Parse(arguments.Value, events.Count);
     }
 
     /// <summary>
     /// One forced function call, returning its arguments — null when Azure's
     /// content filter refused the request, which callers answer with an empty
-    /// result instead of losing the whole item.
+    /// result instead of losing the whole item. <paramref name="temperature"/> is 1
+    /// for the descriptions (they read better with some variety) and 0 where the
+    /// answer is a label, so two runs over the same events agree.
     /// </summary>
     private async Task<JsonElement?> CallToolAsync(
-        string toolName, string toolDescription, object schema, string userMessage, string subject)
+        string toolName, string toolDescription, object schema, string userMessage, string subject,
+        double temperature = 1)
     {
         var payload = new
         {
+            temperature,
             // Room for the batched event classification; a description never nears it.
             max_tokens = 2048,
             tools = new object[]

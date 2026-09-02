@@ -21,17 +21,20 @@ public class ClaudeClient(HttpClient http, string apiKey, string model) : IEnric
     {
         JsonElement arguments = await CallToolAsync(
             EventCategories.ToolName, EventCategories.ToolDescription, EventCategories.Schema,
-            EventCategories.UserMessage(events));
+            EventCategories.UserMessage(events), temperature: 0);
         return EventCategories.Parse(arguments, events.Count);
     }
 
-    /// <summary>One forced tool call, returning its input.</summary>
+    /// <summary>One forced tool call, returning its input. <paramref name="temperature"/>
+    /// is 0 where the answer is a label, so two runs agree, and 1 for the descriptions.</summary>
     private async Task<JsonElement> CallToolAsync(
-        string toolName, string toolDescription, object schema, string userMessage)
+        string toolName, string toolDescription, object schema, string userMessage,
+        double temperature = 1)
     {
         var payload = new
         {
             model,
+            temperature,
             // Room for the batched event classification; a description never nears it.
             max_tokens = 2048,
             tools = new object[]
