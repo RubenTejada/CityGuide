@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { useEffect, useRef } from "react";
 import { PendingLink } from "@/components/LoadingOverlay";
 
 export type SectionTab = { id: string; href: string; label: string };
@@ -24,9 +25,30 @@ export default function SectionTabs({
   const inSection = (href: string) =>
     pathname === trim(href) || pathname.startsWith(`${trim(href)}/`);
 
+  // La fila deslizable del móvil deja fuera de pantalla la pestaña encendida
+  // («Artículos» está al final): se centra sola, así la barra sigue diciendo
+  // dónde estás. Se mueve solo la barra, nunca la página.
+  const bar = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const row = bar.current;
+    const tab = row?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (!row || !tab) return;
+    const offset =
+      tab.getBoundingClientRect().left -
+      row.getBoundingClientRect().left -
+      (row.clientWidth - tab.offsetWidth) / 2;
+    row.scrollLeft += offset;
+  }, [pathname]);
+
   return (
     <nav className="border-t border-neutral-800">
-      <div className="mx-auto flex max-w-6xl flex-wrap gap-1 px-6">
+      {/* En el móvil las secciones no caben en una línea y envueltas ocupaban
+          media pantalla: una sola fila deslizable, y a partir de `sm` la
+          barra de siempre. */}
+      <div
+        ref={bar}
+        className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-6 [scrollbar-width:none] sm:flex-wrap sm:overflow-x-visible [&::-webkit-scrollbar]:hidden"
+      >
         <Tab href={home} active={pathname === trim(home)}>
           Inicio
         </Tab>
@@ -62,7 +84,7 @@ function Tab({
     <PendingLink
       href={href}
       aria-current={active ? "page" : undefined}
-      className={`-mt-px rounded-t-md border-t-2 px-3 py-3 text-sm font-medium tracking-wide uppercase transition-colors ${
+      className={`-mt-px shrink-0 rounded-t-md border-t-2 px-3 py-3 text-sm font-medium tracking-wide uppercase transition-colors ${
         active
           ? "border-sun-300 bg-neutral-800 text-white"
           : "border-transparent text-neutral-300 hover:bg-neutral-800/60 hover:text-white"

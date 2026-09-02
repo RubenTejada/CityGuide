@@ -52,24 +52,26 @@ export default async function CityLayout({
           {/* Esquina de la cabecera: no cabe en la fila del logo sin empujar
               el emblema de ciudad a otra línea. */}
           <ThemeToggle className="absolute top-3 right-3" />
-          <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-8 gap-y-4 px-6 pt-9 pb-6">
-            <Link href={`/${citySlug}`} aria-label="QueHacerRD.com" className="mt-3">
+          {/* En el móvil la cabecera es una columna centrada — logo, emblema y
+              buscador a todo el ancho — y a partir de `sm` la fila de siempre. */}
+          <div className="mx-auto flex max-w-6xl flex-col items-center gap-5 px-6 pt-9 pb-6 sm:flex-row sm:flex-wrap sm:gap-x-8 sm:gap-y-4">
+            <Link href={`/${citySlug}`} aria-label="QueHacerRD.com" className="sm:mt-3">
               <SiteLogo className="text-[28px] sm:text-[44px]" tagline glyph={false} />
             </Link>
             {!comingSoon && (
-              <SearchAutocomplete citySlug={citySlug} className="mt-3" />
+              <SearchAutocomplete citySlug={citySlug} className="sm:mt-3" />
             )}
             {/* El emblema de la ciudad es el selector: dice dónde estás y
                 lleva al portal para cambiar de ciudad. */}
             <Link
               href="/"
-              className="ml-auto flex shrink-0 flex-col items-center rounded-2xl px-2 py-1 transition-colors hover:bg-neutral-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sun-300 sm:ml-0"
+              className="flex shrink-0 flex-col items-center rounded-2xl px-2 py-1 transition-colors hover:bg-neutral-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sun-300"
               title="Cambiar ciudad"
             >
               <CityEmblem
                 slug={citySlug}
                 ring={false}
-                className="h-24 w-auto sm:h-32"
+                className="h-20 w-auto sm:h-32"
               />
               <span className="mt-2 text-xs font-light tracking-[0.28em] text-white uppercase">
                 {city.name}

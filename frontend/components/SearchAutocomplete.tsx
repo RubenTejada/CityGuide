@@ -81,7 +81,7 @@ export default function SearchAutocomplete({
   return (
     <form
       action={`/${citySlug}/buscar`}
-      className={`order-last relative flex w-full min-w-0 flex-1 sm:order-none sm:w-auto ${
+      className={`order-last relative flex w-full min-w-0 sm:order-none sm:w-auto sm:flex-1 ${
         className ?? ""
       }`}
       role="search"
