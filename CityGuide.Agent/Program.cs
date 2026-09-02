@@ -48,6 +48,25 @@ if (sections.Count > 0)
 // forces that sweep when the agent is configured to draft instead.
 bool publishSections = config.Umbraco.PublishImmediately || args.Contains("--publish");
 
+// Everything the agent talks to is free except two: Google Places, billed per request
+// on the priciest SKU because its answers carry a rating, and the enrichment model,
+// billed per token. Neither is used unless the run asks for it with --paid. What is
+// left needs no permission to spend: the cinema catalogue (Caribbean, TMDb, OMDb and
+// the trailer search), the event portals, the plaza links and the publishing sweep.
+// Both are turned off by emptying their credentials, which is a state the agent
+// already knows how to run in — discovery skips itself, the backfill does not start,
+// and every Google lookup answers "nothing found" without leaving the process.
+bool paid = args.Contains("--paid");
+if (!paid)
+{
+    config.Google.ApiKey = "";
+    config.AzureOpenAI.Endpoint = "";
+    config.Anthropic.ApiKey = "";
+    Console.WriteLine(
+        "Modo gratuito: sin Google ni modelo de enriquecimiento. Corren los cines, los "
+        + "eventos, el enlace de plazas y la publicación. --paid hace el pase completo.");
+}
+
 // Every external request goes through the throttler: minimum interval + jitter
 // per host, so no portal or API ever sees a burst. Slow but never blocked.
 using var http = new HttpClient(new ThrottlingHandler(
@@ -77,7 +96,9 @@ Console.WriteLine($"Enrichment model: {enricher switch
 bool discoveryEnabled = !string.IsNullOrEmpty(config.Google.ApiKey) && enricher is not null;
 if (!discoveryEnabled && config.Runs.Count > 0)
 {
-    Console.WriteLine("Google key or enrichment model not configured — skipping discovery runs.");
+    Console.WriteLine(paid
+        ? "Google key or enrichment model not configured — skipping discovery runs."
+        : "Descubrimiento de lugares omitido (modo gratuito).");
 }
 
 // The first Google photo of a place, downloaded and stored in the Media library. Shared
@@ -150,6 +171,16 @@ if (args.Contains("--purge-event-source"))
 // changes nothing without --apply.
 if (args.Contains("--recategorize-events"))
 {
+    // The category comes from the model and from nothing else, so this pass has no
+    // free half to run: say so instead of reporting a pass that classified nothing.
+    if (enricher is null)
+    {
+        Console.Error.WriteLine(
+            "--recategorize-events necesita el modelo de enriquecimiento, que se factura "
+            + "por token. Añade --paid para ejecutarlo.");
+        return 1;
+    }
+
     await new EventSync(http, umbraco, config.Events, google, enricher)
         .RecategorizeAsync(args.Contains("--apply"));
     return 0;
@@ -693,8 +724,17 @@ if (args.Contains("--purge-duplicate-places"))
     return 0;
 }
 
-Dictionary<string, Guid> knownPlaceIds = await umbraco.GetKnownGooglePlaceIdsAsync();
-Console.WriteLine($"Known places in CMS: {knownPlaceIds.Count}");
+// Only the discovery runs dedupe against it, and reading it costs several pages of
+// the catalogue — plus it stops the run outright when the CMS cannot answer, which is
+// right for a pass that would otherwise duplicate everything and pointless for one
+// that creates nothing.
+Dictionary<string, Guid> knownPlaceIds = discoveryEnabled
+    ? await umbraco.GetKnownGooglePlaceIdsAsync()
+    : [];
+if (discoveryEnabled)
+{
+    Console.WriteLine($"Known places in CMS: {knownPlaceIds.Count}");
+}
 
 var created = 0;
 

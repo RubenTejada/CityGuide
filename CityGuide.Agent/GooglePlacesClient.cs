@@ -31,6 +31,13 @@ public record GeoArea(double SouthLat, double WestLng, double NorthLat, double E
 /// <summary>Google Places API (New) — Text Search.</summary>
 public class GooglePlacesClient(HttpClient http, string apiKey)
 {
+    /// <summary>False when no key is configured, or when the run left it out because it
+    /// was told to spend nothing. Every lookup then answers "nothing found" without
+    /// leaving the process: an unkeyed request would only earn a 403 per call, and the
+    /// callers already treat an empty answer as "Google could not tell me", which is
+    /// exactly what it is.</summary>
+    public bool Enabled { get; } = !string.IsNullOrWhiteSpace(apiKey);
+
     /// <summary>
     /// Text Search, paged. Google returns at most 20 results per page and up to
     /// three pages, so <paramref name="max"/> above 20 keeps paging until Google
@@ -40,6 +47,11 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
     /// </summary>
     public async Task<List<DiscoveredPlace>> SearchAsync(string query, int max, GeoArea? area = null)
     {
+        if (!Enabled)
+        {
+            return [];
+        }
+
         var collected = new List<PlaceModel>();
         string? pageToken = null;
         do
@@ -106,6 +118,11 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
     /// </summary>
     public async Task<(byte[] Bytes, string ContentType)?> DownloadPhotoAsync(string photoName, int maxWidthPx = 1200)
     {
+        if (!Enabled)
+        {
+            return null;
+        }
+
         var request = new HttpRequestMessage(
             HttpMethod.Get, $"https://places.googleapis.com/v1/{photoName}/media?maxWidthPx={maxWidthPx}");
         request.Headers.Add("X-Goog-Api-Key", apiKey);
@@ -139,6 +156,11 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
     /// <summary>Current rating of a known place — Place Details by id. Null when the place is gone.</summary>
     public async Task<RatingLookup?> GetRatingByIdAsync(string placeId)
     {
+        if (!Enabled)
+        {
+            return null;
+        }
+
         var request = new HttpRequestMessage(
             HttpMethod.Get, $"https://places.googleapis.com/v1/places/{placeId}");
         request.Headers.Add("X-Goog-Api-Key", apiKey);
@@ -173,6 +195,11 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
     public async Task<RatingLookup?> FindRatingNearAsync(
         string name, string? address, double latitude, double longitude)
     {
+        if (!Enabled)
+        {
+            return null;
+        }
+
         string query = $"{name} {address}".Trim();
         var request = new HttpRequestMessage(HttpMethod.Post, "https://places.googleapis.com/v1/places:searchText")
         {
@@ -226,6 +253,11 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
     /// </summary>
     public async Task<RatingLookup?> FindRatingInAreaAsync(string name, string? address, GeoArea? area)
     {
+        if (!Enabled)
+        {
+            return null;
+        }
+
         List<DiscoveredPlace> matches = await SearchAsync($"{name} {address}".Trim(), 5, area);
         DiscoveredPlace? best = matches.FirstOrDefault(p => TextMatch.Matches(name, p.Name));
         return best is null

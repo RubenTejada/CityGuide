@@ -26,6 +26,12 @@ cd frontend && npm run lint
 # Enrichment model: Azure OpenAI gpt-4.1-mini, keyless via "az login" — requires the
 # "Cognitive Services OpenAI User" role on cityguide-openai; Anthropic:ApiKey is the fallback provider)
 cd CityGuide.Agent && dotnet run
+# Everything the agent talks to is free except two — Google Places (billed per request,
+# and the backfill makes one per node) and the enrichment model (billed per token) — so a
+# run without --paid leaves both alone: the cinema catalogue, the event portals, the plaza
+# links and the publishing sweep all run, discovery and the backfill do not. --paid is the
+# full pass, and the "paid" input of the "Run agent" workflow is the same switch in Azure.
+cd CityGuide.Agent && dotnet run -- --paid
 # One section only (shorter runs): matches any segment of a Run's ParentPath,
 # plus "cines"/"eventos" for those syncs. Comma-separated for several.
 cd CityGuide.Agent && dotnet run -- --section restaurantes
@@ -205,6 +211,13 @@ already has (the search answer already carries rating and photo, so it costs not
 in the backfill pass, through the one writer that owns it,
 `UmbracoClient.CompletePlaceAsync` — it reads the node, fills only the blanks (refreshing
 a rating that moved), downloads a photo only when there is none, and writes once. The
+backfill does not ask about every node on every pass: a rating moves by hundredths in a
+day and each question is billed on the priciest Places SKU, so a node that already carries
+everything comes up on one day of a rotation `Google:RatingRefreshDays` long (14), decided
+by hashing its own id — the turns spread evenly and stay put without a "last checked" date
+stored anywhere. What is still missing something is outside the rotation and asked every
+pass, and `Google:MaxBackfillRequests` caps what one pass may spend, dropping refreshes
+before incomplete nodes. The
 backfill covers `place` and `mall` nodes alike (plazas carry the same Google properties)
 and does the incomplete ones first, so a pass cut short never leaves them queued behind
 the daily rating refresh of the nodes that already have everything; a node without

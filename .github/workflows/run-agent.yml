@@ -104,6 +104,15 @@ on:
           - plan
           - apply
         default: "no"
+      paid:
+        description: >-
+          Let the run use the two services that charge: Google Places (billed per
+          request, and the backfill makes one per node it refreshes) and the
+          enrichment model (billed per token). Left off, the run does only what
+          costs nothing — cines, eventos, enlace de plazas y publicación.
+        type: boolean
+        required: false
+        default: false
       publish:
         description: >-
           Kept for the runs configured to draft instead of publish. The agent
@@ -163,43 +172,46 @@ jobs:
           MOVE_APPLY: ${{ inputs.move_place_apply }}
           PURGE_DUPLICATES: ${{ inputs.purge_duplicate_places }}
           PUBLISH: ${{ inputs.publish }}
-        # The scheduled run has no inputs, so every one of these is empty and the
-        # agent runs every section, as before.
+          PAID: ${{ inputs.paid }}
         run: |
+          # Everything the agent uses is free except Google Places and the enrichment
+          # model. Without this flag it leaves both alone and the run cannot be billed.
+          paid_flag=""
+          if [ "$PAID" = "true" ]; then paid_flag="--paid"; fi
           if [ "$RECATEGORIZE" = "true" ]; then
-            dotnet run -c Release -- --recategorize-events --apply
+            dotnet run -c Release -- --recategorize-events --apply $paid_flag
           elif [ "$PURGE_FOREIGN" = "plan" ]; then
-            dotnet run -c Release -- --purge-foreign-events
+            dotnet run -c Release -- --purge-foreign-events $paid_flag
           elif [ "$PURGE_FOREIGN" = "apply" ]; then
-            dotnet run -c Release -- --purge-foreign-events --apply
+            dotnet run -c Release -- --purge-foreign-events --apply $paid_flag
           elif [ "$LINK" = "plan" ]; then
-            dotnet run -c Release -- --link-malls
+            dotnet run -c Release -- --link-malls $paid_flag
           elif [ "$LINK" = "apply" ]; then
-            dotnet run -c Release -- --link-malls --apply
+            dotnet run -c Release -- --link-malls --apply $paid_flag
           elif [ -n "$MERGE_FROM" ] && [ -n "$MERGE_INTO" ]; then
             if [ "$MERGE_APPLY" = "true" ]; then
-              dotnet run -c Release -- --merge-mall "$MERGE_FROM" "$MERGE_INTO" --apply
+              dotnet run -c Release -- --merge-mall "$MERGE_FROM" "$MERGE_INTO" --apply $paid_flag
             else
-              dotnet run -c Release -- --merge-mall "$MERGE_FROM" "$MERGE_INTO"
+              dotnet run -c Release -- --merge-mall "$MERGE_FROM" "$MERGE_INTO" $paid_flag
             fi
           elif [ -n "$MOVE_FROM" ] && [ -n "$MOVE_TO" ]; then
             if [ "$MOVE_APPLY" = "true" ]; then
-              dotnet run -c Release -- --move-place "$MOVE_FROM" "$MOVE_TO" --apply
+              dotnet run -c Release -- --move-place "$MOVE_FROM" "$MOVE_TO" --apply $paid_flag
             else
-              dotnet run -c Release -- --move-place "$MOVE_FROM" "$MOVE_TO"
+              dotnet run -c Release -- --move-place "$MOVE_FROM" "$MOVE_TO" $paid_flag
             fi
           elif [ "$PURGE_DUPLICATES" = "plan" ]; then
-            dotnet run -c Release -- --purge-duplicate-places
+            dotnet run -c Release -- --purge-duplicate-places $paid_flag
           elif [ "$PURGE_DUPLICATES" = "apply" ]; then
-            dotnet run -c Release -- --purge-duplicate-places --apply
+            dotnet run -c Release -- --purge-duplicate-places --apply $paid_flag
           elif [ "$REGROUP" = "plan" ]; then
-            dotnet run -c Release -- --regroup-malls
+            dotnet run -c Release -- --regroup-malls $paid_flag
           elif [ "$REGROUP" = "apply" ]; then
-            dotnet run -c Release -- --regroup-malls --apply
+            dotnet run -c Release -- --regroup-malls --apply $paid_flag
           elif [ -n "$SECTION" ] && [ "$PUBLISH" = "true" ]; then
-            dotnet run -c Release -- --section "$SECTION" --publish
+            dotnet run -c Release -- --section "$SECTION" --publish $paid_flag
           elif [ -n "$SECTION" ]; then
-            dotnet run -c Release -- --section "$SECTION"
+            dotnet run -c Release -- --section "$SECTION" $paid_flag
           else
-            dotnet run -c Release
+            dotnet run -c Release -- $paid_flag
           fi
