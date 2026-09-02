@@ -373,6 +373,54 @@ public partial class EventSync(
     }
 
     /// <summary>
+    /// Maintenance pass for a portal the sync no longer scrapes: sends the events
+    /// that came from it to the recycle bin. A retired source leaves its imports
+    /// behind — TicketExpress was dropped because its listing froze in 2020, and the
+    /// events it left state neither venue nor a real date — and nothing else removes
+    /// them, since they are not past and their venue cannot be located. Only
+    /// "agent:&lt;source&gt;" events match, so hand-made ones are never touched, and
+    /// nothing is written without <paramref name="apply"/>.
+    /// </summary>
+    public async Task PurgeSourceAsync(string source, bool apply)
+    {
+        Console.WriteLine(apply
+            ? $"\n== Eliminando los eventos importados de {source}"
+            : $"\n== Eventos importados de {source} (simulación; agrega --apply para aplicarla)");
+
+        (Guid Id, string Name)? eventos = await umbraco.GetContentByPathAsync($"{config.CityPath}/eventos");
+        if (eventos is null)
+        {
+            Console.Error.WriteLine("  Events page not found in CMS, skipping.");
+            return;
+        }
+
+        Guid eventTypeId = await umbraco.GetDocumentTypeIdAsync("Event");
+        var removed = 0;
+        foreach (UmbracoClient.ChildDocument child in await umbraco.GetChildrenAsync(eventos.Value.Id))
+        {
+            if (child.DocumentTypeId != eventTypeId
+                || await umbraco.GetDocumentTextValuesAsync(child.Id) is not { } detail
+                || !string.Equals(
+                    detail.TextValues.GetValueOrDefault("source"), $"agent:{source}",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            removed++;
+            Console.WriteLine($"  - {child.Name}");
+            if (apply)
+            {
+                await umbraco.RecycleDocumentAsync(child.Id);
+            }
+        }
+
+        Console.WriteLine(apply
+            ? $"  {removed} evento(s) a la papelera"
+            : $"  {removed} evento(s) irían a la papelera");
+    }
+
+    /// <summary>
     /// Maintenance pass over the events this agent already created: recategorizes
     /// them and reports what would change, writing only with <paramref name="apply"/>.
     /// Events created by hand (or seeded) keep the category their editor chose —

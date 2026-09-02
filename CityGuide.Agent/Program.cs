@@ -108,6 +108,24 @@ if (args.Contains("--scrape-events"))
     return 0;
 }
 
+// Maintenance pass: send to the recycle bin the events imported from a portal the
+// sync no longer scrapes ("--purge-event-source TicketExpress"). Plan until --apply.
+if (args.Contains("--purge-event-source"))
+{
+    string? source = args.SkipWhile(a => a != "--purge-event-source").Skip(1).FirstOrDefault();
+    if (string.IsNullOrWhiteSpace(source) || source.StartsWith("--", StringComparison.Ordinal))
+    {
+        Console.Error.WriteLine(
+            "--purge-event-source requiere el nombre de la fuente, tal como aparece en "
+            + "Events:Sources. Ejemplo: dotnet run -- --purge-event-source TicketExpress");
+        return 1;
+    }
+
+    await new EventSync(http, umbraco, config.Events, google, enricher)
+        .PurgeSourceAsync(source, args.Contains("--apply"));
+    return 0;
+}
+
 // Maintenance pass: recategorize the events the agent already created — the sync
 // left them without a category until it learned to ask for one, and a startup of
 // the CMS stamped every category-less event as "Gastronomía". Prints the plan and
