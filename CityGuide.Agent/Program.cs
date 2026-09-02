@@ -175,6 +175,54 @@ async Task<List<KnownMall>> MallsAsync(string citySlug)
     return malls;
 }
 
+// Maintenance: fold one plaza into another ("--merge-mall <origen> <destino>"), for the
+// pair the matcher cannot unify on its own — Google's name for a plaza the CMS already
+// has under another ("Acrópolis Business Mall" beside "Acrópolis Center"). Same rule as
+// every other pass here: nothing is written without --apply.
+if (args.Contains("--merge-mall"))
+{
+    string[] names = [.. args.SkipWhile(a => a != "--merge-mall").Skip(1).Take(2)];
+    if (names.Length < 2 || names.Any(n => n.StartsWith("--", StringComparison.Ordinal)))
+    {
+        Console.Error.WriteLine(
+            "--merge-mall necesita dos nombres: el que sobra y el que se queda. "
+            + "Ejemplo: dotnet run -- --merge-mall \"Acrópolis Business Mall\" \"Acrópolis Center\"");
+        return 1;
+    }
+
+    bool applyMerge = args.Contains("--apply");
+    foreach (string citySlug in config.Runs
+        .Select(r => r.ParentPath.Trim('/').Split('/').First())
+        .Distinct(StringComparer.OrdinalIgnoreCase))
+    {
+        List<KnownMall> cityMalls = await MallsAsync(citySlug);
+        KnownMall? Find(string name) => cityMalls
+            .FirstOrDefault(m => string.Equals(m.Name, name, StringComparison.OrdinalIgnoreCase));
+
+        if (Find(names[0]) is not { } from || Find(names[1]) is not { } into)
+        {
+            continue;
+        }
+
+        Console.WriteLine(applyMerge
+            ? $"Fundiendo '{from.Name}' en '{into.Name}'"
+            : $"Se fundiría '{from.Name}' en '{into.Name}' (simulación; agrega --apply)");
+        if (applyMerge)
+        {
+            int moved = await umbraco.MergeMallAsync(from.Id, into.Id);
+            Console.WriteLine(
+                $"  {moved} elemento(s) movido(s); '{from.Name}' a la papelera, "
+                + $"y '{into.Name}' se quedó con los datos que le faltaban.");
+        }
+
+        return 0;
+    }
+
+    Console.Error.WriteLine(
+        $"No encontré ambas plazas ('{names[0]}' y '{names[1]}') bajo la misma ciudad.");
+    return 1;
+}
+
 // Maintenance pass: file the establishments that sit inside a plaza comercial under
 // it, and report the ones that are a plaza already stored as a shop. Prints the plan
 // and changes nothing without --apply, because a move rewrites public URLs.

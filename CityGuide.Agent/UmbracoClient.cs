@@ -682,6 +682,55 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
     }
 
     /// <summary>
+    /// Folds one plaza into another: everything filed under <paramref name="sourceId"/>
+    /// moves to <paramref name="targetId"/>, the target picks up the agent-owned values
+    /// it lacks — above all the Google place id, without which the next pass would
+    /// discover the plaza again and recreate the duplicate — and the source goes to the
+    /// recycle bin. Google names a plaza its own way ("Acrópolis Business Mall" next to
+    /// the stored "Acrópolis Center"), and no name rule safely tells that pair apart from
+    /// two neighbouring plazas, so which two to fold is a call only an editor can make.
+    /// Returns how many children moved.
+    /// </summary>
+    public async Task<int> MergeMallAsync(Guid sourceId, Guid targetId)
+    {
+        (_, _, Dictionary<string, object?> source) = await ReadDocumentAsync(sourceId);
+        (string targetName, string targetState, Dictionary<string, object?> target) =
+            await ReadDocumentAsync(targetId);
+
+        // The target is the curated node: it keeps every value it already has, and only
+        // fills the blanks from the copy the agent made.
+        var filled = false;
+        foreach (string alias in new[]
+                 { "googlePlaceId", "googleRating", "googleRatingCount", "photo" })
+        {
+            bool targetHas = target.TryGetValue(alias, out object? current)
+                && current is JsonElement { ValueKind: not (JsonValueKind.Null or JsonValueKind.Undefined) };
+            if (targetHas || !source.TryGetValue(alias, out object? value))
+            {
+                continue;
+            }
+
+            target[alias] = value;
+            filled = true;
+        }
+
+        if (filled)
+        {
+            await WriteDocumentAsync(targetId, targetName, target, targetState);
+        }
+
+        var moved = 0;
+        foreach (ChildDocument child in await GetChildrenAsync(sourceId))
+        {
+            await MoveDocumentAsync(child.Id, targetId);
+            moved++;
+        }
+
+        await RecycleDocumentAsync(sourceId);
+        return moved;
+    }
+
+    /// <summary>
     /// Sends a document to the recycle bin. What the agent files away on its own is
     /// recoverable from the backoffice; a plain delete would not be.
     /// </summary>
