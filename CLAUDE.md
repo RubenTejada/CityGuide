@@ -39,6 +39,11 @@ cd CityGuide.Agent && dotnet run -- --section restaurantes --publish
 # Prints the plan and changes nothing without --apply.
 cd CityGuide.Agent && dotnet run -- --regroup-malls
 cd CityGuide.Agent && dotnet run -- --regroup-malls --apply
+# Fold a plaza into another one (Google names a plaza its own way, and the matcher
+# will not merge two plazas on a guess): the establishments move, the surviving
+# plaza takes the Google place id and rating it lacks, the other goes to the
+# recycle bin. Also a plan until --apply.
+cd CityGuide.Agent && dotnet run -- --merge-mall "Acrópolis Business Mall" "Acrópolis Center"
 
 # IMDb / Rotten Tomatoes scores on the movie catalog need two free keys, set as
 # user-secrets (leave either empty to run without it — the scores just stay blank):
@@ -79,7 +84,13 @@ with the other, within 400 m, ignoring any address appended to tell twins apart)
 lends it its `googlePlaceId`, which is what the next pass and the rating backfill dedupe
 by. `--regroup-malls` applies the same three rules to content already in the CMS and is
 how the shops section was cleaned up; without `--apply` it only prints the plan, and what
-it removes goes to the recycle bin and only when the agent created it. Branch places
+it removes goes to the recycle bin and only when the agent created it. `--merge-mall
+<sobra> <se queda>` folds the pair no rule can safely unify — Google's "Acrópolis Business
+Mall" beside the stored "Acrópolis Center" — moving the establishments, filling the
+survivor's blanks (the Google place id above all, or the next pass rediscovers the plaza
+and recreates the duplicate) and recycling the other. `.github/workflows/run-agent.yml`
+exposes all three passes as dispatch inputs, so they run against Azure without the CMS
+client secret leaving the workflow. Branch places
 store only their own data — no description, phone, website or hours — so they inherit the
 company's, and they cost no LLM tokens. A discovered branch is named "Chain — what tells it
 apart" (`BranchNaming`): Google calls most branches by the chain ("Banreservas" twenty-seven
