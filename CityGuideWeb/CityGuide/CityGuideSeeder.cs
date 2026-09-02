@@ -1927,8 +1927,28 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
             "Tres lagunas subterráneas de agua cristalina dentro de una caverna de piedra caliza en el Parque Mirador del Este. Se cruza en una balsa manual hasta un cuarto lago escondido a cielo abierto.",
             "Av. Las Américas, Parque Mirador del Este, Santo Domingo Este", "",
             "Lun - Dom 9:00AM - 5:00PM",
-            18.4647m, -69.8290m,
+            18.4810m, -69.8429m,
             ["Parqueo", "Apto para Niños"]),
+        new("Parque de Las Praderas",
+            "El parque del sector Las Praderas: áreas verdes con sombra, senderos para caminar y juegos infantiles, abierto las 24 horas y muy usado por el vecindario para hacer ejercicio temprano.",
+            "Calle Madre Carmen 4, Las Praderas, Santo Domingo DN", "829-648-5028",
+            "Abierto 24 horas",
+            18.4652m, -69.9642m,
+            ["Apto para Niños"]),
+    ];
+
+    /// <summary>
+    /// Coordinates seeded wrong, corrected in place on installations that already
+    /// carry them: the pin of Los Tres Ojos sat 2.3 km southwest of the caverns, and
+    /// that same distance kept the agent's photo backfill from accepting the Google
+    /// match (it drops a candidate farther than 2 km), so the attraction stayed
+    /// without a photo. Only a node still holding the exact stale pair is touched,
+    /// never a pin an editor moved.
+    /// </summary>
+    private static readonly (string Name, decimal StaleLatitude, decimal StaleLongitude,
+        decimal Latitude, decimal Longitude)[] AtraccionPinFixes =
+    [
+        ("Parque Nacional Los Tres Ojos", 18.4647m, -69.8290m, 18.4810m, -69.8429m),
     ];
 
     /// <summary>
@@ -1974,7 +1994,26 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         }
 
         PublishSeeded(created);
-        return created.Count > 0;
+        var repaired = false;
+        foreach ((string name, decimal staleLatitude, decimal staleLongitude,
+            decimal latitude, decimal longitude) in AtraccionPinFixes)
+        {
+            if (Descendant(atracciones, "place", name) is not IContent place
+                || place.GetValue<decimal?>("latitude") != staleLatitude
+                || place.GetValue<decimal?>("longitude") != staleLongitude)
+            {
+                continue;
+            }
+
+            _logger.LogInformation("CityGuide: correcting the coordinates of '{Name}'", name);
+            place.SetValue("latitude", latitude);
+            place.SetValue("longitude", longitude);
+            _contentService.Save(place);
+            _contentService.Publish(place, ["*"]);
+            repaired = true;
+        }
+
+        return created.Count > 0 || repaired;
     }
 
     // ---- Bares y Clubes ----
