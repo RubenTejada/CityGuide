@@ -42,18 +42,11 @@ if (sections.Count > 0)
     Console.WriteLine($"Secciones seleccionadas: {string.Join(", ", sections)}");
 }
 
-// --publish releases the drafts the agent left in the selected sections when the run
-// ends: everything unpublished below the parent path of each selected Run, this pass's
-// creations and the ones earlier passes left for review alike. Drafts in every other
-// section stay drafts, which is why it only works together with --section.
-bool publishSections = args.Contains("--publish");
-if (publishSections && sections.Count == 0)
-{
-    Console.Error.WriteLine(
-        "--publish requiere --section: sin ella publicaría el sitio entero. "
-        + "Ejemplo: dotnet run -- --section restaurantes --publish");
-    return 1;
-}
+// The agent publishes what it writes ("Umbraco:PublishImmediately"), and at the end of
+// the pass it also releases the drafts earlier passes left behind, under the sections it
+// covered (every Run's parent path, or only the selected ones with --section). --publish
+// forces that sweep when the agent is configured to draft instead.
+bool publishSections = config.Umbraco.PublishImmediately || args.Contains("--publish");
 
 // Every external request goes through the throttler: minimum interval + jitter
 // per host, so no portal or API ever sees a burst. Slow but never blocked.
@@ -85,6 +78,31 @@ bool discoveryEnabled = !string.IsNullOrEmpty(config.Google.ApiKey) && enricher 
 if (!discoveryEnabled && config.Runs.Count > 0)
 {
     Console.WriteLine("Google key or enrichment model not configured — skipping discovery runs.");
+}
+
+// The first Google photo of a place, downloaded and stored in the Media library. Shared
+// by the three callers that need one — creating a place, completing a place the CMS
+// already has, and the backfill — so a photo failure is reported the same way everywhere
+// and never blocks the write it was meant to illustrate.
+async Task<Guid?> UploadPhotoAsync(string name, string? photoName)
+{
+    if (photoName is null)
+    {
+        return null;
+    }
+
+    try
+    {
+        (byte[] Bytes, string ContentType)? image = await google.DownloadPhotoAsync(photoName);
+        return image is null
+            ? null
+            : await umbraco.CreateMediaImageAsync(name, image.Value.Bytes, image.Value.ContentType);
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"  ! foto de {name}: {ex.Message}");
+        return null;
+    }
 }
 
 // Per-city agent config from the CMS ("Agente" tab on the city node), cached per city slug.
@@ -643,9 +661,11 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelec
             knownPlaceIds[place.GooglePlaceId] = storedMall.Id;
             try
             {
-                await umbraco.UpdatePlaceRatingAsync(
-                    storedMall.Id, place.Rating ?? 0, place.UserRatingCount ?? 0, place.GooglePlaceId);
-                Console.WriteLine($"  = {place.Name} (ya existe como plaza, id de Google guardado)");
+                (bool ratingWritten, bool photoWritten) = await umbraco.CompletePlaceAsync(
+                    storedMall.Id, place.Rating, place.UserRatingCount, place.GooglePlaceId,
+                    () => UploadPhotoAsync(place.Name, place.PhotoName));
+                Console.WriteLine($"  = {place.Name} (ya existe como plaza, id de Google guardado"
+                    + (ratingWritten ? ", rating" : "") + (photoWritten ? ", foto" : "") + ")");
             }
             catch (Exception ex)
             {
@@ -658,22 +678,22 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelec
         if (knownPlaceIds.TryGetValue(place.GooglePlaceId, out Guid existingId))
         {
             runSkipped++;
-            if (place.Rating is double rating)
+
+            // A place the CMS already has is never skipped outright: the search answer in
+            // hand carries the rating and a photo, so whatever the stored node is missing
+            // is filled in here — a failed photo download on the pass that created it, or
+            // a node an editor typed in without either, is repaired for free.
+            try
             {
-                try
-                {
-                    bool updated = await umbraco.UpdatePlaceRatingAsync(
-                        existingId, rating, place.UserRatingCount ?? 0);
-                    Console.WriteLine($"  = {place.Name} ({(updated ? "rating refreshed" : "already in CMS, skipped")})");
-                }
-                catch (Exception ex)
-                {
-                    Console.Error.WriteLine($"  ! {place.Name} rating refresh failed: {ex.Message}");
-                }
+                (bool ratingWritten, bool photoWritten) = await umbraco.CompletePlaceAsync(
+                    existingId, place.Rating, place.UserRatingCount,
+                    photoFactory: () => UploadPhotoAsync(place.Name, place.PhotoName));
+                string filled = (ratingWritten ? " rating" : "") + (photoWritten ? " foto" : "");
+                Console.WriteLine($"  = {place.Name} ({(filled.Length == 0 ? "ya en el CMS" : "completado:" + filled)})");
             }
-            else
+            catch (Exception ex)
             {
-                Console.WriteLine($"  = {place.Name} (already in CMS, skipped)");
+                Console.Error.WriteLine($"  ! {place.Name}: {ex.Message}");
             }
 
             continue;
@@ -693,23 +713,7 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelec
 
             // Main image: first Google photo, uploaded to the Media library.
             // Photo failures never block creating the place.
-            Guid? photoKey = null;
-            if (place.PhotoName is not null)
-            {
-                try
-                {
-                    (byte[] Bytes, string ContentType)? image = await google.DownloadPhotoAsync(place.PhotoName);
-                    if (image is not null)
-                    {
-                        photoKey = await umbraco.CreateMediaImageAsync(
-                            place.Name, image.Value.Bytes, image.Value.ContentType);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Console.Error.WriteLine($"  ! foto de {place.Name}: {ex.Message}");
-                }
-            }
+            Guid? photoKey = await UploadPhotoAsync(place.Name, place.PhotoName);
 
             // The plaza this establishment sits inside, when its address says so and its
             // coordinates agree. It never becomes the parent: a place lives in the
@@ -829,11 +833,13 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelec
 }
 
 Console.WriteLine($"\nDone. Created {created} place(s)" +
-    (config.Umbraco.PublishImmediately ? "." : " as drafts — review and publish them in the backoffice."));
+    (config.Umbraco.PublishImmediately ? " (publicados)." : " as drafts — review and publish them in the backoffice."));
 
 if (publishSections)
 {
-    Console.WriteLine("\n== Publicando las secciones seleccionadas");
+    Console.WriteLine(sections.Count > 0
+        ? "\n== Publicando los borradores de las secciones seleccionadas"
+        : "\n== Publicando los borradores pendientes");
     var totalPublished = 0;
     foreach (string parentPath in config.Runs
         .Where(r => SectionSelected(r.ParentPath))
@@ -862,10 +868,13 @@ if (publishSections)
     Console.WriteLine($"  Total publicado: {totalPublished}");
 }
 
-// Rating and photo backfill. Places without a stored googlePlaceId (e.g. seeded
-// content) are matched by name and address near their coordinates, and the found
-// place id is stored for next runs. "mall" nodes (plazas comerciales) carry the
-// same coordinates and photo but no rating properties, so they get the photo only.
+// Rating and photo backfill: every published place and plaza is asked of Google what it
+// is missing — a rating, a main image, the place id itself. Nodes without a stored
+// googlePlaceId are matched by name and address near their coordinates, and the id found
+// is stored so the next pass is one request cheaper; a node without coordinates (seeded
+// or typed in by hand) is searched inside the city rectangle instead. The incomplete ones
+// go first: a pass cut short must not leave them queued behind the daily rating refresh
+// of the nodes that already have everything.
 if (!string.IsNullOrEmpty(config.Google.ApiKey))
 {
     Console.WriteLine("\n== Rating & photo backfill");
@@ -878,71 +887,57 @@ if (!string.IsNullOrEmpty(config.Google.ApiKey))
     string? CompanyOf(string path) => companyNodes
         .FirstOrDefault(c => path.StartsWith(c.Path, StringComparison.OrdinalIgnoreCase))?.Name;
 
+    var nodes = new List<UmbracoClient.PublishedPlace>();
     foreach (string contentType in new[] { "place", "mall" })
     {
-        foreach (UmbracoClient.PublishedPlace node in await umbraco.GetPublishedPlacesAsync(contentType))
+        nodes.AddRange((await umbraco.GetPublishedPlacesAsync(contentType))
+            .Where(n => SectionSelected(n.Path)));
+    }
+
+    // Stable within each half, so the order inside a section stays the tree's.
+    List<UmbracoClient.PublishedPlace> ordered =
+        [.. nodes.Where(n => n.Incomplete), .. nodes.Where(n => !n.Incomplete)];
+    Console.WriteLine($"  {ordered.Count} nodo(s), {nodes.Count(n => n.Incomplete)} incompleto(s) primero");
+
+    foreach (UmbracoClient.PublishedPlace node in ordered)
+    {
+        try
         {
-            if ((node.Latitude == 0 && node.Longitude == 0) || !SectionSelected(node.Path))
+            string searchName = CompanyOf(node.Path) is { } company
+                && !TextMatch.Matches(company, node.Name, 1.0)
+                ? $"{company} {node.Name}"
+                : node.Name;
+            GooglePlacesClient.RatingLookup? found = node.GooglePlaceId is not null
+                ? await google.GetRatingByIdAsync(node.GooglePlaceId)
+                : node.Latitude != 0 || node.Longitude != 0
+                    ? await google.FindRatingNearAsync(
+                        searchName, node.Address, node.Latitude, node.Longitude)
+                    : await google.FindRatingInAreaAsync(
+                        searchName, node.Address,
+                        (await CityConfigAsync(node.Path.Trim('/').Split('/').First()))?.Area);
+            if (found is null)
             {
+                Console.WriteLine($"  ? {node.Name}: sin match en Google, omitido");
                 continue;
             }
 
-            try
-            {
-                string searchName = CompanyOf(node.Path) is { } company
-                    && !TextMatch.Matches(company, node.Name, 1.0)
-                    ? $"{company} {node.Name}"
-                    : node.Name;
-                GooglePlacesClient.RatingLookup? found = node.GooglePlaceId is not null
-                    ? await google.GetRatingByIdAsync(node.GooglePlaceId)
-                    : await google.FindRatingNearAsync(
-                        searchName, node.Address, node.Latitude, node.Longitude);
-                if (found is null)
-                {
-                    Console.WriteLine($"  ? {node.Name}: sin match en Google, omitido");
-                    continue;
-                }
+            // Plazas carry the same Google properties as places, so both are completed
+            // the same way: whatever is missing is written, and nothing else is touched.
+            (bool ratingWritten, bool photoAdded) = await umbraco.CompletePlaceAsync(
+                node.Id, found.Rating, found.UserRatingCount,
+                node.GooglePlaceId is null ? found.GooglePlaceId : null,
+                () => UploadPhotoAsync(node.Name, found.PhotoName));
 
-                bool updated = false;
-                if (contentType == "place" && found.Rating is double foundRating)
-                {
-                    updated = await umbraco.UpdatePlaceRatingAsync(
-                        node.Id, foundRating, found.UserRatingCount ?? 0,
-                        node.GooglePlaceId is null ? found.GooglePlaceId : null);
-                }
-
-                // Photo backfill: nodes without a main image (seeded atracciones,
-                // bares, plazas comerciales) get their first Google photo.
-                bool photoAdded = false;
-                if (!node.HasPhoto && found.PhotoName is not null)
-                {
-                    try
-                    {
-                        (byte[] Bytes, string ContentType)? image = await google.DownloadPhotoAsync(found.PhotoName);
-                        if (image is not null)
-                        {
-                            Guid mediaKey = await umbraco.CreateMediaImageAsync(
-                                node.Name, image.Value.Bytes, image.Value.ContentType);
-                            await umbraco.SetPhotoAsync(node.Id, mediaKey);
-                            photoAdded = true;
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.Error.WriteLine($"  ! foto de {node.Name}: {ex.Message}");
-                    }
-                }
-
-                Console.WriteLine(
-                    $"  {(updated || photoAdded ? "*" : "=")} {node.Name}"
-                    + (found.Rating is double r ? $": ★ {r:0.0} ({found.UserRatingCount ?? 0})" : "")
-                    + (photoAdded ? " +foto" : "")
-                    + (node.GooglePlaceId is null ? $" ← \"{found.Name}\"" : ""));
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine($"  ! {node.Name}: {ex.Message}");
-            }
+            Console.WriteLine(
+                $"  {(ratingWritten || photoAdded ? "*" : "=")} {node.Name}"
+                + (found.Rating is double r ? $": ★ {r:0.0} ({found.UserRatingCount ?? 0})" : "")
+                + (photoAdded ? " +foto" : "")
+                + (!node.HasPhoto && !photoAdded ? " (sin foto en Google)" : "")
+                + (node.GooglePlaceId is null ? $" ← \"{found.Name}\"" : ""));
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"  ! {node.Name}: {ex.Message}");
         }
     }
 }

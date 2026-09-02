@@ -95,9 +95,9 @@ on:
         default: false
       publish:
         description: >-
-          Publish, when the run ends, everything still unpublished under the
-          selected sections. Needs a section — on its own it would release the
-          whole site, and the agent refuses.
+          Kept for the runs configured to draft instead of publish. The agent
+          publishes what it writes and sweeps the drafts left under the sections
+          it covered, so this changes nothing on the default configuration.
         type: boolean
         required: false
         default: false

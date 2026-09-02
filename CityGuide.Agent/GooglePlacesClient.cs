@@ -165,9 +165,10 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
 
     /// <summary>
     /// Rating of a place identified by name near a coordinate — Text Search biased to the
-    /// location. Accepts the closest result within 200 m, or within 2 km when its name
-    /// also matches (large places like parks report a centroid far from our pin); anything
-    /// else is rejected so a neighbour's rating is never attached.
+    /// location. The name has to match and the match has to be within 2 km (large places
+    /// like parks report a centroid far from our pin), so neither a neighbour's rating nor
+    /// the one of the building a place sits in is ever attached: a cinema inside a plaza
+    /// shares its coordinates with the plaza, and the plaza is the bigger Google result.
     /// </summary>
     public async Task<RatingLookup?> FindRatingNearAsync(
         string name, string? address, double latitude, double longitude)
@@ -207,8 +208,7 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
             .Where(p => p.Id is not null && p.Location is not null)
             .Select(p => (Place: p, Distance: HaversineMeters(
                 latitude, longitude, p.Location!.Latitude, p.Location.Longitude)))
-            .Where(x => x.Distance <= 200
-                || (x.Distance <= 2000 && TextMatch.Matches(name, x.Place.DisplayName?.Text)))
+            .Where(x => x.Distance <= 2000 && TextMatch.Matches(name, x.Place.DisplayName?.Text))
             .OrderBy(x => x.Distance)
             .Select(x => x.Place)
             .FirstOrDefault();
@@ -216,6 +216,22 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
             ? null
             : new RatingLookup(best.Id!, best.DisplayName?.Text ?? "", best.Rating, best.UserRatingCount,
                 best.Photos?.FirstOrDefault()?.Name);
+    }
+
+    /// <summary>
+    /// Rating and photo of a place the CMS stores without coordinates — a seeded node,
+    /// or one an editor typed in — which leaves <see cref="FindRatingNearAsync"/> nothing
+    /// to bias its search with. The city rectangle keeps the answer in town and the name
+    /// still has to match, so a same-named business in another city is never taken for it.
+    /// </summary>
+    public async Task<RatingLookup?> FindRatingInAreaAsync(string name, string? address, GeoArea? area)
+    {
+        List<DiscoveredPlace> matches = await SearchAsync($"{name} {address}".Trim(), 5, area);
+        DiscoveredPlace? best = matches.FirstOrDefault(p => TextMatch.Matches(name, p.Name));
+        return best is null
+            ? null
+            : new RatingLookup(
+                best.GooglePlaceId, best.Name, best.Rating, best.UserRatingCount, best.PhotoName);
     }
 
     private static double HaversineMeters(double lat1, double lng1, double lat2, double lng2)

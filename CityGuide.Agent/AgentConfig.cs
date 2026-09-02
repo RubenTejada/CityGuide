@@ -71,7 +71,12 @@ public class UmbracoConfig
     public string BaseUrl { get; set; } = "http://localhost:54509";
     public string ClientId { get; set; } = "";
     public string ClientSecret { get; set; } = "";
-    public bool PublishImmediately { get; set; }
+    /// <summary>
+    /// Publish what the agent writes instead of leaving it as a draft for review. On by
+    /// default: a draft is invisible to the portal and to the Delivery API, so it also
+    /// stays out of the rating and photo backfill until someone publishes it by hand.
+    /// </summary>
+    public bool PublishImmediately { get; set; } = true;
 }
 
 public class GoogleConfig

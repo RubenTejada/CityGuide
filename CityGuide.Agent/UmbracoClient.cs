@@ -306,7 +306,20 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
 
     public record PublishedPlace(
         Guid Id, string Name, string Path, double Latitude, double Longitude,
-        string? Address, string? GooglePlaceId, bool HasPhoto);
+        string? Address, string? GooglePlaceId, Guid? PhotoMediaKey, bool HasRating,
+        string? Source, DateTime CreateDate)
+    {
+        public bool HasPhoto => PhotoMediaKey is not null;
+
+        /// <summary>True when the node still lacks something the agent can fill in from
+        /// Google. The backfill does these first: a pass cut short must not leave them
+        /// queued behind the daily rating refresh of the nodes that are already complete.</summary>
+        public bool Incomplete => !HasPhoto || !HasRating || GooglePlaceId is null;
+
+        /// <summary>True when the agent created the node. What an editor typed in is
+        /// never recycled by a maintenance pass, however much it looks like a copy.</summary>
+        public bool AgentMade => Source?.StartsWith("agent", StringComparison.OrdinalIgnoreCase) == true;
+    }
 
     /// <summary>
     /// Every published node of a document type with its coordinates — used by the
@@ -332,13 +345,21 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
                 props.TryGetProperty(alias, out JsonElement v) && v.ValueKind == JsonValueKind.String
                     ? v.GetString()
                     : null;
-            bool hasPhoto = props.TryGetProperty("photo", out JsonElement photo)
-                && photo.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined);
+            // The media key of the main image, so a maintenance pass can hand the picture
+            // of a copy to the node that stays instead of downloading it again.
+            Guid? photoKey = props.TryGetProperty("photo", out JsonElement photo)
+                && photo.ValueKind == JsonValueKind.Array && photo.GetArrayLength() > 0
+                && photo[0].TryGetProperty("id", out JsonElement mediaKey)
+                && mediaKey.TryGetGuid(out Guid key)
+                ? key
+                : null;
             places.Add(new PublishedPlace(
                 item.GetProperty("id").GetGuid(),
                 item.GetProperty("name").GetString()!,
                 item.GetProperty("route").GetProperty("path").GetString()!,
-                Coord("latitude"), Coord("longitude"), Text("address"), Text("googlePlaceId"), hasPhoto));
+                Coord("latitude"), Coord("longitude"), Text("address"), Text("googlePlaceId"), photoKey,
+                Coord("googleRating") > 0, Text("source"),
+                item.GetProperty("createDate").GetDateTime()));
         }
 
         return places;
@@ -497,43 +518,59 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
             : null;
 
     /// <summary>
-    /// Updates only the Google rating properties (and optionally the place id) of an
-    /// existing place, preserving every other value. Returns false when the stored
-    /// values already match.
+    /// Fills in whatever Google data a node is missing — rating, place id, main photo —
+    /// leaving every other value untouched, and refreshes a rating that changed. The
+    /// photo is only asked for (<paramref name="photoFactory"/> downloads and uploads it)
+    /// when the node has none, so a node that is already complete costs one read and no
+    /// image traffic. Returns what was written.
     /// </summary>
-    public async Task<bool> UpdatePlaceRatingAsync(
-        Guid id, double rating, int ratingCount, string? googlePlaceId = null)
+    public async Task<(bool Rating, bool Photo)> CompletePlaceAsync(
+        Guid id, double? rating, int? ratingCount, string? googlePlaceId = null,
+        Func<Task<Guid?>>? photoFactory = null)
     {
         (string name, string state, Dictionary<string, object?> values) = await ReadDocumentAsync(id);
 
-        if (Number(values, "googleRating") == rating
-            && Number(values, "googleRatingCount") == ratingCount
-            && (googlePlaceId is null || Text(values, "googlePlaceId") == googlePlaceId))
+        var ratingWritten = false;
+        if (rating is double value
+            && (Number(values, "googleRating") != value
+                || Number(values, "googleRatingCount") != (ratingCount ?? 0)))
         {
-            return false;
+            values["googleRating"] = value;
+            values["googleRatingCount"] = ratingCount ?? 0;
+            ratingWritten = true;
         }
 
-        values["googleRating"] = rating;
-        values["googleRatingCount"] = ratingCount;
-        if (googlePlaceId is not null)
+        bool idWritten = googlePlaceId is not null && Text(values, "googlePlaceId") != googlePlaceId;
+        if (idWritten)
         {
             values["googlePlaceId"] = googlePlaceId;
         }
 
-        await WriteDocumentAsync(id, name, values, state);
-        return true;
+        var photoWritten = false;
+        if (photoFactory is not null && !HasPhoto(values) && await photoFactory() is Guid mediaKey)
+        {
+            values["photo"] = $"[{{\"key\":\"{Guid.NewGuid()}\",\"mediaKey\":\"{mediaKey}\"}}]";
+            photoWritten = true;
+        }
+
+        if (ratingWritten || idWritten || photoWritten)
+        {
+            await WriteDocumentAsync(id, name, values, state);
+        }
+
+        return (ratingWritten, photoWritten);
     }
 
-    /// <summary>
-    /// Sets the "photo" MediaPicker3 value of an existing document, preserving every
-    /// other value.
-    /// </summary>
-    public async Task SetPhotoAsync(Guid id, Guid mediaKey)
-    {
-        (string name, string state, Dictionary<string, object?> values) = await ReadDocumentAsync(id);
-        values["photo"] = $"[{{\"key\":\"{Guid.NewGuid()}\",\"mediaKey\":\"{mediaKey}\"}}]";
-        await WriteDocumentAsync(id, name, values, state);
-    }
+    /// <summary>True when the node already carries a main image. An empty picker comes
+    /// back as an empty array or an empty string depending on how it was written.</summary>
+    private static bool HasPhoto(Dictionary<string, object?> values) =>
+        values.TryGetValue("photo", out object? v) && v is JsonElement e && e.ValueKind switch
+        {
+            JsonValueKind.Array => e.GetArrayLength() > 0,
+            JsonValueKind.String => !string.IsNullOrWhiteSpace(e.GetString()),
+            JsonValueKind.Null or JsonValueKind.Undefined => false,
+            _ => true,
+        };
 
     /// <summary>
     /// Sets one text property of an existing document, preserving every other value
