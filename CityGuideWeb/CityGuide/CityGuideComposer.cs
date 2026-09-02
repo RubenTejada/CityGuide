@@ -8,11 +8,17 @@ public class CityGuideComposer : IComposer
     public void Compose(IUmbracoBuilder builder)
     {
         builder.Services.AddHttpClient();
+        builder.Services.AddSingleton<NearbyIndex>();
         builder.AddNotificationAsyncHandler<UmbracoApplicationStartedNotification, CityGuideSeeder>();
         builder
             .AddNotificationAsyncHandler<ContentPublishedNotification, FrontendCacheInvalidator>()
             .AddNotificationAsyncHandler<ContentUnpublishedNotification, FrontendCacheInvalidator>()
             .AddNotificationAsyncHandler<ContentDeletedNotification, FrontendCacheInvalidator>()
             .AddNotificationAsyncHandler<ContentMovedToRecycleBinNotification, FrontendCacheInvalidator>();
+        builder
+            .AddNotificationHandler<ContentPublishedNotification, NearbyIndexInvalidator>()
+            .AddNotificationHandler<ContentUnpublishedNotification, NearbyIndexInvalidator>()
+            .AddNotificationHandler<ContentDeletedNotification, NearbyIndexInvalidator>()
+            .AddNotificationHandler<ContentMovedToRecycleBinNotification, NearbyIndexInvalidator>();
     }
 }
