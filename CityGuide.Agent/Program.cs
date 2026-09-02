@@ -1114,6 +1114,22 @@ if (publishSections)
     Console.WriteLine($"  Total publicado: {totalPublished}");
 }
 
+// Which day of the refresh rotation a node belongs to. Derived from its id alone —
+// FNV-1a over the sixteen bytes — so the turns are spread evenly and stay the same
+// from pass to pass without storing a "last checked" date on every node.
+static int RefreshBucket(Guid id, int buckets)
+{
+    Span<byte> bytes = stackalloc byte[16];
+    id.TryWriteBytes(bytes);
+    uint hash = 2166136261;
+    foreach (byte b in bytes)
+    {
+        hash = (hash ^ b) * 16777619;
+    }
+
+    return (int)(hash % (uint)buckets);
+}
+
 // Rating and photo backfill: every published place and plaza is asked of Google what it
 // is missing — a rating, a main image, the place id itself. Nodes without a stored
 // googlePlaceId are matched by name and address near their coordinates, and the id found
@@ -1140,10 +1156,34 @@ if (!string.IsNullOrEmpty(config.Google.ApiKey))
             .Where(n => SectionSelected(n.Path)));
     }
 
+    // Every one of these requests is billed, and a rating moves by hundredths in a
+    // day, so the nodes that already carry everything are not all asked every pass:
+    // each one falls on its own day of a rotation RatingRefreshDays long, decided by
+    // its own id so nothing has to be stored to remember whose turn it is. The
+    // incomplete ones are the point of the pass and are asked every time.
+    int refreshDays = Math.Max(1, config.Google.RatingRefreshDays);
+    int todayBucket = (DateTime.UtcNow.Date - new DateTime(2020, 1, 1)).Days % refreshDays;
+    List<UmbracoClient.PublishedPlace> complete =
+        [.. nodes.Where(n => !n.Incomplete && RefreshBucket(n.Id, refreshDays) == todayBucket)];
+
     // Stable within each half, so the order inside a section stays the tree's.
-    List<UmbracoClient.PublishedPlace> ordered =
-        [.. nodes.Where(n => n.Incomplete), .. nodes.Where(n => !n.Incomplete)];
-    Console.WriteLine($"  {ordered.Count} nodo(s), {nodes.Count(n => n.Incomplete)} incompleto(s) primero");
+    List<UmbracoClient.PublishedPlace> ordered = [.. nodes.Where(n => n.Incomplete), .. complete];
+
+    // A catalogue that grows, or a day the rotation lands badly, must not turn into a
+    // bill nobody chose. The incomplete nodes lead, so what the ceiling drops is the
+    // refresh of nodes that lose nothing by waiting for the next pass.
+    int dropped = 0;
+    if (config.Google.MaxBackfillRequests > 0 && ordered.Count > config.Google.MaxBackfillRequests)
+    {
+        dropped = ordered.Count - config.Google.MaxBackfillRequests;
+        ordered = [.. ordered.Take(config.Google.MaxBackfillRequests)];
+    }
+
+    Console.WriteLine(
+        $"  {nodes.Count} nodo(s) en las secciones; se consultan {ordered.Count}: "
+        + $"{nodes.Count(n => n.Incomplete)} incompleto(s) y {complete.Count} del turno "
+        + $"{todayBucket + 1}/{refreshDays}"
+        + (dropped > 0 ? $" ({dropped} aplazado(s) por el tope de {config.Google.MaxBackfillRequests})" : ""));
 
     foreach (UmbracoClient.PublishedPlace node in ordered)
     {

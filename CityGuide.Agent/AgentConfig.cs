@@ -82,6 +82,19 @@ public class UmbracoConfig
 public class GoogleConfig
 {
     public string ApiKey { get; set; } = "";
+
+    /// <summary>How often a node that already carries everything is asked of Google
+    /// again. Every request is billed, and a rating moves by hundredths in a day, so
+    /// refreshing the whole catalogue daily buys nothing: the complete nodes are spread
+    /// over this many days and each one comes up on its own day. Nodes still missing a
+    /// rating, a photo or the place id are outside the rotation — they are the point of
+    /// the pass and are asked every time. 1 restores the daily refresh.</summary>
+    public int RatingRefreshDays { get; set; } = 14;
+
+    /// <summary>Ceiling on the Google requests one backfill pass may spend, whatever the
+    /// rotation yields. A catalogue that grows, or a day the rotation lands badly, must
+    /// not turn into a bill nobody chose; what is skipped comes up on the next pass.</summary>
+    public int MaxBackfillRequests { get; set; } = 400;
 }
 
 public class AzureOpenAiConfig
