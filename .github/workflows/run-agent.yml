@@ -1,10 +1,13 @@
 name: Run agent
 
-# Manual runs only. The daily schedule (10:17 UTC) is off: the rating and photo
-# backfill asked Google about every published node on every pass, which is billed
-# per request and ran to about fifty euros in two days. Restore the "schedule"
-# trigger once the pass only spends what a day of drift is worth.
+# The nightly run is the free pass: 08:23 UTC = 4:23 AM in Santo Domingo (AST, UTC-4).
+# A scheduled run has no inputs, so "paid" is empty and the agent leaves Google and the
+# enrichment model alone — what it refreshes every night is the cartelera and the events,
+# which cost nothing. Discovery and the rating backfill are dispatched by hand with
+# "paid", after the fortnightly rotation made them cheap.
 on:
+  schedule:
+    - cron: "23 8 * * *"
   workflow_dispatch:
     inputs:
       section:
