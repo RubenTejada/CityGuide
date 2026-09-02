@@ -25,13 +25,18 @@ public static class MallMatching
     /// <summary>
     /// The plaza this establishment sits inside, or null when nothing says it does.
     /// The nearest one wins when two plazas are both named and close (Acrópolis and
-    /// Blue Mall are three blocks apart).
+    /// Blue Mall are three blocks apart). A place whose name reads as the plaza's own
+    /// is taken for the plaza and left alone — unless <paramref name="isBranch"/> says
+    /// it hangs from a company, which no plaza does: Caribbean Cinemas calls its screens
+    /// inside Ágora Mall exactly "Ágora Mall", and that cinema belongs on the plaza's
+    /// page like every other tenant.
     /// </summary>
     public static KnownMall? Containing(
-        string placeName, string? address, double latitude, double longitude, IEnumerable<KnownMall> malls)
+        string placeName, string? address, double latitude, double longitude,
+        IEnumerable<KnownMall> malls, bool isBranch = false)
         => malls
             .Where(mall => Mentions(mall.Name, placeName, address)
-                && !IsSameMall(mall, placeName, latitude, longitude)
+                && (isBranch || !IsSameMall(mall, placeName, latitude, longitude))
                 && Distance(mall, latitude, longitude) <= InsideMeters)
             .OrderBy(mall => Distance(mall, latitude, longitude))
             .FirstOrDefault();

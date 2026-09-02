@@ -93,10 +93,16 @@ it removes goes to the recycle bin and only when the agent created it. `--merge-
 Mall" beside the stored "Acrópolis Center" — moving the establishments, filling the
 survivor's blanks (the Google place id above all, or the next pass rediscovers the plaza
 and recreates the duplicate) and recycling the other. A place that sits inside a plaza but belongs in another
-section — a bank branch under its company, a restaurant under its cuisine — is listed on
-the plaza's page by reference instead of being moved: every run adds the node it creates
-to the plaza's `establishments` picker (`AddMallEstablishmentAsync`), and `--link-malls`
-backfills the ones already published. The data lives in exactly one node; `MallView`
+section — a bank branch under its company, a restaurant under its cuisine, a cinema under
+Caribbean Cinemas — is listed on the plaza's page by reference instead of being moved:
+every run adds the node it creates to the plaza's `establishments` picker
+(`AddMallEstablishmentAsync`), and `LinkEstablishmentsAsync` runs at the end of every
+pass — after the cinema and event syncs, so it also covers what they published — to link
+every published place that is still missing. It writes only what is missing, so a pass
+with nothing new costs a handful of reads; `--link-malls` is the same pass on its own
+(a plan until `--apply`). A branch is never taken for the plaza it is named after
+(Caribbean Cinemas calls its screens in Ágora Mall exactly "Ágora Mall"), which is what
+the `isBranch` argument of `MallMatching.Containing` settles. The data lives in exactly one node; `MallView`
 renders those references under "También en la plaza", asking the Delivery API to expand
 the picker (`getItem(path, "properties[establishments]")`) so the cards get photo and
 rating, and qualifying a branch with the company it hangs from. `.github/workflows/run-agent.yml`

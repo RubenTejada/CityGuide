@@ -175,16 +175,14 @@ async Task<List<KnownMall>> MallsAsync(string citySlug)
     return malls;
 }
 
-// Maintenance: list under each plaza every place that sits inside it but lives
-// elsewhere in the tree — a bank branch under its company, a restaurant under its
-// cuisine. The node keeps its single home; the plaza only gains a reference to it.
-if (args.Contains("--link-malls"))
+// Lists under each plaza every published place that sits inside it but lives elsewhere
+// in the tree — a bank branch under its company, a restaurant under its cuisine, a
+// cinema under Caribbean Cinemas. The node keeps its single home; the plaza only gains
+// a reference. Runs at the end of every ingestion pass (what the agent just created as
+// a draft is linked when it is created; this covers everything already published, from
+// any source) and on its own through --link-malls.
+async Task<int> LinkEstablishmentsAsync(bool apply)
 {
-    bool applyLinks = args.Contains("--apply");
-    Console.WriteLine(applyLinks
-        ? "== Enlazando establecimientos a su plaza"
-        : "== Establecimientos por enlazar a su plaza (simulación; agrega --apply)");
-
     var linked = 0;
     foreach (string citySlug in config.Runs
         .Select(r => r.ParentPath.Trim('/').Split('/').First())
@@ -202,7 +200,12 @@ if (args.Contains("--link-malls"))
             mallPaths[mall.Id] = mall.Path;
         }
 
-        // What each plaza already lists, so the plan counts only what is missing.
+        // A branch of a chain is never a plaza, however Caribbean Cinemas named it.
+        List<UmbracoClient.PublishedPlace> companyNodes = await umbraco.GetPublishedPlacesAsync("company");
+        bool IsBranch(string path) => companyNodes
+            .Any(c => path.StartsWith(c.Path, StringComparison.OrdinalIgnoreCase));
+
+        // What each plaza already lists, so only what is missing is reported or written.
         var listed = new Dictionary<Guid, HashSet<Guid>>();
         foreach (KnownMall mall in cityMalls)
         {
@@ -219,7 +222,8 @@ if (args.Contains("--link-malls"))
             }
 
             if (MallMatching.Containing(
-                    node.Name, node.Address, node.Latitude, node.Longitude, cityMalls) is not { } mall)
+                    node.Name, node.Address, node.Latitude, node.Longitude, cityMalls,
+                    IsBranch(node.Path)) is not { } mall)
             {
                 continue;
             }
@@ -236,7 +240,7 @@ if (args.Contains("--link-malls"))
                 continue;
             }
 
-            if (!applyLinks)
+            if (!apply)
             {
                 linked++;
                 Console.WriteLine($"  + {node.Name} -> {mall.Name}");
@@ -258,7 +262,18 @@ if (args.Contains("--link-malls"))
         }
     }
 
-    Console.WriteLine($"\n{linked} establecimiento(s) {(applyLinks ? "enlazados" : "por enlazar")}.");
+    return linked;
+}
+
+// The same pass on its own, so a plaza can be filled in without an ingestion run.
+if (args.Contains("--link-malls"))
+{
+    bool applyLinks = args.Contains("--apply");
+    Console.WriteLine(applyLinks
+        ? "== Enlazando establecimientos a su plaza"
+        : "== Establecimientos por enlazar a su plaza (simulación; agrega --apply)");
+    int count = await LinkEstablishmentsAsync(applyLinks);
+    Console.WriteLine($"\n{count} establecimiento(s) {(applyLinks ? "enlazados" : "por enlazar")}.");
     return 0;
 }
 
@@ -903,6 +918,21 @@ if (config.Events.Enabled && config.Events.Sources.Count > 0 && SectionSelected(
         failures++;
         Console.Error.WriteLine($"\n! Event sync failed: {ex.Message}");
     }
+}
+
+// Last, so it also covers what the cinema sync just published: every published place
+// that sits inside a plaza is listed on that plaza's page. The pass writes only what is
+// missing, so a run with nothing new to link costs a handful of reads.
+try
+{
+    Console.WriteLine("\n== Establecimientos dentro de plazas");
+    int linkedNow = await LinkEstablishmentsAsync(apply: true);
+    Console.WriteLine($"  {linkedNow} enlace(s) nuevo(s)");
+}
+catch (Exception ex)
+{
+    failures++;
+    Console.Error.WriteLine($"\n! Mall establishment linking failed: {ex.Message}");
 }
 
 return failures == 0 ? 0 : 1;
