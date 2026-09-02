@@ -2302,6 +2302,42 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         }
 
         await EnsureMallAgentSchemaAsync(mallType);
+        await EnsureMallEstablishmentsSchemaAsync(mallType);
+    }
+
+    /// <summary>
+    /// Adds the "establishments" picker to the "mall" document type: the places that sit
+    /// inside the plaza but are filed elsewhere in the tree — a bank branch under its
+    /// company, a restaurant under its cuisine — referenced, never copied. Each one keeps
+    /// its single home (and the data it inherits there) and the plaza still lists it.
+    /// Guarded and run every startup so existing installations pick it up.
+    /// </summary>
+    private async Task EnsureMallEstablishmentsSchemaAsync(IContentType mall)
+    {
+        if (mall.PropertyTypeExists("establishments"))
+        {
+            return;
+        }
+
+        _logger.LogInformation("CityGuide: adding 'establishments' property to 'mall'");
+        IDataType picker = await GetOrCreateDataTypeAsync(
+            "CityGuide Establecimientos", Constants.PropertyEditors.Aliases.MultiNodeTreePicker,
+            "Umb.PropertyEditorUi.ContentPicker", ValueStorageType.Ntext,
+            new Dictionary<string, object>
+            {
+                ["startNode"] = new Dictionary<string, object> { ["type"] = "content" },
+                ["minNumber"] = 0,
+                ["maxNumber"] = 0,
+            });
+
+        AddProperty(mall, "establishments", "Establecimientos en la plaza", picker, 13);
+        Attempt<ContentTypeOperationStatus> attempt =
+            await _contentTypeService.UpdateAsync(mall, Constants.Security.SuperUserKey);
+        if (!attempt.Success)
+        {
+            throw new InvalidOperationException(
+                $"Failed to add 'establishments' to 'mall': {attempt.Result}");
+        }
     }
 
     /// <summary>

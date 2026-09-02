@@ -36,6 +36,18 @@ on:
           - plan
           - apply
         default: "no"
+      link_malls:
+        description: >-
+          Maintenance pass instead of the ingestion run: lists under each plaza every
+          place that sits inside it but lives elsewhere in the tree (a bank branch
+          under its company, a restaurant under its cuisine). "plan" only prints.
+        type: choice
+        required: false
+        options:
+          - "no"
+          - plan
+          - apply
+        default: "no"
       merge_mall_from:
         description: >-
           Maintenance pass instead of the ingestion run: name of the plaza to fold
@@ -102,6 +114,7 @@ jobs:
           SECTION: ${{ inputs.section }}
           RECATEGORIZE: ${{ inputs.recategorize_events }}
           REGROUP: ${{ inputs.regroup_malls }}
+          LINK: ${{ inputs.link_malls }}
           MERGE_FROM: ${{ inputs.merge_mall_from }}
           MERGE_INTO: ${{ inputs.merge_mall_into }}
           MERGE_APPLY: ${{ inputs.merge_mall_apply }}
@@ -111,6 +124,10 @@ jobs:
         run: |
           if [ "$RECATEGORIZE" = "true" ]; then
             dotnet run -c Release -- --recategorize-events --apply
+          elif [ "$LINK" = "plan" ]; then
+            dotnet run -c Release -- --link-malls
+          elif [ "$LINK" = "apply" ]; then
+            dotnet run -c Release -- --link-malls --apply
           elif [ -n "$MERGE_FROM" ] && [ -n "$MERGE_INTO" ]; then
             if [ "$MERGE_APPLY" = "true" ]; then
               dotnet run -c Release -- --merge-mall "$MERGE_FROM" "$MERGE_INTO" --apply

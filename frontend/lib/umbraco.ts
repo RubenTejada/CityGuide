@@ -34,11 +34,31 @@ async function api(path: string): Promise<Response> {
   });
 }
 
-/** Fetch a single content item by its route path (e.g. "/santo-domingo/restaurantes"). */
-export async function getItem(path: string): Promise<UmbracoItem | null> {
-  const res = await api(`/content/item${path.startsWith("/") ? path : `/${path}`}`);
+/**
+ * Fetch a single content item by its route path (e.g. "/santo-domingo/restaurantes").
+ * `expand` asks the Delivery API to fill in the properties of the content a picker
+ * references ("properties[establishments]"); without it those come back as bare
+ * name-and-route stubs.
+ */
+export async function getItem(
+  path: string,
+  expand?: string,
+): Promise<UmbracoItem | null> {
+  const res = await api(
+    `/content/item${path.startsWith("/") ? path : `/${path}`}` +
+      (expand ? `?expand=${encodeURIComponent(expand)}` : ""),
+  );
   if (!res.ok) return null;
   return res.json();
+}
+
+/**
+ * The content a multi-node picker on this item references, as full items. Empty
+ * when the property is unset or the item was fetched without expanding it.
+ */
+export function picked(item: UmbracoItem, alias: string): UmbracoItem[] {
+  const value = prop<UmbracoItem[]>(item, alias);
+  return Array.isArray(value) ? value.filter((entry) => entry?.route?.path) : [];
 }
 
 /** Fetch direct children of a content item, ordered by sortOrder. */

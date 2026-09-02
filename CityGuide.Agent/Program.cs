@@ -175,6 +175,93 @@ async Task<List<KnownMall>> MallsAsync(string citySlug)
     return malls;
 }
 
+// Maintenance: list under each plaza every place that sits inside it but lives
+// elsewhere in the tree — a bank branch under its company, a restaurant under its
+// cuisine. The node keeps its single home; the plaza only gains a reference to it.
+if (args.Contains("--link-malls"))
+{
+    bool applyLinks = args.Contains("--apply");
+    Console.WriteLine(applyLinks
+        ? "== Enlazando establecimientos a su plaza"
+        : "== Establecimientos por enlazar a su plaza (simulación; agrega --apply)");
+
+    var linked = 0;
+    foreach (string citySlug in config.Runs
+        .Select(r => r.ParentPath.Trim('/').Split('/').First())
+        .Distinct(StringComparer.OrdinalIgnoreCase))
+    {
+        List<KnownMall> cityMalls = await MallsAsync(citySlug);
+        if (cityMalls.Count == 0)
+        {
+            continue;
+        }
+
+        var mallPaths = new Dictionary<Guid, string>();
+        foreach (UmbracoClient.PublishedPlace mall in await umbraco.GetPublishedPlacesAsync("mall"))
+        {
+            mallPaths[mall.Id] = mall.Path;
+        }
+
+        // What each plaza already lists, so the plan counts only what is missing.
+        var listed = new Dictionary<Guid, HashSet<Guid>>();
+        foreach (KnownMall mall in cityMalls)
+        {
+            listed[mall.Id] = [.. await umbraco.GetMallEstablishmentsAsync(mall.Id)];
+        }
+
+        foreach (UmbracoClient.PublishedPlace node in await umbraco.GetPublishedPlacesAsync("place"))
+        {
+            if (!node.Path.Trim('/').StartsWith(citySlug, StringComparison.OrdinalIgnoreCase)
+                || (node.Latitude == 0 && node.Longitude == 0)
+                || !SectionSelected(node.Path))
+            {
+                continue;
+            }
+
+            if (MallMatching.Containing(
+                    node.Name, node.Address, node.Latitude, node.Longitude, cityMalls) is not { } mall)
+            {
+                continue;
+            }
+
+            // What already lives under the plaza is on its page through the tree.
+            if (mallPaths.TryGetValue(mall.Id, out string? mallPath)
+                && node.Path.StartsWith(mallPath, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (listed.TryGetValue(mall.Id, out HashSet<Guid>? already) && already.Contains(node.Id))
+            {
+                continue;
+            }
+
+            if (!applyLinks)
+            {
+                linked++;
+                Console.WriteLine($"  + {node.Name} -> {mall.Name}");
+                continue;
+            }
+
+            try
+            {
+                if (await umbraco.AddMallEstablishmentAsync(mall.Id, node.Id))
+                {
+                    linked++;
+                    Console.WriteLine($"  + {node.Name} -> {mall.Name}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"  ! {node.Name} -> {mall.Name}: {ex.Message}");
+            }
+        }
+    }
+
+    Console.WriteLine($"\n{linked} establecimiento(s) {(applyLinks ? "enlazados" : "por enlazar")}.");
+    return 0;
+}
+
 // Maintenance: fold one plaza into another ("--merge-mall <origen> <destino>"), for the
 // pair the matcher cannot unify on its own — Google's name for a plaza the CMS already
 // has under another ("Acrópolis Business Mall" beside "Acrópolis Center"). Same rule as
@@ -446,11 +533,10 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelec
         }
     }
 
-    // Plazas comerciales of this city: the shops runs file establishments inside
-    // them, and the plazas run itself uses them to recognise a plaza it already has.
-    List<KnownMall> malls = run.NestInMalls || run.CreatesMalls
-        ? await MallsAsync(segments[0])
-        : [];
+    // Plazas comerciales of this city: the shops runs file establishments inside them,
+    // the plazas run uses them to recognise a plaza it already has, and every run lists
+    // what it creates inside one on that plaza's page.
+    List<KnownMall> malls = await MallsAsync(segments[0]);
 
     Guid? pinnedCompanyId = null;
     if (!string.IsNullOrWhiteSpace(run.CompanyName))
@@ -549,16 +635,18 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelec
                 }
             }
 
-            // The plaza an establishment sits inside, when its address says so and its
-            // coordinates agree. A branch of a chain keeps its company: the plaza cannot
-            // give it the logo and general info it inherits from there.
-            KnownMall? insideMall = run.NestInMalls && companyId is null
-                ? MallMatching.Containing(
-                    place.Name, place.Address, place.Latitude, place.Longitude, malls)
-                : null;
+            // The plaza this establishment sits inside, when its address says so and its
+            // coordinates agree. Every run looks it up: a restaurant or a bank branch
+            // belongs in its own section, and the plaza lists it by reference. Only a
+            // shops run files it under the plaza, and a branch of a chain keeps its
+            // company even then — the plaza cannot give it the logo and general info it
+            // inherits from there.
+            KnownMall? insideMall = MallMatching.Containing(
+                place.Name, place.Address, place.Latitude, place.Longitude, malls);
+            KnownMall? mallParent = run.NestInMalls && companyId is null ? insideMall : null;
 
-            Guid targetParentId = companyId ?? insideMall?.Id ?? parent.Value.Id;
-            string? cuisine = companyId is not null || insideMall is not null || subcategories is null
+            Guid targetParentId = companyId ?? mallParent?.Id ?? parent.Value.Id;
+            string? cuisine = companyId is not null || mallParent is not null || subcategories is null
                 ? null
                 : CuisineMap.SubcategoryFor(place.Types);
             if (cuisine is not null)
@@ -629,12 +717,31 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelec
             knownPlaceIds[place.GooglePlaceId] = id;
             created++;
             runCreated++;
+
+            // Filed elsewhere but inside a plaza: the plaza's page lists it by reference,
+            // so the visitor finds it both ways without a second copy of the data.
+            if (insideMall is not null && targetParentId != insideMall.Id)
+            {
+                try
+                {
+                    await umbraco.AddMallEstablishmentAsync(insideMall.Id, id);
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine(
+                        $"  ! enlazar {place.Name} a {insideMall.Name}: {ex.Message}");
+                }
+            }
             string state = config.Umbraco.PublishImmediately ? "published" : "draft";
             string target = companyName is not null
                 ? $" (sucursal de {companyName})"
-                : insideMall is not null
-                    ? $" (dentro de {insideMall.Name})"
+                : mallParent is not null
+                    ? $" (dentro de {mallParent.Name})"
                     : cuisine is null ? "" : $" → {cuisine}";
+            if (insideMall is not null && mallParent is null)
+            {
+                target += $" [en {insideMall.Name}]";
+            }
             Console.WriteLine($"  + {place.Name}{target} ({state}, {id})");
         }
         catch (Exception ex)

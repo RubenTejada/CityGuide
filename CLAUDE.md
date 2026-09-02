@@ -44,6 +44,10 @@ cd CityGuide.Agent && dotnet run -- --regroup-malls --apply
 # plaza takes the Google place id and rating it lacks, the other goes to the
 # recycle bin. Also a plan until --apply.
 cd CityGuide.Agent && dotnet run -- --merge-mall "Acrópolis Business Mall" "Acrópolis Center"
+# List under each plaza the places that sit inside it but live elsewhere in the
+# tree (a bank branch under its company, a restaurant under its cuisine). The
+# node stays where it is; the plaza only gains a reference. Plan until --apply.
+cd CityGuide.Agent && dotnet run -- --link-malls
 
 # IMDb / Rotten Tomatoes scores on the movie catalog need two free keys, set as
 # user-secrets (leave either empty to run without it — the scores just stay blank):
@@ -88,9 +92,16 @@ it removes goes to the recycle bin and only when the agent created it. `--merge-
 <sobra> <se queda>` folds the pair no rule can safely unify — Google's "Acrópolis Business
 Mall" beside the stored "Acrópolis Center" — moving the establishments, filling the
 survivor's blanks (the Google place id above all, or the next pass rediscovers the plaza
-and recreates the duplicate) and recycling the other. `.github/workflows/run-agent.yml`
-exposes all three passes as dispatch inputs, so they run against Azure without the CMS
-client secret leaving the workflow. Branch places
+and recreates the duplicate) and recycling the other. A place that sits inside a plaza but belongs in another
+section — a bank branch under its company, a restaurant under its cuisine — is listed on
+the plaza's page by reference instead of being moved: every run adds the node it creates
+to the plaza's `establishments` picker (`AddMallEstablishmentAsync`), and `--link-malls`
+backfills the ones already published. The data lives in exactly one node; `MallView`
+renders those references under "También en la plaza", asking the Delivery API to expand
+the picker (`getItem(path, "properties[establishments]")`) so the cards get photo and
+rating, and qualifying a branch with the company it hangs from. `.github/workflows/run-agent.yml`
+exposes every maintenance pass as a dispatch input, so they run against Azure without the
+CMS client secret leaving the workflow. Branch places
 store only their own data — no description, phone, website or hours — so they inherit the
 company's, and they cost no LLM tokens. A discovered branch is named "Chain — what tells it
 apart" (`BranchNaming`): Google calls most branches by the chain ("Banreservas" twenty-seven

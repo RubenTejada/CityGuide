@@ -682,6 +682,57 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
     }
 
     /// <summary>
+    /// Lists a node in a plaza's "establishments" picker, so the plaza page shows the
+    /// bank branch, restaurant or shop that sits inside it while the node itself stays
+    /// where it belongs — one home, one copy of the data, referenced from the plaza.
+    /// Returns false when the plaza already references it.
+    /// </summary>
+    public async Task<bool> AddMallEstablishmentAsync(Guid mallId, Guid nodeId)
+    {
+        (string name, string state, Dictionary<string, object?> values) = await ReadDocumentAsync(mallId);
+        List<Guid> referenced = Referenced(values);
+        if (referenced.Contains(nodeId))
+        {
+            return false;
+        }
+
+        referenced.Add(nodeId);
+        values["establishments"] = JsonSerializer.SerializeToElement(
+            referenced.Select(id => new { type = "document", unique = id }));
+        await WriteDocumentAsync(mallId, name, values, state);
+        return true;
+    }
+
+    /// <summary>The nodes a plaza lists in its "establishments" picker.</summary>
+    public async Task<List<Guid>> GetMallEstablishmentsAsync(Guid mallId)
+    {
+        (_, _, Dictionary<string, object?> values) = await ReadDocumentAsync(mallId);
+        return Referenced(values);
+    }
+
+    /// <summary>The nodes a plaza already lists, in the order the picker holds them.</summary>
+    private static List<Guid> Referenced(Dictionary<string, object?> mallValues)
+    {
+        var referenced = new List<Guid>();
+        if (!mallValues.TryGetValue("establishments", out object? value)
+            || value is not JsonElement { ValueKind: JsonValueKind.Array } array)
+        {
+            return referenced;
+        }
+
+        foreach (JsonElement entry in array.EnumerateArray())
+        {
+            if (entry.TryGetProperty("unique", out JsonElement unique)
+                && unique.TryGetGuid(out Guid id))
+            {
+                referenced.Add(id);
+            }
+        }
+
+        return referenced;
+    }
+
+    /// <summary>
     /// Folds one plaza into another: everything filed under <paramref name="sourceId"/>
     /// moves to <paramref name="targetId"/>, the target picks up the agent-owned values
     /// it lacks — above all the Google place id, without which the next pass would
