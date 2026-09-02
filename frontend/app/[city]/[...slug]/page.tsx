@@ -400,12 +400,13 @@ async function listingEntries(path: string): Promise<UmbracoItem[]> {
 }
 
 /**
- * Sections listed by how many branches each entry has, biggest chain first.
- * In retail and services the useful answer to "where do I buy this" or "where
- * do I get this done" is the chain with a branch near you, not the single
- * best-rated shop; elsewhere the rating leads.
+ * Sections listed by how many establishments each entry holds, the biggest
+ * first. In retail and services the useful answer to "where do I buy this" or
+ * "where do I get this done" is the chain with a branch near you, or the plaza
+ * with the most shops in it, not the single best-rated shop; elsewhere the
+ * rating leads.
  */
-const BRANCH_COUNT_SECTIONS = new Set(["tiendas", "empresas-y-servicios"]);
+const ESTABLISHMENT_COUNT_SECTIONS = new Set(["tiendas", "empresas-y-servicios"]);
 
 /** The city section a route path belongs to (`/santo-domingo/tiendas/...`). */
 function sectionSlug(path: string): string {
@@ -416,8 +417,11 @@ function sectionSlug(path: string): string {
  * Listing entries in display order. Companies and malls carry no rating of
  * their own, so they rank by their best-rated nested place — the same
  * parent/branch inheritance listingFacilities uses. Inside
- * `BRANCH_COUNT_SECTIONS` the number of branches leads and the rating only
- * breaks ties, so a place (no branches) sorts after every chain.
+ * `ESTABLISHMENT_COUNT_SECTIONS` the number of establishments leads and the
+ * rating only breaks ties, so a place (which holds none) sorts after every
+ * chain and every plaza. A plaza holds what hangs from it plus what it only
+ * references: an establishment lives in the section that says what it is, so
+ * counting its subtree alone would rank the biggest plazas as empty.
  */
 async function listingEntriesOrdered(path: string): Promise<UmbracoItem[]> {
   const [entries, allPlaces] = await Promise.all([
@@ -442,10 +446,21 @@ async function listingEntriesOrdered(path: string): Promise<UmbracoItem[]> {
         [entry.id, [entry, ...nested.get(entry.id)!].sort(byRating)[0]] as const,
     ),
   );
-  const byBranchCount = BRANCH_COUNT_SECTIONS.has(sectionSlug(path));
+  // The picker comes back unexpanded here (name and route only), which is all a
+  // count needs; an establishment already under the plaza is not counted twice.
+  const held = new Map(
+    entries.map((entry) => {
+      const prefix = `${entry.route.path.replace(/\/+$/, "")}/`;
+      const referenced = picked(entry, "establishments").filter(
+        (e) => !e.route.path.startsWith(prefix),
+      );
+      return [entry.id, nested.get(entry.id)!.length + referenced.length] as const;
+    }),
+  );
+  const byEstablishmentCount = ESTABLISHMENT_COUNT_SECTIONS.has(sectionSlug(path));
   return [...entries].sort((a, b) => {
-    if (byBranchCount) {
-      const diff = nested.get(b.id)!.length - nested.get(a.id)!.length;
+    if (byEstablishmentCount) {
+      const diff = held.get(b.id)! - held.get(a.id)!;
       if (diff !== 0) return diff;
     }
     return byRating(ratedBy.get(a.id)!, ratedBy.get(b.id)!);
