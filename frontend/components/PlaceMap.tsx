@@ -14,7 +14,7 @@ import LoadingOverlay from "./LoadingOverlay";
 import LogoPin from "./LogoPin";
 import MapPopupCard from "./MapPopupCard";
 import { RatingBadge } from "./Rating";
-import { mapPinIcon, sectionMapIcon } from "@/lib/sections";
+import { mapPinIcon, sectionIconByName, sectionMapIcon } from "@/lib/sections";
 
 interface NearbyPlace {
   id: string;
@@ -123,6 +123,9 @@ export default function PlaceMap({
                 options={categoryOptions}
                 selected={categories}
                 onToggle={toggleCategory}
+                icons={Object.fromEntries(
+                  categoryOptions.map((c) => [c, sectionIconByName(c)]),
+                )}
                 className="relative"
               />
             )}

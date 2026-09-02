@@ -545,10 +545,7 @@ function subcategoryFilter(
     // Ticking two cuisines widens the listing instead of emptying it.
     match: "any",
     icons: Object.fromEntries(
-      subcategories.map((sub) => [
-        sub.name,
-        subcategoryIcon(sub.route.path.split("/").filter(Boolean).pop() ?? ""),
-      ]),
+      subcategories.map((sub) => [sub.name, subcategoryIcon(sub.route.path)]),
     ),
   };
 }

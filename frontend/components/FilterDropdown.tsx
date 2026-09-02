@@ -6,10 +6,13 @@ import { useState } from "react";
  * Multi-select dropdown used by the listing filters and by the
  * "¿Qué está cerca?" panel. Selection is owned by the caller: `selected`
  * carries the current picks and `onToggle` adds or removes one.
- * The trigger wears the light logo blue in both themes — dark mode leaves
- * `bg-brand-500` alone, so the filters read as the same control there — with
- * near-black `brand-ink` on it (white on this tone falls under 3:1), and the
- * number of picks rides in a white counter instead of a second colour.
+ * The trigger wears the deep logo blue in both themes — dark mode leaves
+ * `bg-brand-700` alone, so the filters read as the same control there — in
+ * white (5.9:1; the lighter `brand-500` only reaches 2.9:1, which is why the
+ * tone goes down rather than the text back to black), and the number of picks
+ * rides in a white counter instead of a second colour.
+ * Every option shows a glyph on an azure disc: callers pass one per option and
+ * their icon maps have no gaps, so the disc is never empty.
  */
 export default function FilterDropdown({
   label,
@@ -34,7 +37,7 @@ export default function FilterDropdown({
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="inline-flex items-center gap-2 rounded-full border border-brand-600 bg-brand-500 px-4 py-1.5 text-sm font-semibold text-brand-ink transition hover:bg-brand-400"
+        className="inline-flex items-center gap-2 rounded-full border border-brand-800 bg-brand-700 px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-800"
       >
         {label}
         {selected.length > 0 && (
@@ -67,7 +70,12 @@ export default function FilterDropdown({
                   onChange={() => onToggle(option)}
                   className="h-4 w-4 accent-brand-600"
                 />
-                {icons && <span aria-hidden>{icons[option] ?? "•"}</span>}
+                <span
+                  aria-hidden
+                  className="flex h-6 w-6 flex-none items-center justify-center rounded-full bg-brand-100 text-sm"
+                >
+                  {icons?.[option] ?? "•"}
+                </span>
                 {option}
               </label>
             ))}

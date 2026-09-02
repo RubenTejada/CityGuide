@@ -72,9 +72,15 @@ const SUBCATEGORY_ICONS: Record<string, string> = {
   servicios: "🛠",
 };
 
-/** Glyph of a subcategory slug; a dot for anything unlisted. */
-export function subcategoryIcon(slug: string): string {
-  return SUBCATEGORY_ICONS[slug] ?? "•";
+/**
+ * Glyph of a subcategory, by its content path: its own glyph, and for anything
+ * unlisted the one of the section it hangs from — a filter option never falls
+ * back to a bare dot.
+ */
+export function subcategoryIcon(routePath: string): string {
+  const slug =
+    routePath.replace(/\/+$/, "").split("/").filter(Boolean).pop() ?? "";
+  return SUBCATEGORY_ICONS[slug] ?? sectionIcon(sectionSlug(routePath));
 }
 
 /**
@@ -95,6 +101,21 @@ const SECTION_ICONS: Record<string, string> = {
 /** Glyph of a section slug; a pin for anything unlisted. */
 export function sectionIcon(slug: string): string {
   return SECTION_ICONS[slug] ?? "📍";
+}
+
+/**
+ * Glyph of a section named the way the CMS names it ("Bares y Clubes"): the
+ * "¿Qué está cerca?" filter knows its categories by name, not by slug.
+ */
+export function sectionIconByName(name: string): string {
+  return sectionIcon(
+    name
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, ""),
+  );
 }
 
 /**
