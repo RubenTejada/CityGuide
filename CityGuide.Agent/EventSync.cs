@@ -5,7 +5,8 @@ namespace CityGuide.Agent;
 
 public record ScrapedEvent(
     string Name, string Url, DateTime Start, DateTime? End,
-    string? Venue, string? Address, string? Description, string? ImageUrl = null);
+    string? Venue, string? Address, string? Description, string? ImageUrl = null,
+    double? Latitude = null, double? Longitude = null);
 
 /// <summary>
 /// Keeps the "Eventos" section in sync with public event portals. Sources are
@@ -14,8 +15,13 @@ public record ScrapedEvent(
 ///    itself (Eventbrite).
 ///  - "jsonld-detail": listing page links to detail pages that carry an Event
 ///    JSON-LD block (TodoTickets).
-///  - "ticketexpress": og:title/og:url on detail pages, date parsed from the
-///    Spanish prose ("el viernes 26 de junio...").
+/// Every portal lists the whole country, so an event is only imported once its
+/// location is inside the city being synced — see <see cref="EventVenues"/>,
+/// which also turns the venue into a place of the portal (a bar, an attraction)
+/// and gives the event the coordinates that put it on the map. TuBoleta (dates
+/// loaded by JavaScript), Uepa Tickets (Cloudflare) and TicketExpress (a listing
+/// frozen in 2020, with no venue on the page and no date beyond loose prose, so
+/// nothing can say where or when its events are) are deliberately not scraped.
 /// Portal-sourced events are published immediately (deterministic data, like
 /// the cinema sync). Only events this agent created (source = "agent:*") are
 /// ever deleted, and only once their date has passed — manual events are never
@@ -30,9 +36,6 @@ public partial class EventSync(
     [GeneratedRegex("""<script type=.application/ld\+json.[^>]*>(.*?)</script>""", RegexOptions.Singleline)]
     private static partial Regex JsonLdBlocks();
 
-    [GeneratedRegex("<[^>]+>")]
-    private static partial Regex HtmlTags();
-
     public async Task RunAsync()
     {
         Console.WriteLine($"\n== Event sync: {config.CityPath}/eventos");
@@ -42,6 +45,8 @@ public partial class EventSync(
             Console.Error.WriteLine("  Events page not found in CMS, skipping.");
             return;
         }
+
+        EventVenues venues = await VenuesAsync();
 
         // Existing event items: url (website) → id, plus agent-created stale candidates.
         Guid eventTypeId = await umbraco.GetDocumentTypeIdAsync("Event");
@@ -96,7 +101,7 @@ public partial class EventSync(
 
             Console.WriteLine($"  {source.Name}: {events.Count} eventos futuros");
 
-            List<ScrapedEvent> pending =
+            List<ScrapedEvent> candidates =
             [
                 .. events.Where(ev =>
                     // portals keep cancelled/postponed events listed for refunds
@@ -107,10 +112,62 @@ public partial class EventSync(
                     && byNameDate.Add(NameDateKey(ev.Name, ev.Start))),
             ];
 
+            // The portal covers the country; this section covers one city. Asking
+            // after the dedupe above means only events about to be created are
+            // located, so a pass that finds nothing new costs no Google call.
+            var pending = new List<ScrapedEvent>();
+            var venuePlaces = new List<DiscoveredPlace?>();
+            var foreign = 0;
+            foreach (ScrapedEvent ev in candidates)
+            {
+                EventLocation location;
+                try
+                {
+                    location = await venues.LocateAsync(ev);
+                }
+                catch (Exception ex)
+                {
+                    // A failed lookup is not an answer: leave the event for the next
+                    // pass instead of importing it or deciding it is not ours.
+                    Console.Error.WriteLine($"  ! ubicación de {ev.Name}: {ex.Message}");
+                    byNameDate.Remove(NameDateKey(ev.Name, ev.Start));
+                    continue;
+                }
+
+                if (!location.InCity)
+                {
+                    foreign++;
+                    continue;
+                }
+
+                pending.Add(ev);
+                venuePlaces.Add(location.Venue);
+            }
+
+            if (foreign > 0)
+            {
+                Console.WriteLine($"  {foreign} fuera de {config.CityPath.Trim('/')}, descartado(s)");
+            }
+
             Dictionary<int, string> categories = await ClassifyAsync(pending);
 
             foreach ((ScrapedEvent ev, int position) in pending.Select((ev, i) => (ev, i)))
             {
+                // The venue as a place of the portal, when its Google types belong to
+                // one of the configured sections. Never blocks creating the event.
+                DiscoveredPlace? venue = venuePlaces[position];
+                if (venue is not null)
+                {
+                    try
+                    {
+                        await venues.FileAsync(venue);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Error.WriteLine($"  ! lugar {venue.Name}: {ex.Message}");
+                    }
+                }
+
                 // Main image, uploaded to the Media library. Image failures never
                 // block creating the event.
                 string? photoValue = null;
@@ -145,6 +202,17 @@ public partial class EventSync(
                     new { alias = "address", value = (object)(ev.Address ?? "") },
                     new { alias = "website", value = (object)ev.Url },
                     new { alias = "source", value = (object)$"agent:{source.Name}" },
+                    // What the portal declared, else where Google put the venue: the
+                    // events map plots only the events that carry coordinates. The CMS
+                    // coordinate type stores decimal(_,6); more decimals fail publish.
+                    .. (ev.Latitude ?? venue?.Latitude) is double eventLat
+                        && (ev.Longitude ?? venue?.Longitude) is double eventLng
+                        ? new object[]
+                        {
+                            new { alias = "latitude", value = (object)Math.Round(eventLat, 6) },
+                            new { alias = "longitude", value = (object)Math.Round(eventLng, 6) },
+                        }
+                        : [],
                     .. categories.TryGetValue(position, out string? category)
                         ? new object[] { new { alias = "category", value = (object)category } }
                         : [],
@@ -168,6 +236,107 @@ public partial class EventSync(
             await umbraco.DeleteDocumentAsync(id);
             Console.WriteLine($"  - {name} (evento pasado)");
         }
+    }
+
+    /// <summary>
+    /// The venue side of the sync, built from the city node's "Agente" tab: the
+    /// rectangle every event is judged against and the category prompts a venue
+    /// created as a place is written with. Warns once when the city has no
+    /// rectangle, which leaves the sync importing the whole country as before.
+    /// </summary>
+    private async Task<EventVenues> VenuesAsync()
+    {
+        UmbracoClient.CityAgentConfig? city = await umbraco.GetCityAgentConfigAsync(config.CityPath);
+        var venues = new EventVenues(umbraco, google, enricher, config, city);
+        if (venues.Area is null)
+        {
+            Console.Error.WriteLine(
+                $"  ! {config.CityPath} no tiene \"agentArea\" — sin ese rectángulo no se puede "
+                + "saber qué eventos son de la ciudad y se importan todos.");
+        }
+
+        return venues;
+    }
+
+    /// <summary>
+    /// Maintenance pass over the events this agent already created: the ones whose
+    /// venue is not in the city go to the recycle bin. The sync only learned to ask
+    /// where an event happens after importing the whole country — Santiago, Higüey,
+    /// Punta Cana — and the events it stored carry no coordinates, so each venue is
+    /// looked up on Google inside the city rectangle exactly as a new event would be.
+    /// Events created by hand (or seeded) are never touched, and nothing is written
+    /// without <paramref name="apply"/>.
+    /// </summary>
+    public async Task PurgeForeignAsync(bool apply)
+    {
+        Console.WriteLine(apply
+            ? $"\n== Eliminando eventos fuera de {config.CityPath.Trim('/')}"
+            : "\n== Eventos fuera de la ciudad (simulación; agrega --apply para aplicarla)");
+
+        (Guid Id, string Name)? eventos = await umbraco.GetContentByPathAsync($"{config.CityPath}/eventos");
+        if (eventos is null)
+        {
+            Console.Error.WriteLine("  Events page not found in CMS, skipping.");
+            return;
+        }
+
+        EventVenues venues = await VenuesAsync();
+        if (venues.Area is null)
+        {
+            Console.Error.WriteLine("  Sin rectángulo de ciudad no hay nada que comprobar.");
+            return;
+        }
+
+        Guid eventTypeId = await umbraco.GetDocumentTypeIdAsync("Event");
+        var kept = 0;
+        var removed = 0;
+        foreach (UmbracoClient.ChildDocument child in await umbraco.GetChildrenAsync(eventos.Value.Id))
+        {
+            if (child.DocumentTypeId != eventTypeId
+                || await umbraco.GetDocumentTextValuesAsync(child.Id) is not { } detail
+                || detail.TextValues.GetValueOrDefault("source")?.StartsWith("agent:") != true)
+            {
+                continue;
+            }
+
+            var stored = new ScrapedEvent(
+                child.Name, detail.TextValues.GetValueOrDefault("website") ?? "", DateTime.Today, null,
+                detail.TextValues.GetValueOrDefault("venueName"),
+                detail.TextValues.GetValueOrDefault("address"),
+                detail.TextValues.GetValueOrDefault("description"),
+                Latitude: ParseCoordinate(detail.TextValues.GetValueOrDefault("latitude")),
+                Longitude: ParseCoordinate(detail.TextValues.GetValueOrDefault("longitude")));
+
+            EventLocation location;
+            try
+            {
+                location = await venues.LocateAsync(stored, withVenue: false);
+            }
+            catch (Exception ex)
+            {
+                // Never read a failed lookup as "not in the city": that would recycle
+                // the section over a Google outage.
+                Console.Error.WriteLine($"  ! {child.Name}: {ex.Message} — se deja como está");
+                continue;
+            }
+
+            if (location.InCity)
+            {
+                kept++;
+                continue;
+            }
+
+            removed++;
+            Console.WriteLine($"  - {child.Name} ({stored.Venue ?? "sin lugar"})");
+            if (apply)
+            {
+                await umbraco.RecycleDocumentAsync(child.Id);
+            }
+        }
+
+        Console.WriteLine(apply
+            ? $"  {removed} evento(s) a la papelera, {kept} conservado(s)"
+            : $"  {removed} evento(s) irían a la papelera, {kept} se conservarían");
     }
 
     /// <summary>
@@ -271,6 +440,50 @@ public partial class EventSync(
             : $"  {changed} eventos cambiarían de categoría");
     }
 
+    /// <summary>
+    /// Diagnostic ("--scrape-events"): what each source yields and whether the city
+    /// filter would keep it — the same rule the sync applies, so a portal that stops
+    /// stating coordinates shows up here first. Reads the city node and Google;
+    /// writes nothing.
+    /// </summary>
+    public async Task ReportSourcesAsync()
+    {
+        EventVenues venues = await VenuesAsync();
+        foreach (EventSourceConfig source in config.Sources)
+        {
+            List<ScrapedEvent> scraped;
+            try
+            {
+                scraped = await ScrapeSourceAsync(source);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"\n== {source.Name} FAILED: {ex.Message}");
+                continue;
+            }
+
+            Console.WriteLine($"\n== {source.Name}: {scraped.Count} eventos futuros");
+            foreach (ScrapedEvent ev in scraped)
+            {
+                string verdict;
+                try
+                {
+                    EventLocation location = await venues.LocateAsync(ev);
+                    verdict = location.InCity
+                        ? location.Venue is { } place ? $"sí ({place.Name})" : "sí"
+                        : "no";
+                }
+                catch (Exception ex)
+                {
+                    verdict = $"error: {ex.Message}";
+                }
+
+                Console.WriteLine(
+                    $"  {ev.Start:yyyy-MM-dd HH:mm}  {ev.Name}  [{ev.Venue}]  en la ciudad: {verdict}");
+            }
+        }
+    }
+
     // ---- Strategies ----
 
     /// <summary>Scrapes one configured source (no CMS access) — also used by the
@@ -279,7 +492,6 @@ public partial class EventSync(
     {
         "jsonld-listing" => FromJsonLdListingAsync(source),
         "jsonld-detail" => FromJsonLdDetailsAsync(source),
-        "ticketexpress" => FromTicketExpressAsync(source),
         _ => throw new InvalidOperationException($"Unknown source kind '{source.Kind}'"),
     };
 
@@ -307,39 +519,6 @@ public partial class EventSync(
                 string? ogImage = OgContent(html, "og:image");
                 events.AddRange(ExtractJsonLdEvents(html)
                     .Select(ev => ev.ImageUrl is null ? ev with { ImageUrl = ogImage } : ev));
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine($"  ! {source.Name} {link}: {ex.Message}");
-            }
-        }
-
-        return events;
-    }
-
-    /// <summary>TicketExpress: no structured data — og:title plus a Spanish prose date.</summary>
-    private async Task<List<ScrapedEvent>> FromTicketExpressAsync(EventSourceConfig source)
-    {
-        string listing = await FetchAsync(source.Url);
-        var baseUri = new Uri(source.Url);
-        var events = new List<ScrapedEvent>();
-        foreach (string link in Regex.Matches(listing, source.LinkPattern)
-                     .Select(m => new Uri(baseUri, m.Groups[1].Value).AbsoluteUri)
-                     .Distinct()
-                     .Take(config.MaxPerSource))
-        {
-            try
-            {
-                string html = await FetchAsync(link);
-                string? name = OgContent(html, "og:title");
-                DateTime? date = ParseSpanishProseDate(HtmlTags().Replace(html, " "));
-                if (name is null || date is null || date.Value.Date < DateTime.Today)
-                {
-                    continue;
-                }
-
-                events.Add(new ScrapedEvent(
-                    name, link, date.Value, null, null, null, "", OgContent(html, "og:image")));
             }
             catch (Exception ex)
             {
@@ -504,9 +683,22 @@ public partial class EventSync(
         DateTime? end = DateTime.TryParse(Text(e, "endDate"), out DateTime endParsed) ? endParsed : null;
         string? venue = null;
         string? address = null;
+        double? latitude = null;
+        double? longitude = null;
         if (e.TryGetProperty("location", out JsonElement loc) && loc.ValueKind == JsonValueKind.Object)
         {
             venue = Text(loc, "name");
+
+            // Both portals state the venue's coordinates, which is what decides
+            // whether the event belongs to the city — the locality they file it
+            // under does not: Escenario 360 reads "Los Alcarrizos" and stands on
+            // Av. John F. Kennedy.
+            if (loc.TryGetProperty("geo", out JsonElement geo) && geo.ValueKind == JsonValueKind.Object)
+            {
+                latitude = Coordinate(geo, "latitude");
+                longitude = Coordinate(geo, "longitude");
+            }
+
             if (loc.TryGetProperty("address", out JsonElement addr) && addr.ValueKind == JsonValueKind.Object)
             {
                 address = string.Join(", ",
@@ -537,47 +729,29 @@ public partial class EventSync(
         }
 
         return new ScrapedEvent(
-            System.Net.WebUtility.HtmlDecode(name).Trim(), url, start, end, venue, address, description, imageUrl);
+            System.Net.WebUtility.HtmlDecode(name).Trim(), url, start, end, venue, address, description, imageUrl,
+            latitude, longitude);
     }
 
-    private static readonly string[] SpanishMonths =
-    [
-        "enero", "febrero", "marzo", "abril", "mayo", "junio",
-        "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
-    ];
-
-    [GeneratedRegex(@"\b(\d{1,2})\s+de\s+([a-záéíóú]+)(?:\s+de[l]?\s+(\d{4}))?", RegexOptions.IgnoreCase)]
-    private static partial Regex ProseDate();
-
-    /// <summary>First "26 de junio [de 2026]" in the text; without a year, the
-    /// next future occurrence is assumed. Null when no date is found.</summary>
-    internal static DateTime? ParseSpanishProseDate(string text)
-    {
-        foreach (Match m in ProseDate().Matches(text))
-        {
-            int month = Array.IndexOf(SpanishMonths, m.Groups[2].Value.ToLowerInvariant()) + 1;
-            int day = int.Parse(m.Groups[1].Value);
-            if (month == 0 || day is < 1 or > 31)
+    /// <summary>A schema.org coordinate, which both portals write as a string.</summary>
+    private static double? Coordinate(JsonElement geo, string property) =>
+        geo.TryGetProperty(property, out JsonElement value)
+            ? value.ValueKind switch
             {
-                continue;
+                JsonValueKind.Number => value.GetDouble(),
+                JsonValueKind.String => ParseCoordinate(value.GetString()),
+                _ => null,
             }
+            : null;
 
-            int year = m.Groups[3].Success ? int.Parse(m.Groups[3].Value) : DateTime.Today.Year;
-            if (!DateTime.TryParse($"{year}-{month:00}-{day:00}", out DateTime date))
-            {
-                continue;
-            }
-
-            if (!m.Groups[3].Success && date.Date < DateTime.Today)
-            {
-                date = date.AddYears(1);
-            }
-
-            return date.AddHours(20); // portals rarely state the hour in prose; assume evening
-        }
-
-        return null;
-    }
+    /// <summary>A coordinate written as text, invariant — the CMS and every portal
+    /// use a decimal point whatever the machine's culture says.</summary>
+    private static double? ParseCoordinate(string? value) =>
+        double.TryParse(
+            value, System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out double parsed)
+            ? parsed
+            : null;
 
     private static DateTime? ParseCmsDate(string? value) =>
         DateTime.TryParse(value, out DateTime parsed) ? parsed : null;

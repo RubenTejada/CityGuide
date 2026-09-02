@@ -30,20 +30,39 @@ public class EventsConfig
     public int MaxPerSource { get; set; } = 30;
 
     public List<EventSourceConfig> Sources { get; set; } = [];
+
+    /// <summary>
+    /// Where a resolved venue is created as a place, by Google type. Every portal
+    /// lists the whole country, so an event only survives when its venue is inside
+    /// the city; once Google has been asked that question the answer is a full
+    /// place, and a venue the portal does not have yet (a bar, a theatre) is worth
+    /// a page of its own. A venue whose types match no section is only used for the
+    /// event's coordinates.
+    /// </summary>
+    public List<VenueSectionConfig> VenueSections { get; set; } = [];
+}
+
+public class VenueSectionConfig
+{
+    /// <summary>Google Places types that belong in this section.</summary>
+    public List<string> Types { get; set; } = [];
+
+    /// <summary>Umbraco route path the venue is created under.</summary>
+    public string ParentPath { get; set; } = "";
 }
 
 public class EventSourceConfig
 {
     public string Name { get; set; } = "";
 
-    /// <summary>Parsing strategy: "jsonld-listing", "jsonld-detail" or "ticketexpress".</summary>
+    /// <summary>Parsing strategy: "jsonld-listing" or "jsonld-detail".</summary>
     public string Kind { get; set; } = "jsonld-listing";
 
     /// <summary>Listing page URL.</summary>
     public string Url { get; set; } = "";
 
     /// <summary>Regex whose group 1 captures detail-page links in the listing
-    /// (kinds "jsonld-detail" and "ticketexpress").</summary>
+    /// (kind "jsonld-detail").</summary>
     public string LinkPattern { get; set; } = "";
 }
 

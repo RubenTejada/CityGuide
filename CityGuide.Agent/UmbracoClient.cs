@@ -346,7 +346,9 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
 
     public record DocumentDetail(string Name, Dictionary<string, string?> TextValues);
 
-    /// <summary>Name plus every string-valued property of a document (drafts included).</summary>
+    /// <summary>Name plus every scalar property of a document, as text (drafts included).
+    /// Numbers come back as they were written, invariant — coordinates above all, which
+    /// the Management API returns as JSON numbers.</summary>
     public async Task<DocumentDetail?> GetDocumentTextValuesAsync(Guid id)
     {
         HttpRequestMessage request = await AuthorizedRequestAsync(
@@ -361,9 +363,12 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         var values = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         foreach (JsonElement v in doc.RootElement.GetProperty("values").EnumerateArray())
         {
-            if (v.GetProperty("value").ValueKind == JsonValueKind.String)
+            JsonElement value = v.GetProperty("value");
+            if (value.ValueKind is JsonValueKind.String or JsonValueKind.Number)
             {
-                values[v.GetProperty("alias").GetString()!] = v.GetProperty("value").GetString();
+                values[v.GetProperty("alias").GetString()!] = value.ValueKind == JsonValueKind.String
+                    ? value.GetString()
+                    : value.GetRawText();
             }
         }
 

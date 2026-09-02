@@ -23,6 +23,18 @@ on:
         type: boolean
         required: false
         default: false
+      purge_foreign_events:
+        description: >-
+          Maintenance pass instead of the ingestion run: sends to the recycle bin
+          the events the agent imported that do not happen in the city (every ticket
+          portal lists the whole country). "plan" only prints what it would remove.
+        type: choice
+        required: false
+        options:
+          - "no"
+          - plan
+          - apply
+        default: "no"
       regroup_malls:
         description: >-
           Maintenance pass instead of the ingestion run: recreates a plaza stored
@@ -129,6 +141,7 @@ jobs:
           Cinemas__Ratings__OmdbApiKey: ${{ secrets.OMDB_API_KEY }}
           SECTION: ${{ inputs.section }}
           RECATEGORIZE: ${{ inputs.recategorize_events }}
+          PURGE_FOREIGN: ${{ inputs.purge_foreign_events }}
           REGROUP: ${{ inputs.regroup_malls }}
           LINK: ${{ inputs.link_malls }}
           MERGE_FROM: ${{ inputs.merge_mall_from }}
@@ -143,6 +156,10 @@ jobs:
         run: |
           if [ "$RECATEGORIZE" = "true" ]; then
             dotnet run -c Release -- --recategorize-events --apply
+          elif [ "$PURGE_FOREIGN" = "plan" ]; then
+            dotnet run -c Release -- --purge-foreign-events
+          elif [ "$PURGE_FOREIGN" = "apply" ]; then
+            dotnet run -c Release -- --purge-foreign-events --apply
           elif [ "$LINK" = "plan" ]; then
             dotnet run -c Release -- --link-malls
           elif [ "$LINK" = "apply" ]; then

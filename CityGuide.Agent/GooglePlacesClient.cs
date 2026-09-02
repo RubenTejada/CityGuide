@@ -18,7 +18,15 @@ public record DiscoveredPlace(
     string? PhotoName);
 
 /// <summary>A rectangle a text search is confined to, corner to corner.</summary>
-public record GeoArea(double SouthLat, double WestLng, double NorthLat, double EastLng);
+public record GeoArea(double SouthLat, double WestLng, double NorthLat, double EastLng)
+{
+    /// <summary>True when the point falls inside the rectangle. The same box that
+    /// keeps Google's answers inside the city also answers, for free, whether a
+    /// place a portal already gave coordinates for belongs to it.</summary>
+    public bool Contains(double latitude, double longitude) =>
+        latitude >= SouthLat && latitude <= NorthLat
+        && longitude >= WestLng && longitude <= EastLng;
+}
 
 /// <summary>Google Places API (New) — Text Search.</summary>
 public class GooglePlacesClient(HttpClient http, string apiKey)

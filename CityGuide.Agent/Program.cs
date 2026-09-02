@@ -100,27 +100,11 @@ async Task<UmbracoClient.CityAgentConfig?> CityConfigAsync(string citySlug)
     return cached;
 }
 
-// Diagnostic: scrape the configured event sources and print, without touching the CMS.
+// Diagnostic: scrape the configured event sources and print what each yields, plus
+// whether the city filter would keep it. Reads the city node and Google; writes nothing.
 if (args.Contains("--scrape-events"))
 {
-    var scraper = new EventSync(http, umbraco, config.Events);
-    foreach (EventSourceConfig source in config.Events.Sources)
-    {
-        try
-        {
-            List<ScrapedEvent> scraped = await scraper.ScrapeSourceAsync(source);
-            Console.WriteLine($"\n== {source.Name}: {scraped.Count} eventos futuros");
-            foreach (ScrapedEvent ev in scraped.Take(5))
-            {
-                Console.WriteLine($"  {ev.Start:yyyy-MM-dd HH:mm}  {ev.Name}  [{ev.Venue}]  {ev.Url}");
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"\n== {source.Name} FAILED: {ex.Message}");
-        }
-    }
-
+    await new EventSync(http, umbraco, config.Events, google, enricher).ReportSourcesAsync();
     return 0;
 }
 
@@ -132,6 +116,17 @@ if (args.Contains("--recategorize-events"))
 {
     await new EventSync(http, umbraco, config.Events, google, enricher)
         .RecategorizeAsync(args.Contains("--apply"));
+    return 0;
+}
+
+// Maintenance pass: the events the agent imported before it asked where they happen.
+// Every ticket portal lists the whole country, so the section filled up with Santiago,
+// Higüey and Punta Cana; each venue is looked up inside the city rectangle and the ones
+// that are not there go to the recycle bin. Prints the plan without --apply.
+if (args.Contains("--purge-foreign-events"))
+{
+    await new EventSync(http, umbraco, config.Events, google, enricher)
+        .PurgeForeignAsync(args.Contains("--apply"));
     return 0;
 }
 
