@@ -42,8 +42,8 @@ public static class BranchNaming
             .Split(' ', StringSplitOptions.RemoveEmptyEntries)
             .Where(word =>
             {
-                string token = TextMatch.Normalize(word).Trim('.', ',', '(', ')', '-');
-                return token.Length > 0 && !chain.Contains(token);
+                string[] tokens = TextMatch.Tokens(word);
+                return tokens.Length == 0 || !tokens.All(chain.Contains);
             });
 
         return string.Join(' ', kept).Trim(' ', '-', '–', '—', ',');

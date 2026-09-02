@@ -92,7 +92,26 @@ places, each one LLM call plus a throttled photo download); seed it once with
 `--section restaurantes` and the daily job then skips almost everything. A `Run` with a
 `CompanyName` creates its places as branches of that `company` node instead of flat under
 the category (and fails loudly when the company does not exist); without one, a place
-whose name contains an existing company's name is nested under it anyway. Every run also
+whose name contains an existing company's name is nested under it anyway. That lookup
+covers the category's subcategories too — a chain filed inside one ("McDonald's" under
+"Comida Rápida") has to be found from the category above it, or the next run creates the
+brand a second time. `CreatesCompanies` pairs with `CompanyName` for the chains nobody is
+going to type into the backoffice one by one — the fast-food runs, one per brand
+(McDonald's, Burger King, KFC, Pizza Hut, Domino's, Subway, Dunkin'…): the brand node is
+created on the first discovered place whose name carries the chain, inside the cuisine
+subcategory that place's Google types name (a burger chain lands in "Comida Rápida", a
+pizza one in "Pizzerías"), and it keeps the description that one place paid for while
+every location after it inherits and costs no tokens. Such a run does not pin the company
+for its whole answer — Google returns the chain's rivals to a query for it, and those
+belong in the category — so the name match decides place by place. The brand node is
+created without a logo; an editor adds it, and until then the frontend falls back to the
+section image. A run may name the subcategory its places are filed in (`Subcategory`,
+created under `ParentPath` when missing, through the same code path `AutoCategorize` uses
+for cuisines): the retail runs — ropa y moda, calzado, perfumerías y cosméticos, joyería
+y accesorios, tiendas por departamento — need it because what a shop sells is what the
+query asks for and not what Google says about it, which types a perfume shop and a
+jeweller alike as "store". A branch is exempt, as always: it lives under its brand.
+Every run also
 asks the address whether the establishment sits inside a plaza comercial the CMS already
 has, its coordinates within 250 m of it (`MallMatching`) — but a plaza never becomes the
 parent: a place lives in the section that says what it is, which is what keeps it in that

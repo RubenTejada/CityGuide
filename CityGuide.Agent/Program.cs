@@ -721,6 +721,46 @@ async Task<Dictionary<string, Guid>> SiblingsAsync(Guid parentId)
     return names;
 }
 
+// Chains (banks, supermarkets, fast-food brands) keep one "company" node per brand
+// with the logo and general info, and their branches as child places. A chain filed
+// inside a cuisine subcategory ("McDonald's" under "Comida Rápida") still has to be
+// found from the category above it, or the next run creates the brand a second time,
+// so the lookup walks the subcategories too. Read once per category: the restaurant
+// runs alone share one parent twenty times over.
+var companiesByParent = new Dictionary<Guid, Dictionary<string, Guid>>();
+
+async Task<Dictionary<string, Guid>> CompaniesAsync(Guid parentId)
+{
+    if (companiesByParent.TryGetValue(parentId, out Dictionary<string, Guid>? names))
+    {
+        return names;
+    }
+
+    Guid companyType = await umbraco.GetDocumentTypeIdAsync("Company");
+    Guid subcategoryType = await umbraco.GetDocumentTypeIdAsync("Subcategory");
+    names = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
+    foreach (UmbracoClient.ChildDocument child in await umbraco.GetChildrenAsync(parentId))
+    {
+        if (child.DocumentTypeId == companyType)
+        {
+            names[child.Name] = child.Id;
+        }
+        else if (child.DocumentTypeId == subcategoryType)
+        {
+            foreach (UmbracoClient.ChildDocument nested in await umbraco.GetChildrenAsync(child.Id))
+            {
+                if (nested.DocumentTypeId == companyType)
+                {
+                    names[nested.Name] = nested.Id;
+                }
+            }
+        }
+    }
+
+    companiesByParent[parentId] = names;
+    return names;
+}
+
 foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelected(r.ParentPath)) : [])
 {
     // /santo-domingo/bares-y-clubes → city slug "santo-domingo", category slug "bares-y-clubes".
@@ -768,10 +808,11 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelec
     var runCreated = 0;
     var runSkipped = 0;
 
-    // AutoCategorize: existing cuisine subcategories under this category, by name.
+    // Existing subcategories under this category, by name: the cuisines an
+    // AutoCategorize run files restaurants into, and the one a Subcategory run names.
     Dictionary<string, Guid>? subcategories = null;
     Guid subcategoryTypeId = default;
-    if (run.AutoCategorize)
+    if (run.AutoCategorize || !string.IsNullOrWhiteSpace(run.Subcategory))
     {
         subcategoryTypeId = await umbraco.GetDocumentTypeIdAsync("Subcategory");
         subcategories = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
@@ -784,28 +825,25 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelec
         }
     }
 
-    // Chains (banks, supermarkets, pharmacies) keep one "company" node per brand
-    // with the logo and general info, and their branches as child places. Discovered
-    // branches must land under that node, never flat under the category, or they lose
-    // the logo the frontend inherits. Run.CompanyName pins the target explicitly;
-    // otherwise a place whose name contains a company's name is nested under it.
+    // Discovered branches must land under their brand's node, never flat under the
+    // category, or they lose the logo and the general info the frontend inherits.
+    // Run.CompanyName pins the target explicitly; otherwise a place whose name
+    // contains a company's name is nested under it.
     Guid companyTypeId = await umbraco.GetDocumentTypeIdAsync("Company");
-    var companies = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
-    foreach (UmbracoClient.ChildDocument child in await umbraco.GetChildrenAsync(parent.Value.Id))
-    {
-        if (child.DocumentTypeId == companyTypeId)
-        {
-            companies[child.Name] = child.Id;
-        }
-    }
+    Dictionary<string, Guid> companies = await CompaniesAsync(parent.Value.Id);
 
     // Plazas comerciales of this city: the shops runs file establishments inside them,
     // the plazas run uses them to recognise a plaza it already has, and every run lists
     // what it creates inside one on that plaza's page.
     List<KnownMall> malls = await MallsAsync(segments[0]);
 
+    // A chain run (CreatesCompanies) names the brand it looks for instead of pinning
+    // it: Google answers "McDonald's en Santo Domingo" with its rivals too, and those
+    // belong in the category, not under the brand. There the name match below decides
+    // place by place, and the brand node is created on the first place that carries
+    // the chain's name.
     Guid? pinnedCompanyId = null;
-    if (!string.IsNullOrWhiteSpace(run.CompanyName))
+    if (!string.IsNullOrWhiteSpace(run.CompanyName) && !run.CreatesCompanies)
     {
         pinnedCompanyId = companies
             .Where(c => TextMatch.Matches(run.CompanyName, c.Key, 1.0))
@@ -899,7 +937,9 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelec
             Guid targetParentId = companyId ?? parent.Value.Id;
             string? cuisine = companyId is not null || subcategories is null
                 ? null
-                : CuisineMap.SubcategoryFor(place.Types);
+                : string.IsNullOrWhiteSpace(run.Subcategory)
+                    ? CuisineMap.SubcategoryFor(place.Types)
+                    : run.Subcategory;
             if (cuisine is not null)
             {
                 if (!subcategories!.TryGetValue(cuisine, out Guid subcategoryId))
@@ -911,6 +951,26 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelec
                 }
 
                 targetParentId = subcategoryId;
+            }
+
+            // First location of a chain the run is allowed to create: the brand node
+            // goes where this place was headed — the cuisine subcategory its Google
+            // types name, so a burger chain lands in "Comida Rápida" and a pizza one in
+            // "Pizzerías" — and keeps the description this place just paid for. Every
+            // location after it is a branch that inherits and costs no tokens.
+            if (companyId is null && run.CreatesCompanies
+                && TextMatch.Matches(run.CompanyName, place.Name, 1.0))
+            {
+                companyId = await umbraco.CreateDocumentAsync(
+                    targetParentId, companyTypeId, run.CompanyName,
+                    [
+                        new { alias = "description", value = (object?)enrichment?.Description },
+                        new { alias = "website", value = (object?)place.Website },
+                    ]);
+                companies[run.CompanyName] = companyId.Value;
+                targetParentId = companyId.Value;
+                cuisine = null;
+                Console.WriteLine($"  + empresa '{run.CompanyName}'");
             }
 
             string? companyName = companyId is null

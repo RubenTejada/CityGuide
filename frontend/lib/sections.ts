@@ -66,6 +66,11 @@ const SUBCATEGORY_ICONS: Record<string, string> = {
   supermercados: "🛒",
   farmacias: "💊",
   "plazas-comerciales-y-malls": "🏬",
+  "ropa-y-moda": "👕",
+  calzado: "👟",
+  "perfumerias-y-cosmeticos": "💄",
+  "joyeria-y-accesorios": "💍",
+  "tiendas-por-departamento": "🏬",
   // Empresas y Servicios
   bancos: "🏦",
   // Mall groups

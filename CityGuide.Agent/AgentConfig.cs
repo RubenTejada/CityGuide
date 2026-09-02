@@ -161,10 +161,30 @@ public class RunConfig
     /// </summary>
     public string CompanyName { get; set; } = "";
 
+    /// <summary>
+    /// Chain runs: create the CompanyName node when it does not exist yet, instead of
+    /// skipping the run. The fast-food brands are dozens of chains nobody is going to
+    /// type into the backoffice one by one, and without the node every branch is a flat
+    /// place with its own model call. The first discovered location that carries the
+    /// chain's name pays that call and the company keeps its description; every branch
+    /// after it inherits and costs nothing.
+    /// </summary>
+    public bool CreatesCompanies { get; set; }
+
     /// <summary>Restaurant runs only: file each discovered place into a cuisine
     /// subcategory derived from its Google types (see CuisineMap), creating the
     /// subcategory under ParentPath when it does not exist yet.</summary>
     public bool AutoCategorize { get; set; }
+
+    /// <summary>
+    /// Optional. Name of the subcategory under ParentPath every place this run
+    /// discovers is filed in, created when missing. What a shop sells is what the
+    /// query asks for and not what Google says about it — a perfume shop and a
+    /// jeweller both come back typed as "store" — so the run names the subcategory
+    /// instead of deriving it the way AutoCategorize does for restaurants. Ignored
+    /// for a place nested under a company: a branch lives under its brand.
+    /// </summary>
+    public string Subcategory { get; set; } = "";
 
     /// <summary>
     /// The plazas comerciales run: discovered plazas are created as "mall" documents,

@@ -37,6 +37,8 @@ public static class CuisineMap
         ["pizza_restaurant"] = "Pizzerías",
         ["hamburger_restaurant"] = "Comida Rápida",
         ["fast_food_restaurant"] = "Comida Rápida",
+        ["sandwich_shop"] = "Comida Rápida",
+        ["donut_shop"] = "Comida Rápida",
         ["vegetarian_restaurant"] = "Vegetariana",
         ["vegan_restaurant"] = "Vegetariana",
         ["breakfast_restaurant"] = "Desayunos y Brunch",

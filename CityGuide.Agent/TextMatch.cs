@@ -17,9 +17,11 @@ public static class TextMatch
                 != System.Globalization.UnicodeCategory.NonSpacingMark))
         .ToLowerInvariant();
 
-    /// <summary>Significant tokens of a name: normalized, longer than 2 chars, no stop words.</summary>
+    /// <summary>Significant tokens of a name: normalized, longer than 2 chars, no stop words.
+    /// Apostrophes split like any other separator, so a chain Google spells both ways
+    /// ("McDonald's", "McDonalds") yields the same token either way.</summary>
     public static string[] Tokens(string value) => [.. Normalize(value)
-        .Split([' ', '-', '.', ',', '(', ')'], StringSplitOptions.RemoveEmptyEntries)
+        .Split([' ', '-', '.', ',', '(', ')', '\'', '\u2019'], StringSplitOptions.RemoveEmptyEntries)
         .Where(t => t.Length > 2 && !StopWords.Contains(t))];
 
     /// <summary>True when at least <paramref name="ratio"/> of the reference name's
