@@ -111,6 +111,18 @@ for cuisines): the retail runs — ropa y moda, calzado, perfumerías y cosméti
 y accesorios, tiendas por departamento — need it because what a shop sells is what the
 query asks for and not what Google says about it, which types a perfume shop and a
 jeweller alike as "store". A branch is exempt, as always: it lives under its brand.
+`Subcategory` and `CreatesCompanies` together are what fill a section the backoffice has
+no node for yet: the "Remesas y Envíos" runs under `/santo-domingo/empresas-y-servicios`
+create the subcategory on the first place that needs it and the brand node inside it
+(Vimenca, Caribe Express, Quisqueyana, Western Union, EPS, Aeropaq, Domex, DHL), each
+followed by two broad queries — agencias de remesas, empresas de envíos — that catch the
+independents and nest anything named after a brand under the node the chain runs just
+made. Order matters there: the chain runs come first, because the global `googlePlaceId`
+dedupe means whichever run sees a branch first decides where it lives. A chain whose name
+reduces to one short token is deliberately left to the broad runs (Ria matches every
+"panadería" and "joyería", BM's own token is too short to survive `TextMatch`), and no
+logo is seeded for these brands either — the frontend falls back to the section image
+until an editor adds one.
 Every run also
 asks the address whether the establishment sits inside a plaza comercial the CMS already
 has, its coordinates within 250 m of it (`MallMatching`) — but a plaza never becomes the
