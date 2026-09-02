@@ -126,12 +126,87 @@ function clusterBoundsHiding(
   return cluster?.bounds ?? null;
 }
 
+/** Where a pin stands, whichever shape the marker stored it in. */
+function markerPosition(
+  element: google.maps.marker.AdvancedMarkerElement,
+): google.maps.LatLngLiteral | null {
+  const position = element.position;
+  if (!position) return null;
+  if (position instanceof google.maps.LatLng) return position.toJSON();
+  const { lat, lng } = position as google.maps.LatLngLiteral;
+  return typeof lat === "number" && typeof lng === "number" ? { lat, lng } : null;
+}
+
 /**
- * Opens the cluster swallowing the pin the nearby panel points at — the same
- * zoom clicking the bubble performs — and puts the camera back where the
- * visitor had it once the pointer leaves the list. Hovering another row while
- * still in the list opens that row's bubble instead; the framing to return to
- * stays the one from before the first bubble was opened.
+ * Whether the map shows the point comfortably: a pin sitting on the very edge
+ * is drawn half outside the frame, so the outer tenth of the viewport counts
+ * as off screen.
+ */
+function isFramed(map: google.maps.Map, point: google.maps.LatLngLiteral) {
+  const bounds = map.getBounds();
+  if (!bounds) return true;
+  const ne = bounds.getNorthEast();
+  const sw = bounds.getSouthWest();
+  const margin = 0.1;
+  const lat = (ne.lat() - sw.lat()) * margin;
+  const lng = (ne.lng() - sw.lng()) * margin;
+  return (
+    point.lat > sw.lat() + lat &&
+    point.lat < ne.lat() - lat &&
+    point.lng > sw.lng() + lng &&
+    point.lng < ne.lng() - lng
+  );
+}
+
+/**
+ * Eases the camera to a centre and zoom. The Maps API only animates `panTo`
+ * when the move is shorter than the viewport, and `moveCamera` never animates,
+ * so a pin two sectors away would teleport; this tweens it frame by frame.
+ * Returns a canceller, so hovering the next row takes the camera over instead
+ * of fighting the previous move.
+ */
+function animateCamera(
+  map: google.maps.Map,
+  target: { center: google.maps.LatLngLiteral; zoom: number },
+  duration = 500,
+): () => void {
+  const center = map.getCenter()?.toJSON();
+  const zoom = map.getZoom();
+  if (!center || zoom === undefined) {
+    map.moveCamera(target);
+    return () => {};
+  }
+  let frame = 0;
+  const start = performance.now();
+  const step = (now: number) => {
+    const progress = Math.min(1, (now - start) / duration);
+    // ease-in-out: leaves and arrives slowly.
+    const eased =
+      progress < 0.5
+        ? 2 * progress * progress
+        : 1 - (-2 * progress + 2) ** 2 / 2;
+    map.moveCamera({
+      center: {
+        lat: center.lat + (target.center.lat - center.lat) * eased,
+        lng: center.lng + (target.center.lng - center.lng) * eased,
+      },
+      zoom: zoom + (target.zoom - zoom) * eased,
+    });
+    if (progress < 1) frame = requestAnimationFrame(step);
+  };
+  frame = requestAnimationFrame(step);
+  return () => cancelAnimationFrame(frame);
+}
+
+/**
+ * Frames the pin the nearby panel points at: opens the cluster swallowing it —
+ * the same zoom clicking the bubble performs — or, when the pin is drawn on its
+ * own but sits outside the frame, flies the camera onto it. Hovering the row
+ * after a cluster was opened is exactly that second case: the map is zoomed in
+ * on another corner and the pin would otherwise highlight where nobody looks.
+ * The camera goes back where the visitor had it once the pointer leaves the
+ * list; hovering another row while still in the list frames that row instead,
+ * and the framing to return to stays the one from before the first move.
  */
 function useRevealHighlighted(
   clusterer: MarkerClusterer | null,
@@ -147,21 +222,33 @@ function useRevealHighlighted(
   useEffect(() => {
     if (!map || !clusterer) return;
 
-    const element = highlighted ? elements[highlighted] : undefined;
-    const bounds = element ? clusterBoundsHiding(clusterer, element) : null;
-    if (bounds) {
+    const remember = () => {
       const center = map.getCenter()?.toJSON();
       const zoom = map.getZoom();
       if (!framing.current && center && zoom !== undefined) {
         framing.current = { center, zoom };
       }
-      map.fitBounds(bounds, 64);
-      return;
+    };
+
+    const element = highlighted ? elements[highlighted] : undefined;
+    if (element) {
+      const bounds = clusterBoundsHiding(clusterer, element);
+      if (bounds) {
+        remember();
+        map.fitBounds(bounds, 64);
+        return;
+      }
+      const position = markerPosition(element);
+      if (!position || isFramed(map, position)) return;
+      remember();
+      // Only the centre moves: the visitor keeps the zoom they are reading at.
+      return animateCamera(map, { center: position, zoom: map.getZoom() ?? 13 });
     }
 
-    if (!highlighted && framing.current) {
-      map.moveCamera(framing.current);
+    if (framing.current) {
+      const back = framing.current;
       framing.current = null;
+      return animateCamera(map, back);
     }
   }, [map, clusterer, elements, highlighted]);
 }
