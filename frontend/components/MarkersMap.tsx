@@ -6,7 +6,6 @@ import {
   AdvancedMarker,
   InfoWindow,
   Map,
-  Pin,
   useMap,
 } from "@vis.gl/react-google-maps";
 import LogoPin from "./LogoPin";
@@ -209,11 +208,7 @@ export default function MarkersMap({
               title="Tu ubicación"
               zIndex={2000}
             >
-              <Pin
-                background="#2563eb"
-                borderColor="#1d4ed8"
-                glyphColor="#fff"
-              />
+              <VisitorPin />
             </AdvancedMarker>
           )}
         </Map>
@@ -254,6 +249,29 @@ export default function MarkersMap({
         </div>
       )}
     </MapBlock>
+  );
+}
+
+/**
+ * Where the visitor stands: a solid teardrop with a hollow centre, the only
+ * pin of its shape on the map (places are logo plates, clusters are bubbles).
+ * Drawn as an SVG so it stays sharp at any zoom, with its tip on the shared
+ * coordinates — custom marker content is anchored bottom-centre.
+ */
+function VisitorPin() {
+  return (
+    <svg
+      viewBox="84 8 344 500"
+      className="h-12 w-9 drop-shadow-lg"
+      role="img"
+      aria-label="Tu ubicación"
+    >
+      <path
+        fill="#e8112d"
+        fillRule="evenodd"
+        d="M256 8a172 172 0 0 0-172 172c0 30 8 58 22 85l122 226a32 32 0 0 0 56 0l122-226c14-27 22-55 22-85A172 172 0 0 0 256 8zm0 262a90 90 0 1 1 0-180 90 90 0 0 1 0 180z"
+      />
+    </svg>
   );
 }
 
