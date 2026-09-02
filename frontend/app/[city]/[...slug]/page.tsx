@@ -36,7 +36,12 @@ import {
   movieReviews,
   todayInDR,
 } from "@/lib/cinema";
-import { mapPinIcon, sectionListImage, subcategoryIcon } from "@/lib/sections";
+import {
+  categoryPath,
+  mapPinIcon,
+  sectionListImage,
+  subcategoryIcon,
+} from "@/lib/sections";
 import {
   articleJsonLd,
   breadcrumbJsonLd,
@@ -800,40 +805,123 @@ async function SubcategoryView({ item }: { item: UmbracoItem }) {
  * subcategories (plus ungrouped direct children), the ones that live elsewhere in
  * the tree and are only referenced from here, and the location map.
  */
+/** One heading of a plaza page: a category and the establishments filed under it. */
+type MallGroup = {
+  key: string;
+  label: string;
+  /** Content path the heading takes its glyph from. */
+  path: string;
+  order: number;
+  entries: { item: UmbracoItem; company: UmbracoItem | null }[];
+};
+
+/** Last segment of a content path, which is how every category is keyed here. */
+function lastSegment(path: string): string {
+  return path.replace(/\/+$/, "").split("/").filter(Boolean).pop() ?? "";
+}
+
+/**
+ * The establishments of a plaza under one heading per category: the groups the
+ * plaza owns ("Moda", "Comida") merged with the categories of the places it only
+ * references, so every bank lands under "Bancos" and every restaurant under
+ * "Restaurantes" however each one is filed in the tree. The plaza's own groups
+ * lead, in the order the backoffice gives them, and the rest follow the city's
+ * section order. A place parented straight by the plaza carries no category to
+ * read, so it closes the page under "Otros establecimientos".
+ */
+async function mallEstablishmentGroups(
+  mall: UmbracoItem,
+  children: UmbracoItem[],
+  referenced: UmbracoItem[],
+  city: UmbracoItem | null,
+): Promise<MallGroup[]> {
+  const sections = city ? await getChildren(city.route.path) : [];
+  const sectionOrder = new Map(
+    sections.map((section, index) => [lastSegment(section.route.path), index] as const),
+  );
+  const own = children.filter((c) => c.contentType === "subcategory");
+  const [ownEntries, referencedInfo] = await Promise.all([
+    Promise.all(own.map((group) => listingEntriesOrdered(group.route.path))),
+    // A referenced branch carries only its local name ("Sucursal Ágora Mall"), and on
+    // a plaza page the chain is what identifies it, so its company comes along — the
+    // same one the card would inherit the logo from inside the company's own page.
+    Promise.all(
+      referenced.map(async (entry) => {
+        const path = categoryPath(entry.route.path);
+        const parentPath = entry.route.path
+          .replace(/\/+$/, "")
+          .split("/")
+          .slice(0, -1)
+          .join("/");
+        const [category, parent] = await Promise.all([
+          getItem(path),
+          parentPath ? getItem(parentPath) : Promise.resolve(null),
+        ]);
+        return {
+          entry,
+          path,
+          label: category?.name ?? lastSegment(path),
+          company: parent?.contentType === "company" ? parent : null,
+        };
+      }),
+    ),
+  ]);
+
+  const groups = new Map<string, MallGroup>();
+  const groupFor = (key: string, label: string, path: string, order: number) => {
+    const existing = groups.get(key);
+    if (existing) return existing;
+    const created: MallGroup = { key, label, path, order, entries: [] };
+    groups.set(key, created);
+    return created;
+  };
+
+  own.forEach((group, index) => {
+    groupFor(lastSegment(group.route.path), group.name, group.route.path, index).entries
+      .push(...ownEntries[index].map((entry) => ({ item: entry, company: null })));
+  });
+
+  for (const { entry, path, label, company } of referencedInfo) {
+    const order =
+      own.length + (sectionOrder.get(path.split("/").filter(Boolean)[1] ?? "") ?? sections.length);
+    groupFor(lastSegment(path), label, path, order).entries.push({ item: entry, company });
+  }
+
+  const loose = children.filter(
+    (c) => c.contentType === "place" || c.contentType === "company",
+  );
+  if (loose.length > 0) {
+    groupFor(
+      "otros",
+      "Otros establecimientos",
+      mall.route.path,
+      own.length + sections.length + 1,
+    ).entries.push(...loose.map((entry) => ({ item: entry, company: null })));
+  }
+
+  return [...groups.values()]
+    .filter((group) => group.entries.length > 0)
+    .sort((a, b) => a.order - b.order || a.label.localeCompare(b.label, "es"));
+}
+
 async function MallView({ item }: { item: UmbracoItem }) {
   // A bank branch belongs under its company and a restaurant under its cuisine, so
   // the plaza points at them instead of holding them; expanding the picker brings
   // their photo and rating along, which the cards need.
-  const [children, expanded] = await Promise.all([
+  const [children, expanded, cityItem] = await Promise.all([
     getChildren(item.route.path),
     getItem(item.route.path, "properties[establishments]"),
+    cityOf(item),
   ]);
-  const groups = children.filter((c) => c.contentType === "subcategory");
-  const ungrouped = children.filter(
-    (c) => c.contentType === "place" || c.contentType === "company",
-  );
   const mallPath = item.route.path.replace(/\/+$/, "");
   const referenced = picked(expanded ?? item, "establishments")
     .filter((entry) => !entry.route.path.startsWith(`${mallPath}/`))
     .sort(byRating);
-  // A referenced branch carries only its local name ("Sucursal Ágora Mall"), and on a
-  // plaza page the chain is what identifies it, so its company comes along — the same
-  // one the card would inherit the logo from inside the company's own page.
-  const referencedCompanies = await Promise.all(
-    referenced.map(async (entry) => {
-      const parentPath = entry.route.path.replace(/\/+$/, "").split("/").slice(0, -1).join("/");
-      const parent = parentPath ? await getItem(parentPath) : null;
-      return parent?.contentType === "company" ? parent : null;
-    }),
-  );
-  const groupEntries = await Promise.all(
-    groups.map((group) => listingEntriesOrdered(group.route.path)),
-  );
+  const groups = await mallEstablishmentGroups(item, children, referenced, cityItem);
   const photo = photoUrl(item);
   const website = text(item, "website");
   const latitude = num(item, "latitude");
   const longitude = num(item, "longitude");
-  const cityItem = await cityOf(item);
 
   return (
     <PageShell item={item}>
@@ -901,62 +989,28 @@ async function MallView({ item }: { item: UmbracoItem }) {
         </div>
       </div>
 
-      {groups.map((group, index) => (
-        <section key={group.id} className="mt-10">
+      {groups.map((group) => (
+        <section key={group.key} className="mt-10">
           <h2 className="text-lg font-semibold">
-            {group.name}{" "}
-            {groupEntries[index].length > 0 && `(${groupEntries[index].length})`}
+            <span aria-hidden className="mr-1.5">
+              {subcategoryIcon(group.path)}
+            </span>
+            {group.label} ({group.entries.length})
           </h2>
           <div className="mt-4 grid gap-4 md:grid-cols-2">
-            {groupEntries[index].map((entry) => (
-              <PlaceCard key={entry.id} place={entry} />
-            ))}
-            {groupEntries[index].length === 0 && (
-              <p className="text-neutral-500">
-                No hay establecimientos publicados todavía.
-              </p>
-            )}
-          </div>
-        </section>
-      ))}
-
-      {ungrouped.length > 0 && (
-        <section className="mt-10">
-          <h2 className="text-lg font-semibold">Establecimientos</h2>
-          <div className="mt-4 grid gap-4 md:grid-cols-2">
-            {ungrouped.map((entry) => (
-              <PlaceCard key={entry.id} place={entry} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {referenced.length > 0 && (
-        <section className="mt-10">
-          <h2 className="text-lg font-semibold">
-            También en la plaza ({referenced.length})
-          </h2>
-          <p className="mt-1 text-sm text-neutral-500">
-            Cada uno tiene su propia página en la sección donde vive.
-          </p>
-          <div className="mt-4 grid gap-4 md:grid-cols-2">
-            {referenced.map((entry, index) => (
+            {group.entries.map(({ item: entry, company }) => (
               <PlaceCard
                 key={entry.id}
                 place={entry}
-                company={referencedCompanies[index]}
-                fallbackPhoto={
-                  referencedCompanies[index]
-                    ? photoUrl(referencedCompanies[index]!)
-                    : null
-                }
+                company={company}
+                fallbackPhoto={company ? photoUrl(company) : null}
               />
             ))}
           </div>
         </section>
-      )}
+      ))}
 
-      {groups.length === 0 && ungrouped.length === 0 && referenced.length === 0 && (
+      {groups.length === 0 && (
         <p className="mt-10 text-neutral-500">
           No hay establecimientos publicados todavía.
         </p>

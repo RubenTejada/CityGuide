@@ -33,8 +33,7 @@ cd CityGuide.Agent && dotnet run -- --section restaurantes
 # sections (this pass's drafts and the ones earlier passes left). Drafts in every
 # other section stay drafts, so --publish requires --section.
 cd CityGuide.Agent && dotnet run -- --section restaurantes --publish
-# Maintenance over the shops section: file each establishment under the plaza
-# comercial its address puts it in, recreate a plaza stored as a shop with the
+# Maintenance over the shops section: recreate a plaza stored as a shop with the
 # "mall" type, and send plaza duplicates the agent made to the recycle bin.
 # Prints the plan and changes nothing without --apply.
 cd CityGuide.Agent && dotnet run -- --regroup-malls
@@ -48,6 +47,13 @@ cd CityGuide.Agent && dotnet run -- --merge-mall "Acrópolis Business Mall" "Acr
 # tree (a bank branch under its company, a restaurant under its cuisine). The
 # node stays where it is; the plaza only gains a reference. Plan until --apply.
 cd CityGuide.Agent && dotnet run -- --link-malls
+# File a node under another parent, for the one no rule can decide: an
+# establishment an earlier pass parented to a plaza, whose real section only a
+# person knows ("Carrefour" is a supermarket, and nothing stored says so). The
+# plaza keeps listing it by reference. Plan until --apply.
+cd CityGuide.Agent && dotnet run -- --move-place \
+  /santo-domingo/tiendas/plazas-comerciales-y-malls/plaza-duarte/carrefour \
+  /santo-domingo/tiendas/supermercados
 
 # IMDb / Rotten Tomatoes scores on the movie catalog need two free keys, set as
 # user-secrets (leave either empty to run without it — the scores just stay blank):
@@ -74,21 +80,25 @@ places, each one LLM call plus a throttled photo download); seed it once with
 `--section restaurantes` and the daily job then skips almost everything. A `Run` with a
 `CompanyName` creates its places as branches of that `company` node instead of flat under
 the category (and fails loudly when the company does not exist); without one, a place
-whose name contains an existing company's name is nested under it anyway. A `Run` with
-`NestInMalls` (the shops runs) also asks the address where the establishment is: when it
-names a plaza comercial the CMS already has and the coordinates put it within 250 m of
-it, the place is created under that plaza (`MallMatching`). A company still wins over a
-plaza — a branch inherits logo, description, phone and hours from its company, and a
-plaza has none of that to give — so only shops that belong to no chain move in. The
+whose name contains an existing company's name is nested under it anyway. Every run also
+asks the address whether the establishment sits inside a plaza comercial the CMS already
+has, its coordinates within 250 m of it (`MallMatching`) — but a plaza never becomes the
+parent: a place lives in the section that says what it is, which is what keeps it in that
+section's listing and what lets the plaza's page group its establishments by category.
+The plaza only gains a reference to it. The
 plazas run itself carries `CreatesMalls`: a plaza is created as a `mall`, the container
 the frontend renders with its establishments inside, not as one more shop, and its
 `ParentPath` is where every other run looks the plazas up. A discovered plaza that is one
 already stored is recognised by name and distance (`MallMatching.Same`: one name starts
 with the other, within 400 m, ignoring any address appended to tell twins apart) and only
 lends it its `googlePlaceId`, which is what the next pass and the rating backfill dedupe
-by. `--regroup-malls` applies the same three rules to content already in the CMS and is
-how the shops section was cleaned up; without `--apply` it only prints the plan, and what
-it removes goes to the recycle bin and only when the agent created it. `--merge-mall
+by. `--regroup-malls` applies those two rules (recreate, deduplicate) to content already
+in the CMS and is how the shops section was cleaned up; without `--apply` it only prints
+the plan, and what it removes goes to the recycle bin and only when the agent created it.
+`--move-place <ruta> <ruta padre>` files one node under another parent, for what no rule
+can decide — an establishment an earlier pass parented to a plaza, whose section only a
+person knows ("Carrefour" is a supermarket and nothing stored says so); the plaza it
+leaves keeps it by reference. `--merge-mall
 <sobra> <se queda>` folds the pair no rule can safely unify — Google's "Acrópolis Business
 Mall" beside the stored "Acrópolis Center" — moving the establishments, filling the
 survivor's blanks (the Google place id above all, or the next pass rediscovers the plaza
@@ -103,9 +113,18 @@ with nothing new costs a handful of reads; `--link-malls` is the same pass on it
 (a plan until `--apply`). A branch is never taken for the plaza it is named after
 (Caribbean Cinemas calls its screens in Ágora Mall exactly "Ágora Mall"), which is what
 the `isBranch` argument of `MallMatching.Containing` settles. The data lives in exactly one node; `MallView`
-renders those references under "También en la plaza", asking the Delivery API to expand
-the picker (`getItem(path, "properties[establishments]")`) so the cards get photo and
-rating, and qualifying a branch with the company it hangs from. `.github/workflows/run-agent.yml`
+renders one heading per category (`mallEstablishmentGroups`): the groups the plaza owns
+("Moda", "Comida", filled by an editor) merged by slug with the categories of the places
+it only references, so every bank lands under "Bancos" and every restaurant under
+"Restaurantes" however each one is filed. A referenced node's category is read from its
+own path (`categoryPath` in `lib/sections.ts`): the section it lives in, except under
+"Tiendas" and "Empresas y Servicios", where the subcategory is what names the kind of
+business ("Bancos", "Supermercados") while a restaurant's subcategory is only its cuisine.
+The plaza's own groups lead, the rest follow the city's section order, and a place
+parented straight by the plaza — nothing the agent creates any more — closes the page
+under "Otros establecimientos". The picker is expanded by the Delivery API
+(`getItem(path, "properties[establishments]")`) so the cards get photo and
+rating, and a branch is qualified with the company it hangs from. `.github/workflows/run-agent.yml`
 exposes every maintenance pass as a dispatch input, so they run against Azure without the
 CMS client secret leaving the workflow. Branch places
 store only their own data — no description, phone, website or hours — so they inherit the

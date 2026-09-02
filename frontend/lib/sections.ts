@@ -160,6 +160,30 @@ function sectionSlug(routePath: string): string {
   return routePath.split("/").filter(Boolean)[1] ?? "";
 }
 
+/**
+ * Sections that hold kinds of business rather than one kind with facets: under
+ * them the subcategory is what names an establishment ("Bancos",
+ * "Supermercados"), while a restaurant's subcategory is only its cuisine and
+ * "Restaurantes" is the category a visitor groups by.
+ */
+const SUBCATEGORY_IS_THE_CATEGORY = new Set(["tiendas", "empresas-y-servicios"]);
+
+/**
+ * The category an establishment is grouped under on a plaza's page: the section
+ * it lives in, or its subcategory where that is what names the kind of business.
+ * Derived from the path, so a node moved in the backoffice regroups on its own.
+ */
+export function categoryPath(routePath: string): string {
+  const segments = routePath.replace(/\/+$/, "").split("/").filter(Boolean);
+  // [ciudad, sección, subcategoría, …]: only a subcategory with something below
+  // it is a category — otherwise the third segment is the place itself.
+  const depth =
+    SUBCATEGORY_IS_THE_CATEGORY.has(segments[1] ?? "") && segments.length > 3
+      ? 3
+      : 2;
+  return `/${segments.slice(0, depth).join("/")}`;
+}
+
 /** Representative photo of the section a content path belongs to. */
 export function sectionListImage(routePath: string): string {
   return SECTION_LIST_IMAGES[sectionSlug(routePath)] ?? "/sections/default.svg";

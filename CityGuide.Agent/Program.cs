@@ -325,17 +325,79 @@ if (args.Contains("--merge-mall"))
     return 1;
 }
 
-// Maintenance pass: file the establishments that sit inside a plaza comercial under
-// it, and report the ones that are a plaza already stored as a shop. Prints the plan
-// and changes nothing without --apply, because a move rewrites public URLs.
+// Maintenance: move one node under another parent ("--move-place <ruta> <ruta padre>"),
+// for the file-away no rule can decide — an establishment an earlier pass parented to a
+// plaza, whose real section only a human knows ("Carrefour" is a supermarket, and
+// nothing stored on the node says so). The plaza it leaves keeps showing it: the
+// reference goes in on the way out. Nothing is written without --apply.
+if (args.Contains("--move-place"))
+{
+    string[] paths = [.. args.SkipWhile(a => a != "--move-place").Skip(1).Take(2)];
+    if (paths.Length < 2 || paths.Any(p => p.StartsWith("--", StringComparison.Ordinal)))
+    {
+        Console.Error.WriteLine(
+            "--move-place necesita dos rutas: la del nodo y la de su nuevo padre. Ejemplo: "
+            + "dotnet run -- --move-place "
+            + "/santo-domingo/tiendas/plazas-comerciales-y-malls/plaza-duarte/carrefour "
+            + "/santo-domingo/tiendas/supermercados");
+        return 1;
+    }
+
+    if (await umbraco.GetContentByPathAsync(paths[0]) is not { } node)
+    {
+        Console.Error.WriteLine($"No encontré '{paths[0]}'.");
+        return 1;
+    }
+
+    if (await umbraco.GetContentByPathAsync(paths[1]) is not { } destination)
+    {
+        Console.Error.WriteLine($"No encontré el destino '{paths[1]}'.");
+        return 1;
+    }
+
+    // The plaza it hangs from today, if any: its page would lose the establishment
+    // with the move, so it gains the reference that keeps it there.
+    string trimmed = paths[0].TrimEnd('/');
+    (Guid Id, string Name)? currentParent =
+        await umbraco.GetContentByPathAsync(trimmed[..trimmed.LastIndexOf('/')]);
+    KnownMall? mall = currentParent is { } parentNode
+        ? (await MallsAsync(trimmed.Trim('/').Split('/').First()))
+            .FirstOrDefault(m => m.Id == parentNode.Id)
+        : null;
+
+    bool applyMove = args.Contains("--apply");
+    Console.WriteLine(applyMove
+        ? $"Moviendo '{node.Name}' a {paths[1]}"
+        : $"Se movería '{node.Name}' a {paths[1]} (simulación; agrega --apply)");
+    if (mall is not null)
+    {
+        Console.WriteLine($"  '{mall.Name}' lo seguirá listando por referencia");
+    }
+
+    if (applyMove)
+    {
+        await umbraco.MoveDocumentAsync(node.Id, destination.Id);
+        if (mall is not null)
+        {
+            await umbraco.AddMallEstablishmentAsync(mall.Id, node.Id);
+        }
+    }
+
+    return 0;
+}
+
+// Maintenance pass over the shops section: recreate with the "mall" type the plazas
+// stored as one more shop, and send to the recycle bin the plaza duplicates the agent
+// made. It never moves an establishment into a plaza — a place lives in the section
+// that says what it is, and the plaza lists it by reference (--link-malls). Prints the
+// plan and changes nothing without --apply.
 if (args.Contains("--regroup-malls"))
 {
     bool apply = args.Contains("--apply");
     Console.WriteLine(apply
-        ? "== Reagrupando tiendas bajo sus plazas comerciales"
-        : "== Reagrupación de tiendas (simulación; agrega --apply para aplicarla)");
+        ? "== Revisando las plazas comerciales"
+        : "== Revisión de las plazas comerciales (simulación; agrega --apply para aplicarla)");
 
-    var moved = 0;
     var duplicates = 0;
     var converted = 0;
     foreach (string citySlug in config.Runs
@@ -368,9 +430,8 @@ if (args.Contains("--regroup-malls"))
         {
             foreach (UmbracoClient.ChildDocument child in await umbraco.GetChildrenAsync(parentId))
             {
-                // A branch keeps its company: the logo, description, phone and hours it
-                // shows are the company's, and a plaza cannot give it those. What sits
-                // inside a plaza already is where it belongs.
+                // A company holds its own branches, and what an editor filed inside a
+                // plaza is the plaza's own tenant: neither is a plaza mistaken for a shop.
                 if (child.DocumentTypeId == companyTypeId
                     || child.DocumentTypeId == mallTypeId
                     || mallIds.Contains(parentId))
@@ -409,7 +470,7 @@ if (args.Contains("--regroup-malls"))
                     if (apply)
                     {
                         Guid mallId = await umbraco.ConvertPlaceToMallAsync(parentId, child.Id);
-                        // Reachable for the establishments this same pass files away.
+                        // Reachable as a plaza for the rest of this same pass.
                         malls.Add(new KnownMall(mallId, child.Name, detail.Latitude, detail.Longitude));
                         mallIds.Add(mallId);
                     }
@@ -417,24 +478,11 @@ if (args.Contains("--regroup-malls"))
                     continue;
                 }
 
-                if (MallMatching.Containing(
-                        child.Name, detail.Address, detail.Latitude, detail.Longitude, malls) is not { } mall)
-                {
-                    continue;
-                }
-
-                moved++;
-                Console.WriteLine($"  > {child.Name} -> {mall.Name}");
-                if (apply)
-                {
-                    await umbraco.MoveDocumentAsync(child.Id, mall.Id);
-                }
             }
         }
     }
 
-    Console.WriteLine($"\n{moved} tienda(s) {(apply ? "movidas" : "por mover")}, "
-        + $"{converted} plaza(s) {(apply ? "recreadas" : "por recrear")} con su tipo, "
+    Console.WriteLine($"\n{converted} plaza(s) {(apply ? "recreadas" : "por recrear")} con su tipo, "
         + $"{duplicates} duplicado(s) de plazas.");
     return 0;
 }
@@ -651,17 +699,16 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelec
             }
 
             // The plaza this establishment sits inside, when its address says so and its
-            // coordinates agree. Every run looks it up: a restaurant or a bank branch
-            // belongs in its own section, and the plaza lists it by reference. Only a
-            // shops run files it under the plaza, and a branch of a chain keeps its
-            // company even then — the plaza cannot give it the logo and general info it
-            // inherits from there.
+            // coordinates agree. It never becomes the parent: a place lives in the
+            // section that says what it is — a bank branch under its company, a
+            // supermarket under "Supermercados" — which is what lets the plaza's page
+            // group its establishments by category, and what keeps it in its own
+            // section's listing. The plaza only gains a reference to it.
             KnownMall? insideMall = MallMatching.Containing(
                 place.Name, place.Address, place.Latitude, place.Longitude, malls);
-            KnownMall? mallParent = run.NestInMalls && companyId is null ? insideMall : null;
 
-            Guid targetParentId = companyId ?? mallParent?.Id ?? parent.Value.Id;
-            string? cuisine = companyId is not null || mallParent is not null || subcategories is null
+            Guid targetParentId = companyId ?? parent.Value.Id;
+            string? cuisine = companyId is not null || subcategories is null
                 ? null
                 : CuisineMap.SubcategoryFor(place.Types);
             if (cuisine is not null)
@@ -750,10 +797,8 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelec
             string state = config.Umbraco.PublishImmediately ? "published" : "draft";
             string target = companyName is not null
                 ? $" (sucursal de {companyName})"
-                : mallParent is not null
-                    ? $" (dentro de {mallParent.Name})"
-                    : cuisine is null ? "" : $" → {cuisine}";
-            if (insideMall is not null && mallParent is null)
+                : cuisine is null ? "" : $" → {cuisine}";
+            if (insideMall is not null)
             {
                 target += $" [en {insideMall.Name}]";
             }

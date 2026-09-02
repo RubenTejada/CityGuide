@@ -149,12 +149,4 @@ public class RunConfig
     /// also where every other run looks for the plaza an establishment sits in.
     /// </summary>
     public bool CreatesMalls { get; set; }
-
-    /// <summary>
-    /// Shops runs: file a discovered establishment under the plaza comercial its
-    /// address places it in ("Ágora Mall, Av. Abraham Lincoln…") instead of flat under
-    /// the category. A branch of a chain still goes under its company — it inherits the
-    /// logo and general info from there, and the plaza would take that away.
-    /// </summary>
-    public bool NestInMalls { get; set; }
 }

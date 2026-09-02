@@ -25,8 +25,7 @@ on:
         default: false
       regroup_malls:
         description: >-
-          Maintenance pass instead of the ingestion run: files each shop under
-          the plaza comercial its address puts it in, recreates a plaza stored
+          Maintenance pass instead of the ingestion run: recreates a plaza stored
           as a shop with the "mall" type and sends the agent's plaza duplicates
           to the recycle bin. "plan" only prints what it would do.
         type: choice
@@ -62,6 +61,23 @@ on:
         default: ""
       merge_mall_apply:
         description: Write the merge. Left off, it only prints what it would do.
+        type: boolean
+        required: false
+        default: false
+      move_place_from:
+        description: >-
+          Maintenance pass instead of the ingestion run: content path of a node to
+          file under another parent (move_place_to) — an establishment parented by a
+          plaza, whose real section only a person knows. The plaza keeps listing it
+          by reference.
+        required: false
+        default: ""
+      move_place_to:
+        description: Content path of the new parent. Required with move_place_from.
+        required: false
+        default: ""
+      move_place_apply:
+        description: Write the move. Left off, it only prints what it would do.
         type: boolean
         required: false
         default: false
@@ -118,6 +134,9 @@ jobs:
           MERGE_FROM: ${{ inputs.merge_mall_from }}
           MERGE_INTO: ${{ inputs.merge_mall_into }}
           MERGE_APPLY: ${{ inputs.merge_mall_apply }}
+          MOVE_FROM: ${{ inputs.move_place_from }}
+          MOVE_TO: ${{ inputs.move_place_to }}
+          MOVE_APPLY: ${{ inputs.move_place_apply }}
           PUBLISH: ${{ inputs.publish }}
         # The scheduled run has no inputs, so every one of these is empty and the
         # agent runs every section, as before.
@@ -133,6 +152,12 @@ jobs:
               dotnet run -c Release -- --merge-mall "$MERGE_FROM" "$MERGE_INTO" --apply
             else
               dotnet run -c Release -- --merge-mall "$MERGE_FROM" "$MERGE_INTO"
+            fi
+          elif [ -n "$MOVE_FROM" ] && [ -n "$MOVE_TO" ]; then
+            if [ "$MOVE_APPLY" = "true" ]; then
+              dotnet run -c Release -- --move-place "$MOVE_FROM" "$MOVE_TO" --apply
+            else
+              dotnet run -c Release -- --move-place "$MOVE_FROM" "$MOVE_TO"
             fi
           elif [ "$REGROUP" = "plan" ]; then
             dotnet run -c Release -- --regroup-malls
