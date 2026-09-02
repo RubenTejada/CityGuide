@@ -573,6 +573,25 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         };
 
     /// <summary>
+    /// Drops the Google match of a node — place id and rating — leaving every other value
+    /// alone. Used when the stored id turns out to belong to another place (a branch that
+    /// took the id of the plaza it stands in): the next backfill looks the place up by
+    /// name again instead of refreshing the wrong one forever.
+    /// </summary>
+    public async Task ClearGoogleMatchAsync(Guid id)
+    {
+        (string name, string state, Dictionary<string, object?> values) = await ReadDocumentAsync(id);
+        // Written as null rather than dropped from the payload: an explicit empty value
+        // clears the property whatever the API does with an alias it is not sent.
+        foreach (string alias in new[] { "googlePlaceId", "googleRating", "googleRatingCount" })
+        {
+            values[alias] = null;
+        }
+
+        await WriteDocumentAsync(id, name, values, state);
+    }
+
+    /// <summary>
     /// Sets one text property of an existing document, preserving every other value
     /// and its published state.
     /// </summary>

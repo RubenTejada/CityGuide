@@ -93,6 +93,18 @@ on:
         type: boolean
         required: false
         default: false
+      purge_duplicate_places:
+        description: >-
+          Maintenance pass instead of the ingestion run: sends to the recycle bin the
+          copies of a place earlier passes created ("Dolce Italia (1)", "(2)") and clears
+          the place id a branch borrowed from its plaza. "plan" only prints what it would do.
+        type: choice
+        required: false
+        options:
+          - "no"
+          - plan
+          - apply
+        default: "no"
       publish:
         description: >-
           Kept for the runs configured to draft instead of publish. The agent
@@ -150,6 +162,7 @@ jobs:
           MOVE_FROM: ${{ inputs.move_place_from }}
           MOVE_TO: ${{ inputs.move_place_to }}
           MOVE_APPLY: ${{ inputs.move_place_apply }}
+          PURGE_DUPLICATES: ${{ inputs.purge_duplicate_places }}
           PUBLISH: ${{ inputs.publish }}
         # The scheduled run has no inputs, so every one of these is empty and the
         # agent runs every section, as before.
@@ -176,6 +189,10 @@ jobs:
             else
               dotnet run -c Release -- --move-place "$MOVE_FROM" "$MOVE_TO"
             fi
+          elif [ "$PURGE_DUPLICATES" = "plan" ]; then
+            dotnet run -c Release -- --purge-duplicate-places
+          elif [ "$PURGE_DUPLICATES" = "apply" ]; then
+            dotnet run -c Release -- --purge-duplicate-places --apply
           elif [ "$REGROUP" = "plan" ]; then
             dotnet run -c Release -- --regroup-malls
           elif [ "$REGROUP" = "apply" ]; then

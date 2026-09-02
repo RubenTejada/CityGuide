@@ -518,6 +518,178 @@ if (args.Contains("--regroup-malls"))
     return 0;
 }
 
+// Maintenance: the same place stored twice. Earlier passes could not see the drafts they
+// had just created, so a run created "Dolce Italia" again as "Dolce Italia (1)" and once
+// more as "(2)", and every copy carries the same googlePlaceId. A shared id is not proof
+// on its own — the backfill used to write a plaza's id onto the branches inside it, which
+// is why a bank branch can share one with the mall — so two nodes are only folded when
+// they also sit in the same category and each name carries every significant word of the
+// other. The survivor is the one an editor made, else the oldest (the clean slug, the URL
+// that may already be linked); it takes the photo of the copy before that copy goes to the
+// recycle bin, and only copies the agent created are ever recycled. A copy with children
+// is left alone and reported. Prints the plan and changes nothing without --apply.
+// Duplicated plazas are not this pass's business: --regroup-malls owns them.
+if (args.Contains("--purge-duplicate-places"))
+{
+    bool applyPurge = args.Contains("--apply");
+    Console.WriteLine(applyPurge
+        ? "== Depurando lugares duplicados"
+        : "== Lugares duplicados (simulación; agrega --apply para aplicarla)");
+
+    // City and category ("/santo-domingo/restaurantes"): the same restaurant filed under
+    // two cuisines is one place; a branch and the plaza it stands in are not.
+    static string CategoryOf(string path) =>
+        string.Join('/', path.Trim('/').Split('/').Take(2));
+
+    // The chain a branch hangs from. Every bank seeded a "Sucursal Naco", and the old
+    // backfill gave several of them the same (wrong) place id: same category, same name,
+    // different bank — three branches, not three copies. Longest path first so a company
+    // nested under another wins over its ancestor.
+    List<UmbracoClient.PublishedPlace> companiesForPurge =
+        await umbraco.GetPublishedPlacesAsync("company");
+    companiesForPurge.Sort((a, b) => b.Path.Length.CompareTo(a.Path.Length));
+    string? CompanyPathOf(string path) => companiesForPurge
+        .FirstOrDefault(c => path.StartsWith(c.Path, StringComparison.OrdinalIgnoreCase))?.Path;
+
+    bool SamePlace(UmbracoClient.PublishedPlace a, UmbracoClient.PublishedPlace b) =>
+        CategoryOf(a.Path) == CategoryOf(b.Path)
+        && CompanyPathOf(a.Path) == CompanyPathOf(b.Path)
+        && TextMatch.Matches(a.Name, b.Name, 1.0)
+        && TextMatch.Matches(b.Name, a.Name, 1.0);
+
+    var recycled = 0;
+    var review = 0;
+    foreach (IGrouping<string, UmbracoClient.PublishedPlace> sameId in
+        (await umbraco.GetPublishedPlacesAsync("place"))
+            .Where(p => p.GooglePlaceId is not null && SectionSelected(p.Path))
+            .GroupBy(p => p.GooglePlaceId!)
+            .Where(g => g.Count() > 1))
+    {
+        // One Google id can cover several real places (that stray plaza id), so the group
+        // is split into clusters of nodes that are actually the same place.
+        var clusters = new List<List<UmbracoClient.PublishedPlace>>();
+        foreach (UmbracoClient.PublishedPlace node in sameId)
+        {
+            List<UmbracoClient.PublishedPlace>? cluster =
+                clusters.FirstOrDefault(c => SamePlace(c[0], node));
+            if (cluster is null)
+            {
+                clusters.Add([node]);
+                continue;
+            }
+
+            cluster.Add(node);
+        }
+
+        foreach (List<UmbracoClient.PublishedPlace> cluster in clusters.Where(c => c.Count > 1))
+        {
+            List<UmbracoClient.PublishedPlace> handMade = [.. cluster.Where(n => !n.AgentMade)];
+            if (handMade.Count > 1)
+            {
+                review++;
+                Console.WriteLine($"  ? {cluster[0].Name}: {handMade.Count} copias hechas a mano — revísalas tú");
+                continue;
+            }
+
+            UmbracoClient.PublishedPlace survivor =
+                handMade.FirstOrDefault() ?? cluster.OrderBy(n => n.CreateDate).First();
+            bool survivorHasPhoto = survivor.HasPhoto;
+            Console.WriteLine($"  = se queda {survivor.Path}");
+
+            foreach (UmbracoClient.PublishedPlace copy in cluster.Where(n => n.Id != survivor.Id))
+            {
+                if (!copy.AgentMade)
+                {
+                    review++;
+                    Console.WriteLine($"    ? {copy.Path}: hecho a mano — revísalo tú");
+                    continue;
+                }
+
+                if ((await umbraco.GetChildrenAsync(copy.Id)).Count > 0)
+                {
+                    review++;
+                    Console.WriteLine($"    ? {copy.Path}: tiene contenido dentro — revísalo tú");
+                    continue;
+                }
+
+                bool carriesPhoto = !survivorHasPhoto && copy.PhotoMediaKey is Guid photoKey;
+                recycled++;
+                Console.WriteLine($"    x {copy.Path}{(carriesPhoto ? " (su foto pasa al que se queda)" : "")}");
+                if (!applyPurge)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    if (carriesPhoto)
+                    {
+                        await umbraco.CompletePlaceAsync(
+                            survivor.Id, null, null,
+                            photoFactory: () => Task.FromResult(copy.PhotoMediaKey));
+                        survivorHasPhoto = true;
+                    }
+
+                    await umbraco.RecycleDocumentAsync(copy.Id);
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"    ! {copy.Path}: {ex.Message}");
+                }
+            }
+        }
+    }
+
+    // The other way the same id ends up on two nodes: until the name check went into
+    // FindRatingNearAsync, the backfill accepted the closest Google result within 200 m,
+    // and a branch inside a plaza shares its coordinates with the plaza — so bank
+    // branches and pharmacies ended up carrying the plaza's id, its rating and its 46.000
+    // reviews. The node is fine; the match is not. Clearing it lets the backfill look the
+    // place up again by name, which is what the rule now demands.
+    Console.WriteLine("\n-- Ids de Google prestados de una plaza");
+    var cleared = 0;
+    List<UmbracoClient.PublishedPlace> mallNodes = await umbraco.GetPublishedPlacesAsync("mall");
+    foreach (UmbracoClient.PublishedPlace node in await umbraco.GetPublishedPlacesAsync("place"))
+    {
+        if (node.GooglePlaceId is null || !SectionSelected(node.Path))
+        {
+            continue;
+        }
+
+        // A place filed beside the plazas, or carrying a plaza's name, is a plaza stored
+        // as one more shop: --regroup-malls recycles it and --merge-mall folds the pair no
+        // rule can unify. Both need the id to recognise it, so this pass leaves it alone.
+        static string ParentOf(string path) =>
+            string.Join('/', path.Trim('/').Split('/')[..^1]);
+        if (mallNodes.FirstOrDefault(m => m.GooglePlaceId == node.GooglePlaceId) is not { } mall
+            || ParentOf(node.Path) == ParentOf(mall.Path)
+            || (TextMatch.Matches(mall.Name, node.Name, 1.0)
+                && TextMatch.Matches(node.Name, mall.Name, 1.0)))
+        {
+            continue;
+        }
+
+        cleared++;
+        Console.WriteLine($"  x {node.Path}: lleva el id de '{mall.Name}'");
+        if (applyPurge)
+        {
+            try
+            {
+                await umbraco.ClearGoogleMatchAsync(node.Id);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"    ! {node.Path}: {ex.Message}");
+            }
+        }
+    }
+
+    Console.WriteLine($"\n{recycled} copia(s) {(applyPurge ? "a la papelera" : "por enviar a la papelera")}, "
+        + $"{cleared} id(s) de plaza {(applyPurge ? "borrados" : "por borrar")}"
+        + (review > 0 ? $", {review} para revisar a mano." : "."));
+    return 0;
+}
+
 Dictionary<string, Guid> knownPlaceIds = await umbraco.GetKnownGooglePlaceIdsAsync();
 Console.WriteLine($"Known places in CMS: {knownPlaceIds.Count}");
 

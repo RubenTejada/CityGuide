@@ -54,6 +54,11 @@ cd CityGuide.Agent && dotnet run -- --link-malls
 cd CityGuide.Agent && dotnet run -- --move-place \
   /santo-domingo/tiendas/plazas-comerciales-y-malls/plaza-duarte/carrefour \
   /santo-domingo/tiendas/supermercados
+# Send to the recycle bin the copies of a place earlier passes created ("Dolce Italia",
+# "Dolce Italia (1)", "(2)"), and clear the place id a branch borrowed from the plaza it
+# stands in. Plan until --apply.
+cd CityGuide.Agent && dotnet run -- --purge-duplicate-places
+cd CityGuide.Agent && dotnet run -- --purge-duplicate-places --apply
 # Send to the recycle bin the events the agent imported that do not happen in the
 # city: every ticket portal lists the whole country, and the section filled up with
 # Santiago, Higüey and Punta Cana. Plan until --apply.
@@ -105,7 +110,19 @@ the plan, and what it removes goes to the recycle bin and only when the agent cr
 `--move-place <ruta> <ruta padre>` files one node under another parent, for what no rule
 can decide — an establishment an earlier pass parented to a plaza, whose section only a
 person knows ("Carrefour" is a supermarket and nothing stored says so); the plaza it
-leaves keeps it by reference. `--merge-mall
+leaves keeps it by reference. `--purge-duplicate-places [--apply]` cleans up after the passes that could not see their
+own drafts and created the same place two and three times: published places are grouped by
+`googlePlaceId`, and two nodes are only folded when they also share a category and a
+company and each name carries every significant word of the other — a shared id proves
+nothing on its own, since the backfill used to hand a plaza's id to the branches inside it,
+and every bank seeded a "Sucursal Naco". The survivor is the node an editor made, else the
+oldest (the clean slug, the URL that may already be linked); it takes the copy's photo
+before the copy goes to the recycle bin, only agent-made copies are ever recycled, and one
+with content inside it is reported instead. The pass then clears the place id and rating of
+a node that borrowed them from a plaza (a pharmacy showing the mall's 46.000 reviews), so
+the backfill matches it again by name; a plaza stored as one more shop keeps its id, since
+`--regroup-malls` and `--merge-mall` need it to recognise the node. Dangling references in a
+plaza's `establishments` picker are re-made by the linking pass. `--merge-mall
 <sobra> <se queda>` folds the pair no rule can safely unify — Google's "Acrópolis Business
 Mall" beside the stored "Acrópolis Center" — moving the establishments, filling the
 survivor's blanks (the Google place id above all, or the next pass rediscovers the plaza
