@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import {
   APIProvider,
   AdvancedMarker,
@@ -11,8 +10,13 @@ import {
   useMap,
 } from "@vis.gl/react-google-maps";
 import LogoPin from "./LogoPin";
+import MapBlock, {
+  MapPanelEmpty,
+  MapPanelHeader,
+  MapPanelList,
+  MapPanelRow,
+} from "./MapBlock";
 import MapPopupCard from "./MapPopupCard";
-import { RatingBadge } from "./Rating";
 import { useClusteredPins, useMarkerElements } from "./mapPins";
 import { mapPinIcon } from "@/lib/sections";
 
@@ -33,8 +37,8 @@ export interface MapMarker {
 
 const MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
 
-/** How many nearby places the "cerca de ti" panel lists. */
-const NEARBY_SHOWN = 8;
+/** How many nearby places the "cerca de ti" panel lists — it scrolls inside the block. */
+const NEARBY_SHOWN = 24;
 
 /** Great-circle distance in metres. */
 function metersBetween(
@@ -46,7 +50,9 @@ function metersBetween(
   const dLng = toRad(b.longitude - a.lng);
   const h =
     Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(a.lat)) * Math.cos(toRad(b.latitude)) * Math.sin(dLng / 2) ** 2;
+    Math.cos(toRad(a.lat)) *
+      Math.cos(toRad(b.latitude)) *
+      Math.sin(dLng / 2) ** 2;
   return 2 * 6_371_000 * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
@@ -82,7 +88,9 @@ function FitViewport({
       return;
     }
     const bounds = new google.maps.LatLngBounds();
-    markers.forEach((m) => bounds.extend({ lat: m.latitude, lng: m.longitude }));
+    markers.forEach((m) =>
+      bounds.extend({ lat: m.latitude, lng: m.longitude }),
+    );
     map.fitBounds(bounds, 48);
   }, [map, markers, position]);
   return null;
@@ -104,7 +112,9 @@ export default function MarkersMap({
   locate?: boolean;
   heightClass?: string;
 }) {
-  const [position, setPosition] = useState<google.maps.LatLngLiteral | null>(null);
+  const [position, setPosition] = useState<google.maps.LatLngLiteral | null>(
+    null,
+  );
   const [locating, setLocating] = useState(false);
   const [locateError, setLocateError] = useState<string | null>(null);
   // Row the pointer is on in the nearby panel: its pin is highlighted on the map.
@@ -153,108 +163,97 @@ export default function MarkersMap({
   }
 
   return (
-    <div className={position ? "grid gap-4 lg:grid-cols-[16rem_1fr]" : ""}>
-      {position && (
-        <aside className="order-2 lg:order-1">
-          <h3 className="font-semibold">Cerca de ti</h3>
-          <ul className="mt-2 divide-y divide-neutral-200 rounded-lg border border-neutral-200 bg-white">
-            {nearby.length === 0 && (
-              <li className="p-3 text-sm text-neutral-500">Nada cerca por ahora.</li>
-            )}
-            {nearby.map(({ marker, meters }) => (
-              <li key={marker.id}>
-                <Link
+    <MapBlock
+      heightClass={heightClass}
+      onExit={() => setHighlighted(null)}
+      side={
+        position && (
+          <>
+            <MapPanelHeader title="Cerca de ti" />
+            <MapPanelList>
+              {nearby.length === 0 && (
+                <MapPanelEmpty>Nada cerca por ahora.</MapPanelEmpty>
+              )}
+              {nearby.map(({ marker, meters }) => (
+                <MapPanelRow
+                  key={marker.id}
                   href={marker.url}
-                  className="block p-3 text-sm hover:bg-neutral-50"
-                  onMouseEnter={() => setHighlighted(marker.id)}
-                  onMouseLeave={() =>
-                    setHighlighted((current) =>
-                      current === marker.id ? null : current,
-                    )
-                  }
-                  onFocus={() => setHighlighted(marker.id)}
-                  onBlur={() =>
-                    setHighlighted((current) =>
-                      current === marker.id ? null : current,
-                    )
-                  }
-                >
-                  <span className="font-medium">{marker.name}</span>
-                  <RatingBadge
-                    value={marker.rating}
-                    count={marker.ratingCount}
-                    className="ml-2 !text-xs"
-                  />
-                  <span className="mt-0.5 block text-xs text-neutral-500">
-                    {formatDistance(meters)}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </aside>
-      )}
-
-      <div
-        className={`relative order-1 overflow-hidden rounded-xl lg:order-2 ${heightClass}`}
-      >
-        <APIProvider apiKey={MAPS_KEY}>
-          <Map
-            defaultCenter={
-              markers.length > 0
-                ? { lat: markers[0].latitude, lng: markers[0].longitude }
-                : { lat: 18.4861, lng: -69.9312 }
-            }
-            defaultZoom={13}
-            mapId="cityguide"
-            gestureHandling="cooperative"
-          >
-            <FitViewport markers={markers} position={position} />
-            <ClusteredMarkers markers={markers} highlighted={highlighted} />
-            {position && (
-              <AdvancedMarker position={position} title="Tu ubicación" zIndex={2000}>
-                <Pin background="#2563eb" borderColor="#1d4ed8" glyphColor="#fff" />
-              </AdvancedMarker>
-            )}
-          </Map>
-        </APIProvider>
-
-        {locate && (
-          <div className="absolute left-3 top-3 z-10 max-w-56">
-            <button
-              type="button"
-              onClick={askForLocation}
-              disabled={locating}
-              className="flex items-center gap-2 rounded-full bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg ring-2 ring-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-brand-600/70"
+                  name={marker.name}
+                  rating={marker.rating}
+                  ratingCount={marker.ratingCount}
+                  detail={formatDistance(meters)}
+                  onPoint={() => setHighlighted(marker.id)}
+                />
+              ))}
+            </MapPanelList>
+          </>
+        )
+      }
+    >
+      <APIProvider apiKey={MAPS_KEY}>
+        <Map
+          defaultCenter={
+            markers.length > 0
+              ? { lat: markers[0].latitude, lng: markers[0].longitude }
+              : { lat: 18.4861, lng: -69.9312 }
+          }
+          defaultZoom={13}
+          mapId="cityguide"
+          gestureHandling="cooperative"
+        >
+          <FitViewport markers={markers} position={position} />
+          <ClusteredMarkers markers={markers} highlighted={highlighted} />
+          {position && (
+            <AdvancedMarker
+              position={position}
+              title="Tu ubicación"
+              zIndex={2000}
             >
-              <svg
-                aria-hidden="true"
-                viewBox="0 0 24 24"
-                className="h-4 w-4 shrink-0"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <circle cx="12" cy="12" r="3.5" />
-                <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
-              </svg>
-              {locating
-                ? "Buscando tu ubicación…"
-                : position
-                  ? "Actualizar mi ubicación"
-                  : "Usar mi ubicación"}
-            </button>
-            {locateError && (
-              <p className="mt-2 rounded-lg bg-white px-3 py-2 text-xs font-medium text-neutral-800 shadow-lg ring-1 ring-neutral-300">
-                {locateError}
-              </p>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
+              <Pin
+                background="#2563eb"
+                borderColor="#1d4ed8"
+                glyphColor="#fff"
+              />
+            </AdvancedMarker>
+          )}
+        </Map>
+      </APIProvider>
+
+      {locate && (
+        <div className="absolute left-3 top-3 z-10 max-w-56">
+          <button
+            type="button"
+            onClick={askForLocation}
+            disabled={locating}
+            className="flex items-center gap-2 rounded-full bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg ring-2 ring-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-brand-600/70"
+          >
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              className="h-4 w-4 shrink-0"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <circle cx="12" cy="12" r="3.5" />
+              <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+            </svg>
+            {locating
+              ? "Buscando tu ubicación…"
+              : position
+                ? "Actualizar mi ubicación"
+                : "Usar mi ubicación"}
+          </button>
+          {locateError && (
+            <p className="mt-2 rounded-lg bg-white px-3 py-2 text-xs font-medium text-neutral-800 shadow-lg ring-1 ring-neutral-300">
+              {locateError}
+            </p>
+          )}
+        </div>
+      )}
+    </MapBlock>
   );
 }
 

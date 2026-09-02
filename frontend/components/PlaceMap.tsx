@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import {
   APIProvider,
   AdvancedMarker,
@@ -12,9 +11,14 @@ import {
 import FilterDropdown from "./FilterDropdown";
 import LoadingOverlay from "./LoadingOverlay";
 import LogoPin from "./LogoPin";
+import MapBlock, {
+  MapPanelEmpty,
+  MapPanelHeader,
+  MapPanelList,
+  MapPanelRow,
+} from "./MapBlock";
 import MapPopupCard from "./MapPopupCard";
 import { useClusteredPins, useMarkerElements } from "./mapPins";
-import { RatingBadge } from "./Rating";
 import { mapPinIcon, sectionIconByName, sectionMapIcon } from "@/lib/sections";
 
 interface NearbyPlace {
@@ -47,6 +51,9 @@ interface PlaceMapProps {
 
 const MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
 
+/** How many neighbours the panel lists — it scrolls inside the block. */
+const NEARBY_SHOWN = 24;
+
 export default function PlaceMap({
   id,
   name,
@@ -70,7 +77,7 @@ export default function PlaceMap({
     if (!showNearby) return;
     const controller = new AbortController();
     fetch(
-      `/api/nearby?lat=${latitude}&lng=${longitude}&radius=2500&exclude=${id}&limit=60`,
+      `/api/nearby?lat=${latitude}&lng=${longitude}&radius=2500&exclude=${id}&limit=100`,
       { signal: controller.signal },
     )
       .then((res) => (res.ok ? res.json() : []))
@@ -112,125 +119,106 @@ export default function PlaceMap({
   }
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[18rem_1fr]">
-      {showNearby && (
-        <aside className="relative order-2 lg:order-1">
-          <LoadingOverlay show={loadingNearby} label="Buscando cerca…" />
-          {/* Title and filter share one row: the column is sized to hold both,
-              so the dropdown sits beside the heading instead of under it. */}
-          <div className="flex items-center justify-between gap-2">
-            <h3 className="whitespace-nowrap font-semibold">¿Qué está cerca?</h3>
-            {categoryOptions.length > 1 && (
-              <FilterDropdown
-                label="Categorías"
-                options={categoryOptions}
-                selected={categories}
-                onToggle={toggleCategory}
-                icons={Object.fromEntries(
-                  categoryOptions.map((c) => [c, sectionIconByName(c)]),
-                )}
-                className="relative"
-              />
-            )}
-          </div>
-          <ul className="mt-2 divide-y divide-neutral-200 rounded-lg border border-neutral-200 bg-white">
-            {shown.length === 0 && (
-              <li className="p-3 text-sm text-neutral-500">
-                {nearby.length === 0
-                  ? "Nada cerca por ahora."
-                  : "Nada cerca en esas categorías."}
-              </li>
-            )}
-            {shown.slice(0, 8).map((place) => (
-              <li key={place.id}>
-                <Link
-                  href={place.url}
-                  className="block p-3 text-sm hover:bg-neutral-50"
-                  onMouseEnter={() => setHighlighted(place.id)}
-                  onMouseLeave={() =>
-                    setHighlighted((current) =>
-                      current === place.id ? null : current,
-                    )
-                  }
-                  onFocus={() => setHighlighted(place.id)}
-                  onBlur={() =>
-                    setHighlighted((current) =>
-                      current === place.id ? null : current,
-                    )
-                  }
-                >
-                  <span className="font-medium">{place.name}</span>
-                  <RatingBadge
-                    value={place.rating}
-                    count={place.ratingCount}
-                    className="ml-2 !text-xs"
-                  />
-                  <span className="mt-0.5 block text-xs text-neutral-500">
-                    {place.category} · {Math.round(place.distanceMeters)} m
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </aside>
-      )}
-      <div className="order-1 aspect-square overflow-hidden rounded-xl lg:order-2">
-        <APIProvider apiKey={MAPS_KEY}>
-          <Map
-            defaultCenter={{ lat: latitude, lng: longitude }}
-            defaultZoom={15}
-            mapId="cityguide"
-            gestureHandling="cooperative"
-          >
-            {/* The place the page is about: dark pin, drawn over the rest. */}
-            <AdvancedMarker
-              position={{ lat: latitude, lng: longitude }}
-              title={name}
-              zIndex={1000}
-            >
-              {photo ? (
-                <LogoPin logo={photo} name={name} current />
-              ) : (
-                <Pin
-                  background="#175877"
-                  borderColor="#ffffff"
-                  glyphColor="#ffffff"
-                  scale={1.3}
+    <MapBlock
+      heightClass="aspect-square lg:aspect-auto lg:h-[30rem]"
+      onExit={() => setHighlighted(null)}
+      side={
+        showNearby && (
+          <>
+            <LoadingOverlay show={loadingNearby} label="Buscando cerca…" />
+            <MapPanelHeader title="¿Qué está cerca?">
+              {categoryOptions.length > 1 && (
+                <FilterDropdown
+                  label="Categorías"
+                  options={categoryOptions}
+                  selected={categories}
+                  onToggle={toggleCategory}
+                  icons={Object.fromEntries(
+                    categoryOptions.map((c) => [c, sectionIconByName(c)]),
+                  )}
+                  className="relative"
                 />
               )}
-            </AdvancedMarker>
-            <NearbyPins
-              places={shown}
-              highlighted={highlighted}
-              onSelect={setSelected}
-            />
-            {selected && shown.some((place) => place.id === selected.id) && (
-              <InfoWindow
-                position={{ lat: selected.latitude, lng: selected.longitude }}
-                onCloseClick={() => setSelected(null)}
-                headerContent={
-                  <span className="text-sm font-semibold text-brand-700">
-                    {selected.name}
-                  </span>
-                }
-                // Focusing the popup scrolls the page to it, moving the map
-                // out from under the pointer mid-click.
-                shouldFocus={false}
-              >
-                <MapPopupCard
-                  url={selected.url}
-                  name={selected.name}
-                  photo={selected.photo ?? sectionMapIcon(selected.url)}
-                  address={selected.address}
-                  rating={selected.rating}
-                  ratingCount={selected.ratingCount}
+            </MapPanelHeader>
+            <MapPanelList>
+              {shown.length === 0 && (
+                <MapPanelEmpty>
+                  {nearby.length === 0
+                    ? "Nada cerca por ahora."
+                    : "Nada cerca en esas categorías."}
+                </MapPanelEmpty>
+              )}
+              {shown.slice(0, NEARBY_SHOWN).map((place) => (
+                <MapPanelRow
+                  key={place.id}
+                  href={place.url}
+                  name={place.name}
+                  rating={place.rating}
+                  ratingCount={place.ratingCount}
+                  detail={`${place.category} · ${Math.round(place.distanceMeters)} m`}
+                  onPoint={() => setHighlighted(place.id)}
                 />
-              </InfoWindow>
+              ))}
+            </MapPanelList>
+          </>
+        )
+      }
+    >
+      <APIProvider apiKey={MAPS_KEY}>
+        <Map
+          defaultCenter={{ lat: latitude, lng: longitude }}
+          defaultZoom={15}
+          mapId="cityguide"
+          gestureHandling="cooperative"
+        >
+          {/* The place the page is about: dark pin, drawn over the rest. */}
+          <AdvancedMarker
+            position={{ lat: latitude, lng: longitude }}
+            title={name}
+            zIndex={1000}
+          >
+            {photo ? (
+              <LogoPin logo={photo} name={name} current />
+            ) : (
+              <Pin
+                background="#175877"
+                borderColor="#ffffff"
+                glyphColor="#ffffff"
+                scale={1.3}
+              />
             )}
-          </Map>
-        </APIProvider>
-      </div>
-    </div>
+          </AdvancedMarker>
+          <NearbyPins
+            places={shown}
+            highlighted={highlighted}
+            onSelect={setSelected}
+          />
+          {selected && shown.some((place) => place.id === selected.id) && (
+            <InfoWindow
+              position={{ lat: selected.latitude, lng: selected.longitude }}
+              onCloseClick={() => setSelected(null)}
+              headerContent={
+                <span className="text-sm font-semibold text-brand-700">
+                  {selected.name}
+                </span>
+              }
+              // Focusing the popup scrolls the page to it, moving the map
+              // out from under the pointer mid-click.
+              shouldFocus={false}
+            >
+              <MapPopupCard
+                url={selected.url}
+                name={selected.name}
+                photo={selected.photo ?? sectionMapIcon(selected.url)}
+                address={selected.address}
+                rating={selected.rating}
+                ratingCount={selected.ratingCount}
+              />
+            </InfoWindow>
+          )}
+        </Map>
+      </APIProvider>
+    </MapBlock>
   );
 }
 
