@@ -258,7 +258,10 @@ The list column is taken out of the flow beside the map (`lg:absolute`), so the 
 height is the block's and the list scrolls inside it — which is what lets both panels offer
 24 places instead of 8. `MapPanelHeader`/`MapPanelList`/`MapPanelRow` are that list, so
 "¿Qué está cerca?" (`PlaceMap`) and "Cerca de ti" (`MarkersMap`, every listing, the events
-and attractions maps) read and behave the same. Stacked on a phone the list keeps its own
+and attractions maps) read and behave the same. Each row carries, at 40px, the very icon its
+pin shows (`mapPinIcon`: the company logo, else the section glyph), so a row and the pin it
+frames read as the same thing. Name and detail are each cut with an ellipsis so every row is
+the same height. Stacked on a phone the list keeps its own
 capped height under the map.
 
 The "¿Qué está cerca?" map panel calls `GET /api/nearby` (`CityGuideWeb/CityGuide/NearbyController.cs`, haversine scan over `NearbyIndex`). It draws as a `MapBlock` like every other map with a list beside it. The index is the projection of every published `place` — category, branch name, photo, logo, url, rating — built once and held until a publish, unpublish, delete or move drops it (`NearbyIndexInvalidator`, the same four notifications the frontend cache invalidator listens to); a request used to read every place node plus each of its ancestors out of the content cache. It is built inside the request that finds it empty (resolving a node URL needs the ambient request state) and concurrent requests wait on that one build. The frontend proxies the endpoint via a Next.js rewrite so the browser call is same-origin.

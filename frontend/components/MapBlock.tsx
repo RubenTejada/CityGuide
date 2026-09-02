@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { RatingBadge } from "./Rating";
@@ -97,6 +98,7 @@ export function MapPanelEmpty({ children }: { children: ReactNode }) {
 export function MapPanelRow({
   href,
   name,
+  thumbnail,
   rating,
   ratingCount,
   detail,
@@ -104,27 +106,56 @@ export function MapPanelRow({
 }: {
   href: string;
   name: string;
+  /** The same icon the place's map pin carries — see `mapPinIcon`. */
+  thumbnail?: string | null;
   rating?: number | null;
   ratingCount?: number | null;
   /** Second line: the distance, and the category when the list mixes them. */
   detail: ReactNode;
   onPoint: () => void;
 }) {
+  // Section glyphs (bundled SVGs) carry their own background and fill the
+  // plate; company logos are letterboxed on white, as in the map pins.
+  const isSectionIcon = thumbnail?.endsWith(".svg") ?? false;
   return (
     <li>
       <Link
         href={href}
-        className="block p-3 text-sm hover:bg-neutral-50"
+        className="flex items-center gap-3 p-3 text-sm hover:bg-neutral-50"
         onMouseEnter={onPoint}
         onFocus={onPoint}
       >
-        <span className="font-medium">{name}</span>
-        <RatingBadge
-          value={rating}
-          count={ratingCount}
-          className="ml-2 !text-xs"
-        />
-        <span className="mt-0.5 block text-xs text-neutral-500">{detail}</span>
+        {thumbnail && (
+          // The pin's plate at list size, so a row and its pin read as the
+          // same thing.
+          <div className="logo-plate relative h-10 w-10 flex-none overflow-hidden rounded-lg border border-neutral-300 bg-white">
+            <Image
+              src={thumbnail}
+              alt=""
+              fill
+              unoptimized={isSectionIcon}
+              className={isSectionIcon ? "object-cover" : "object-contain p-0.5"}
+              sizes="40px"
+            />
+          </div>
+        )}
+        <span className="min-w-0 flex-1">
+          {/* One line each, cut with an ellipsis: a long name must not make
+              this row taller than the rest of the list. */}
+          <span className="flex items-baseline gap-2">
+            <span className="min-w-0 truncate font-medium" title={name}>
+              {name}
+            </span>
+            <RatingBadge
+              value={rating}
+              count={ratingCount}
+              className="shrink-0 !text-xs"
+            />
+          </span>
+          <span className="mt-0.5 block truncate text-xs text-neutral-500">
+            {detail}
+          </span>
+        </span>
       </Link>
     </li>
   );

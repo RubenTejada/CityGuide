@@ -204,10 +204,12 @@ export function sectionMapIcon(routePath: string): string {
 }
 
 /**
- * Icon drawn inside a map pin: the logo of the company the place belongs to,
- * otherwise the section glyph. A place's own photo is never used — a pin is a
- * 40px badge, and a cropped storefront photo there reads as noise and hides
- * which section the pin belongs to.
+ * Icon drawn inside a map pin, and beside the place in the panel list next to
+ * the map: the logo of the company the place belongs to, otherwise the section
+ * glyph. A place's own photo is never used — a pin is a 40px badge, a cropped
+ * storefront photo there reads as noise and hides which section the pin belongs
+ * to, and a row showing something other than its pin makes the pair harder to
+ * match.
  */
 export function mapPinIcon(
   routePath: string,

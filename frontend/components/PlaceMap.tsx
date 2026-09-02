@@ -153,6 +153,7 @@ export default function PlaceMap({
                   key={place.id}
                   href={place.url}
                   name={place.name}
+                  thumbnail={mapPinIcon(place.url, place.icon)}
                   rating={place.rating}
                   ratingCount={place.ratingCount}
                   detail={`${place.category} · ${Math.round(place.distanceMeters)} m`}

@@ -178,6 +178,7 @@ export default function MarkersMap({
                   key={marker.id}
                   href={marker.url}
                   name={marker.name}
+                  thumbnail={mapPinIcon(marker.url, marker.logo)}
                   rating={marker.rating}
                   ratingCount={marker.ratingCount}
                   detail={formatDistance(meters)}
