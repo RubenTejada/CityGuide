@@ -214,6 +214,8 @@ export default function PlaceMap({
                 address={selected.address}
                 rating={selected.rating}
                 ratingCount={selected.ratingCount}
+                latitude={selected.latitude}
+                longitude={selected.longitude}
               />
             </InfoWindow>
           )}

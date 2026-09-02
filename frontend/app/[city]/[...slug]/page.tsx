@@ -3,6 +3,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import ArticleBody from "@/components/ArticleBody";
+import DirectionsLink from "@/components/DirectionsLink";
 import JsonLd from "@/components/JsonLd";
 import ArticleCard, { articleDate } from "@/components/ArticleCard";
 import FacilityBadges, { FACILITY_ICONS } from "@/components/FacilityBadges";
@@ -26,6 +27,7 @@ import ThingsToDoExplorer, {
 } from "@/components/ThingsToDoExplorer";
 import TrailerModal from "@/components/cine/TrailerModal";
 import { branchDisplayName } from "@/lib/branches";
+import { itemDirectionsUrl } from "@/lib/directions";
 import {
   CINEMAS_BY_CITY,
   cinemaByName,
@@ -935,6 +937,7 @@ async function MallView({ item }: { item: UmbracoItem }) {
   const groups = await mallEstablishmentGroups(item, children, referenced, cityItem);
   const photo = photoUrl(item);
   const website = text(item, "website");
+  const directions = itemDirectionsUrl(item);
   const latitude = num(item, "latitude");
   const longitude = num(item, "longitude");
 
@@ -960,7 +963,10 @@ async function MallView({ item }: { item: UmbracoItem }) {
           />
         </div>
         <div className="min-w-0">
-          <h1 className="text-3xl font-bold">{item.name}</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-bold">{item.name}</h1>
+            {directions && <DirectionsLink href={directions} />}
+          </div>
           <dl className="mt-3 space-y-1.5 text-sm">
             {text(item, "address") && (
               <div className="flex gap-2">
@@ -1033,7 +1039,10 @@ async function MallView({ item }: { item: UmbracoItem }) {
 
       {latitude !== 0 && longitude !== 0 && (
         <section className="mt-10">
-          <h2 className="text-lg font-semibold">Ubicación</h2>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold">Ubicación</h2>
+            {directions && <DirectionsLink href={directions} variant="link" />}
+          </div>
           <div className="mt-4">
             <PlaceMap
               id={item.id}
@@ -1163,6 +1172,7 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
   // being cropped to the square like a real photo.
   const isLogo = inheritedPhoto !== null && ownPhoto === null;
   const website = inherited("website");
+  const directions = itemDirectionsUrl(item, displayName);
   const cityItem = await cityOf(item);
 
   return (
@@ -1180,7 +1190,10 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
           image: inheritedPhoto,
         })}
       />
-      <h1 className="mt-4 text-3xl font-bold">{displayName}</h1>
+      <div className="mt-4 flex items-center gap-3">
+        <h1 className="text-3xl font-bold">{displayName}</h1>
+        {directions && <DirectionsLink href={directions} />}
+      </div>
       <div className="mt-1">
         <Rating place={item} />
       </div>
@@ -1270,7 +1283,10 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
 
       {latitude !== 0 && longitude !== 0 && (
         <section className="mt-10">
-          <h2 className="text-lg font-semibold">Mapa</h2>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold">Mapa</h2>
+            {directions && <DirectionsLink href={directions} variant="link" />}
+          </div>
           <div className="mt-4">
             <PlaceMap
               id={item.id}
@@ -1323,6 +1339,8 @@ async function EventView({ item }: { item: UmbracoItem }) {
   const photo = photoUrl(item);
   const website = text(item, "website");
   const phone = text(item, "phone");
+  // The route is to the venue, which is what the event's address describes.
+  const directions = itemDirectionsUrl(item, text(item, "venueName") || item.name);
   const dates = `${formatDate(item.properties["startDate"])}${
     item.properties["endDate"] ? ` — ${formatDate(item.properties["endDate"])}` : ""
   }`;
@@ -1333,7 +1351,10 @@ async function EventView({ item }: { item: UmbracoItem }) {
       <JsonLd
         data={eventJsonLd(item, cityItem?.name ?? "", text(cityItem ?? item, "country"))}
       />
-      <h1 className="mt-4 text-3xl font-bold">{item.name}</h1>
+      <div className="mt-4 flex items-center gap-3">
+        <h1 className="text-3xl font-bold">{item.name}</h1>
+        {directions && <DirectionsLink href={directions} />}
+      </div>
       {text(item, "category") && (
         <span className="mt-3 inline-block rounded-full bg-brand-100 px-3 py-1 text-sm font-medium text-brand-800">
           {text(item, "category")}
@@ -1414,7 +1435,10 @@ async function EventView({ item }: { item: UmbracoItem }) {
 
       {latitude !== 0 && longitude !== 0 && (
         <section className="mt-10">
-          <h2 className="text-lg font-semibold">Mapa</h2>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold">Mapa</h2>
+            {directions && <DirectionsLink href={directions} variant="link" />}
+          </div>
           <div className="mt-4">
             <PlaceMap
               id={item.id}
