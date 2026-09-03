@@ -2595,10 +2595,33 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
     }
 
     /// <summary>
+    /// Logos of the chains the agent creates on its own (a chain run with
+    /// <c>CreatesCompanies</c> makes the brand node from the first location it finds,
+    /// without a logo). Keyed by the company name exactly as the run names it.
+    /// </summary>
+    private static readonly (string Name, string LogoFile)[] AgentChainLogos =
+    [
+        ("Vimenca", "vimenca.png"),
+        ("Caribe Express", "caribe-express.png"),
+        ("Western Union", "western-union.png"),
+        ("MoneyGram", "moneygram.png"),
+        ("EPS", "eps.png"),
+        ("Aeropaq", "aeropaq.png"),
+        ("Domex", "domex.png"),
+        ("DHL", "dhl.png"),
+        ("BM Cargo", "bm-cargo.png"),
+        ("Liberty Express", "liberty-express.png"),
+        ("Mail Boxes Etc", "mail-boxes-etc.png"),
+        ("Priority Courier", "priority-courier.png"),
+    ];
+
+    /// <summary>
     /// Idempotent, runs every startup: gives every chain "company" node its logo when it
     /// has none. Installations seeded while the SeedAssets images were missing from the
     /// publish output got their companies without a logo, and the branches inherit that
-    /// emptiness, so a whole chain falls back to the section placeholder.
+    /// emptiness, so a whole chain falls back to the section placeholder. The same pass
+    /// covers the chains the agent creates (<see cref="AgentChainLogos"/>): the brand node
+    /// is born without a logo and picks it up on the next CMS startup.
     /// </summary>
     private bool EnsureChainLogos()
     {
@@ -2611,6 +2634,11 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         {
             ["Caribbean Cinemas"] = ("caribbean-cinemas.png", "Cines"),
         };
+        foreach ((string name, string logoFile) in AgentChainLogos)
+        {
+            logos[name] = (logoFile, "Remesas y Envíos");
+        }
+
         foreach ((Chain[] Chains, string Folder) group in new[]
         {
             (Banks, "Bancos"), (Supermarkets, "Supermercados"), (Pharmacies, "Farmacias"),

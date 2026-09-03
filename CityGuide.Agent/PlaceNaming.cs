@@ -13,15 +13,17 @@ public static class PlaceNaming
     /// <summary>The name followed by where this one is: "Sonoma Bistro — Ágora Mall".
     /// Returns the name unchanged when the address gives nothing to add, or already
     /// says it.</summary>
+    /// <summary>
+    /// The name plus the first line of the address that says something the name does not:
+    /// two "MoneyGram — Banco Popular" counters are told apart by the avenue that follows
+    /// the bank in their addresses. The bare name comes back when no line adds anything.
+    /// </summary>
     public static string Qualified(string name, string? address)
     {
-        string? line = AddressLine(address);
-        if (line is null || TextMatch.Normalize(name).Contains(TextMatch.Normalize(line)))
-        {
-            return name;
-        }
-
-        return $"{name} — {line}";
+        string normalized = TextMatch.Normalize(name);
+        string? line = AddressLines(address)
+            .FirstOrDefault(l => !normalized.Contains(TextMatch.Normalize(l)));
+        return line is null ? name : $"{name} — {line}";
     }
 
     /// <summary>Words that only introduce the cross street. Google's own street line
@@ -31,29 +33,31 @@ public static class PlaceNaming
 
     /// <summary>Connectors that can also open a line. "C." is left out: at the start
     /// it abbreviates "Calle" ("C. Duarte 451"), not a cross street.</summary>
-    private static readonly string[] LeadingConnectors = ["esq", "esquina", "casi", "con", "y"];
+    // "inside"/"dentro": Google names an agent counter by where it stands ("MoneyGram
+    // inside Banreservas"), and once the chain is stripped the word leads the rest.
+    private static readonly string[] LeadingConnectors =
+        ["esq", "esquina", "casi", "con", "y", "inside", "dentro"];
 
     /// <summary>First line of a formatted address ("Ágora Mall, Av. Abraham Lincoln,
     /// Santo Domingo…"), skipping a leading plus code, which places nothing.</summary>
-    public static string? AddressLine(string? address)
-    {
-        if (string.IsNullOrWhiteSpace(address))
-        {
-            return null;
-        }
+    public static string? AddressLine(string? address) => AddressLines(address).FirstOrDefault();
 
-        foreach (string part in address.Split(','))
+    /// <summary>The lines of an address that name something — plus codes and stubs do not.</summary>
+    private static IEnumerable<string> AddressLines(string? address)
+    {
+        // Google closes every address on the locality and the country ("…, Santo Domingo
+        // 10413, República Dominicana"), which place nothing within the city.
+        string[] parts = (address ?? "").Split(',');
+        foreach (string part in parts.Length > 2 ? parts[..^2] : parts)
         {
             // Google sometimes opens an address on punctuation left over from a
             // cross-street note ("| y Urena, C. Hostos 302"), which places nothing.
             string segment = TrimConnectors(part.Trim().TrimStart('|', '-', '/', '.', '#'));
             if (segment.Length > 3 && !segment.Contains('+'))
             {
-                return segment.Trim();
+                yield return segment.Trim();
             }
         }
-
-        return null;
     }
 
     /// <summary>Drops the connector words a street line starts or ends on, so neither

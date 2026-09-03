@@ -21,13 +21,16 @@ public static class BranchNaming
     private static string Distinguisher(string placeName, string? address, string companyName)
     {
         string trimmed = placeName.Trim();
-        string local = StripCompany(trimmed, companyName);
+        // "Vimenca y Western Union" minus the chain is "y Western Union"; "MoneyGram inside
+        // Banreservas" minus the chain is "inside Banreservas". The connector goes too.
+        string local = PlaceNaming.TrimConnectors(StripCompany(trimmed, companyName));
 
         // Stripping shortened the name, so what is left is this branch's own part.
         // When it removed nothing the name carries no chain to subtract (Google
         // calls APAP's branches "Asociación Popular de Ahorros y Préstamos"), and
         // the name is the chain's however it is spelled — fall back to the address.
-        if (local.Length > 0 && local.Length < trimmed.Length)
+        // What is left has to say something: "(1)" — Umbraco's suffix on a twin — does not.
+        if (local.Length > 0 && local.Length < trimmed.Length && local.Any(char.IsLetter))
         {
             return local;
         }
@@ -37,15 +40,17 @@ public static class BranchNaming
 
     private static string StripCompany(string placeName, string companyName)
     {
-        var chain = new HashSet<string>(TextMatch.Tokens(companyName));
+        // Every word of the chain counts, short ones included: "BM Cargo" has to lose
+        // its "BM" too, and "Banco de Reservas" its "de".
+        var chain = new HashSet<string>(TextMatch.Words(companyName));
         IEnumerable<string> kept = placeName
             .Split(' ', StringSplitOptions.RemoveEmptyEntries)
             .Where(word =>
             {
-                string[] tokens = TextMatch.Tokens(word);
-                return tokens.Length == 0 || !tokens.All(chain.Contains);
+                string[] words = TextMatch.Words(word);
+                return words.Length == 0 || !words.All(chain.Contains);
             });
 
-        return string.Join(' ', kept).Trim(' ', '-', '–', '—', ',');
+        return string.Join(' ', kept).Trim(' ', '-', '–', '—', ',', '•', '|');
     }
 }

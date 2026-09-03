@@ -560,6 +560,163 @@ if (args.Contains("--regroup-malls"))
 // recycle bin, and only copies the agent created are ever recycled. A copy with children
 // is left alone and reported. Prints the plan and changes nothing without --apply.
 // Duplicated plazas are not this pass's business: --regroup-malls owns them.
+// Maintenance: send one node to the recycle bin ("--recycle-place <ruta> [--apply]"),
+// for the copy no rule can see — the same Google listing an earlier pass filed under a
+// second section, which the id dedupe now keeps from coming back but nothing removes.
+// Only what the agent created is recycled, and only when nothing hangs from it.
+if (args.Contains("--recycle-place"))
+{
+    string? recyclePath = args.SkipWhile(a => a != "--recycle-place").Skip(1).FirstOrDefault();
+    if (string.IsNullOrWhiteSpace(recyclePath) || recyclePath.StartsWith("--", StringComparison.Ordinal))
+    {
+        Console.Error.WriteLine("--recycle-place necesita la ruta del nodo. Ejemplo: dotnet run -- --recycle-place "
+            + "/santo-domingo/empresas-y-servicios/remesas-y-envios/plaza-lama");
+        return 1;
+    }
+
+    if (await umbraco.GetContentByPathAsync(recyclePath) is not { } doomed)
+    {
+        Console.Error.WriteLine($"No encontré '{recyclePath}'.");
+        return 1;
+    }
+
+    UmbracoClient.PlaceDetail doomedDetail = await umbraco.GetPlaceDetailAsync(doomed.Id);
+    if (doomedDetail.Source?.StartsWith("agent", StringComparison.OrdinalIgnoreCase) != true)
+    {
+        Console.Error.WriteLine($"'{doomed.Name}' está hecho a mano — recíclalo tú desde el backoffice.");
+        return 1;
+    }
+
+    if ((await umbraco.GetChildrenAsync(doomed.Id)).Count > 0)
+    {
+        Console.Error.WriteLine($"'{doomed.Name}' tiene contenido dentro — no se recicla.");
+        return 1;
+    }
+
+    bool applyRecycle = args.Contains("--apply");
+    Console.WriteLine(applyRecycle
+        ? $"Enviando '{doomed.Name}' a la papelera [{doomedDetail.GooglePlaceId}]"
+        : $"Se enviaría '{doomed.Name}' a la papelera [{doomedDetail.GooglePlaceId}] (simulación; agrega --apply)");
+    if (applyRecycle)
+    {
+        await umbraco.RecycleDocumentAsync(doomed.Id);
+    }
+
+    return 0;
+}
+
+// Maintenance: keep the city's "Lugares excluidos" and the content in step
+// ("--exclude-place <id>[,<id>...] [--note "texto"]"). The list is what stops a Google
+// listing from becoming content again — a copy of a branch Google keeps twice, a shop
+// answered to a remesas query — but a node sent to the papelera by hand comes back on
+// the next pass unless its id is on the list, and an id on the list does nothing about
+// the node already published. This does both at once: appends each id to the list of the
+// city its node lives in (with the node's name as the note, so the editor knows what the
+// line stands for) and sends the node to the recycle bin — only when the agent made it.
+// Prints the plan and changes nothing without --apply.
+if (args.Contains("--exclude-place"))
+{
+    string[] excludedIds = [.. args.SkipWhile(a => a != "--exclude-place").Skip(1)
+        .TakeWhile(a => !a.StartsWith("--", StringComparison.Ordinal))
+        .SelectMany(a => a.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))];
+    if (excludedIds.Length == 0)
+    {
+        Console.Error.WriteLine(
+            "--exclude-place necesita al menos un id de Google (separados por coma). Ejemplo: "
+            + "dotnet run -- --exclude-place ChIJ...,ChIJ... --note \"tienda, no remesas\"");
+        return 1;
+    }
+
+    string? note = args.SkipWhile(a => a != "--note").Skip(1).FirstOrDefault();
+    bool applyExclusion = args.Contains("--apply");
+    Console.WriteLine(applyExclusion
+        ? "== Excluyendo lugares"
+        : "== Lugares por excluir (simulación; agrega --apply para aplicarla)");
+
+    List<UmbracoClient.PublishedPlace> published = await umbraco.GetPublishedPlacesAsync("place");
+    var linesByCity = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+    var recycledForExclusion = 0;
+    foreach (string id in excludedIds.Distinct(StringComparer.Ordinal))
+    {
+        // Every node carrying the id goes: an earlier pass may have filed the same
+        // listing under two sections, and the exclusion is of the listing, not of one copy.
+        List<UmbracoClient.PublishedPlace> nodes = [.. published.Where(p => p.GooglePlaceId == id)];
+        if (nodes.Count == 0)
+        {
+            Console.WriteLine($"  ? {id}: ningún lugar publicado lo lleva — agrégalo a mano en el nodo de la ciudad");
+            continue;
+        }
+
+        string citySlug = nodes[0].Path.Trim('/').Split('/')[0];
+        UmbracoClient.CityAgentConfig? city = await CityConfigAsync(citySlug);
+        if (city?.ExcludedPlaceIds.Contains(id) == true)
+        {
+            Console.WriteLine($"  = {id}: ya está en la lista de '{citySlug}' ({nodes[0].Name})");
+        }
+        else
+        {
+            if (!linesByCity.TryGetValue(citySlug, out List<string>? lines))
+            {
+                linesByCity[citySlug] = lines = [];
+            }
+
+            lines.Add($"{id} # {nodes[0].Name}{(string.IsNullOrWhiteSpace(note) ? "" : $" — {note}")}");
+            Console.WriteLine($"  + {id} a la lista de '{citySlug}' ({nodes[0].Name})");
+        }
+
+        foreach (UmbracoClient.PublishedPlace node in nodes)
+        {
+            if (!node.AgentMade)
+            {
+                Console.WriteLine($"    ? {node.Path}: hecho a mano — se queda, recíclalo tú si sobra");
+                continue;
+            }
+
+            if ((await umbraco.GetChildrenAsync(node.Id)).Count > 0)
+            {
+                Console.WriteLine($"    ? {node.Path}: tiene contenido dentro — se queda");
+                continue;
+            }
+
+            recycledForExclusion++;
+            Console.WriteLine($"    x {node.Path}");
+            if (applyExclusion)
+            {
+                try
+                {
+                    await umbraco.RecycleDocumentAsync(node.Id);
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"    ! {node.Path}: {ex.Message}");
+                }
+            }
+        }
+    }
+
+    if (applyExclusion)
+    {
+        foreach ((string citySlug, List<string> lines) in linesByCity)
+        {
+            if (await umbraco.GetContentByPathAsync($"/{citySlug}") is not { } cityNode)
+            {
+                Console.Error.WriteLine($"  ! no encontré el nodo de la ciudad '{citySlug}'");
+                continue;
+            }
+
+            string current = (await umbraco.GetTextValuesAsync(cityNode.Id))
+                .GetValueOrDefault("agentExcludedPlaces")?.TrimEnd() ?? "";
+            string updated = string.Join('\n', current.Length == 0 ? lines : [current, .. lines]);
+            await umbraco.SetTextValueAsync(cityNode.Id, "agentExcludedPlaces", updated);
+            cityConfigs.Remove(citySlug);
+        }
+    }
+
+    Console.WriteLine($"\n{linesByCity.Values.Sum(l => l.Count)} id(s) {(applyExclusion ? "añadidos" : "por añadir")} a la lista, "
+        + $"{recycledForExclusion} nodo(s) {(applyExclusion ? "a la papelera" : "por enviar a la papelera")}.");
+    return 0;
+}
+
 if (args.Contains("--purge-duplicate-places"))
 {
     bool applyPurge = args.Contains("--apply");
@@ -764,6 +921,46 @@ async Task<Dictionary<string, Guid>> SiblingsAsync(Guid parentId)
     return names;
 }
 
+// The name a newcomer takes among its siblings. When one of them already carries the
+// bare name, both get the first line of their address that says more than the name does
+// ("Sonoma Bistro — Ágora Mall", "Sonoma Bistro — Calle Federico Geraldino 96"): the one
+// already there was named before this twin existed, so it is renamed too, or the pair
+// still reads as one place with a number stuck on it. Two branches on one corner can
+// share that line, and then the qualifier tells them apart no better than the bare name
+// does — both are left alone rather than repeat one name twice.
+async Task<string> NameApartAsync(Dictionary<string, Guid> siblings, string baseName, string? address)
+{
+    if (!siblings.TryGetValue(baseName, out Guid twinId))
+    {
+        return baseName;
+    }
+
+    string name = baseName;
+    try
+    {
+        string qualified = PlaceNaming.Qualified(baseName, address);
+        string twinName = PlaceNaming.Qualified(baseName, await umbraco.GetPlaceAddressAsync(twinId));
+        if (qualified != twinName)
+        {
+            name = qualified;
+        }
+
+        if (twinName != baseName && twinName != name && !siblings.ContainsKey(twinName))
+        {
+            await umbraco.RenameDocumentAsync(twinId, twinName);
+            siblings.Remove(baseName);
+            siblings[twinName] = twinId;
+            Console.WriteLine($"  ~ '{baseName}' -> '{twinName}' (nombre repetido)");
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"  ! renombrar '{baseName}' existente: {ex.Message}");
+    }
+
+    return name;
+}
+
 // Chains (banks, supermarkets, fast-food brands) keep one "company" node per brand
 // with the logo and general info, and their branches as child places. A chain filed
 // inside a cuisine subcategory ("McDonald's" under "Comida Rápida") still has to be
@@ -802,6 +999,233 @@ async Task<Dictionary<string, Guid>> CompaniesAsync(Guid parentId)
 
     companiesByParent[parentId] = names;
     return names;
+}
+
+// Maintenance: file under their chain the places an earlier pass left flat in a
+// category ("--regroup-companies [--apply]", scoped by --section). A chain run creates
+// its brand node on the first location it finds, so every location a *previous* run had
+// already stored — a Western Union counter the Vimenca run reached first, a MoneyGram
+// agent the broad "agencias de remesas" query found before the chain had a node — stays
+// loose beside the company it belongs to, without its logo or its general info. This
+// walks every category the config names and its subcategories, and each agent-made
+// place whose name carries a sibling company's name (the same phrase rule discovery
+// nests by) moves under it, renamed as a branch. A chain the config lets a run create
+// (CreatesCompanies) whose node is missing is created from the first place that carries
+// its name, the way the run would have. Prints the plan and changes nothing without
+// --apply.
+if (args.Contains("--regroup-companies"))
+{
+    bool applyRegroup = args.Contains("--apply");
+    static string Unnumbered(string name) =>
+        System.Text.RegularExpressions.Regex.Replace(name, @"\s\(\d+\)$", "");
+    Console.WriteLine(applyRegroup
+        ? "== Agrupando sucursales bajo sus empresas"
+        : "== Sucursales por agrupar (simulación; agrega --apply para aplicarla)");
+
+    Guid placeTypeId = await umbraco.GetDocumentTypeIdAsync("Place");
+    Guid companyTypeId = await umbraco.GetDocumentTypeIdAsync("Company");
+    Guid subcategoryTypeId = await umbraco.GetDocumentTypeIdAsync("Subcategory");
+    var regrouped = 0;
+    var companiesCreated = 0;
+    var renamed = 0;
+    var regroupReview = 0;
+    foreach (string parentPath in config.Runs
+        .Where(r => SectionSelected(r.ParentPath))
+        .Select(r => r.ParentPath)
+        .Distinct(StringComparer.OrdinalIgnoreCase))
+    {
+        if (await umbraco.GetContentByPathAsync(parentPath) is not { } category)
+        {
+            Console.Error.WriteLine($"  ! no encontré {parentPath}");
+            continue;
+        }
+
+        List<UmbracoClient.ChildDocument> categoryChildren = await umbraco.GetChildrenAsync(category.Id);
+        var containers = new List<(Guid Id, string Name, bool IsCategory, List<UmbracoClient.ChildDocument> Children)>
+        {
+            (category.Id, category.Name, true, categoryChildren),
+        };
+        foreach (UmbracoClient.ChildDocument subcategory in categoryChildren.Where(c => c.DocumentTypeId == subcategoryTypeId))
+        {
+            containers.Add((subcategory.Id, subcategory.Name, false, await umbraco.GetChildrenAsync(subcategory.Id)));
+        }
+
+        foreach ((Guid containerId, string containerName, bool isCategory, List<UmbracoClient.ChildDocument> children) in containers)
+        {
+            Dictionary<string, Guid> companies = children
+                .Where(c => c.DocumentTypeId == companyTypeId)
+                .GroupBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.First().Id, StringComparer.OrdinalIgnoreCase);
+
+            // The chains a run is allowed to create right here.
+            string[] chains = [.. config.Runs
+                .Where(r => r.CreatesCompanies && !string.IsNullOrWhiteSpace(r.CompanyName)
+                    && string.Equals(r.ParentPath, parentPath, StringComparison.OrdinalIgnoreCase)
+                    && (string.IsNullOrWhiteSpace(r.Subcategory)
+                        ? isCategory
+                        : string.Equals(r.Subcategory, containerName, StringComparison.OrdinalIgnoreCase)))
+                .Select(r => r.CompanyName)
+                .Distinct(StringComparer.OrdinalIgnoreCase)];
+
+            var createdHere = new Dictionary<Guid, string>();
+            foreach (UmbracoClient.ChildDocument loose in children.Where(c => c.DocumentTypeId == placeTypeId))
+            {
+                // The longest name wins when several fit: "Western Union" over "Union".
+                string? chain = companies.Keys.Concat(chains)
+                    .Where(c => TextMatch.ContainsPhrase(c, loose.Name))
+                    .OrderByDescending(c => c.Length)
+                    .FirstOrDefault();
+                if (chain is null)
+                {
+                    continue;
+                }
+
+                UmbracoClient.PlaceDetail detail = await umbraco.GetPlaceDetailAsync(loose.Id);
+                if (detail.Source?.StartsWith("agent", StringComparison.OrdinalIgnoreCase) != true)
+                {
+                    regroupReview++;
+                    Console.WriteLine($"  ? '{loose.Name}' ({containerName}) parece de {chain}, pero está hecho a mano — muévelo tú");
+                    continue;
+                }
+
+                bool createCompany = !companies.TryGetValue(chain, out Guid companyId);
+                string branchName = BranchNaming.For(loose.Name, detail.Address, chain);
+                regrouped++;
+                Console.WriteLine($"  > '{loose.Name}' ({containerName}) -> {chain} como '{branchName}'"
+                    + (createCompany ? " (crea la empresa)" : ""));
+                if (!applyRegroup)
+                {
+                    if (createCompany)
+                    {
+                        companies[chain] = Guid.Empty;
+                        companiesCreated++;
+                    }
+
+                    continue;
+                }
+
+                try
+                {
+                    if (createCompany)
+                    {
+                        // The brand node keeps what this location paid for, as it would
+                        // have on the run that discovered it first.
+                        Dictionary<string, string?> text = await umbraco.GetTextValuesAsync(loose.Id);
+                        companyId = await umbraco.CreateDocumentAsync(containerId, companyTypeId, chain,
+                            [
+                                new { alias = "description", value = (object?)text.GetValueOrDefault("description") },
+                                new { alias = "website", value = (object?)text.GetValueOrDefault("website") },
+                            ]);
+                        companies[chain] = companyId;
+                        createdHere[companyId] = chain;
+                        companiesCreated++;
+                        Console.WriteLine($"    + empresa '{chain}'");
+                    }
+
+                    Dictionary<string, Guid> siblings = await SiblingsAsync(companyId);
+                    branchName = await NameApartAsync(siblings, branchName, detail.Address);
+                    await umbraco.MoveDocumentAsync(loose.Id, companyId);
+                    if (branchName != loose.Name)
+                    {
+                        await umbraco.RenameDocumentAsync(loose.Id, branchName);
+                    }
+
+                    siblings[branchName] = loose.Id;
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"    ! '{loose.Name}': {ex.Message}");
+                }
+            }
+
+            // The brand node is created while the loose place still carries the bare
+            // chain name beside it ("MoneyGram"), so Umbraco numbers the newcomer
+            // ("MoneyGram (2)"). Once the places have moved under it the name is free
+            // again, and the seeder finds the logo by that exact name. The same repair
+            // covers a company an earlier apply left numbered.
+            foreach (UmbracoClient.ChildDocument company in applyRegroup ? await umbraco.GetChildrenAsync(containerId) : children)
+            {
+                if (company.DocumentTypeId != companyTypeId)
+                {
+                    continue;
+                }
+
+                string bare = createdHere.TryGetValue(company.Id, out string? chainName)
+                    ? chainName
+                    : Unnumbered(company.Name);
+                if (bare != company.Name)
+                {
+                    renamed++;
+                    Console.WriteLine($"  ~ empresa '{company.Name}' -> '{bare}'");
+                    if (applyRegroup)
+                    {
+                        try
+                        {
+                            await umbraco.RenameDocumentAsync(company.Id, bare);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.Error.WriteLine($"    ! renombrar '{company.Name}': {ex.Message}");
+                        }
+                    }
+                }
+
+                // Branches Umbraco numbered ("Sucursal (1)") because an earlier pass could
+                // not tell the twins apart: the first address line that says more than the
+                // name does names each one now, when it names them all differently. What an
+                // editor typed in keeps its name.
+                foreach (IGrouping<string, UmbracoClient.ChildDocument> twins in (await umbraco.GetChildrenAsync(company.Id))
+                    .Where(b => b.DocumentTypeId == placeTypeId)
+                    .GroupBy(b => Unnumbered(b.Name), StringComparer.OrdinalIgnoreCase)
+                    .Where(g => g.Count() > 1))
+                {
+                    var names = new Dictionary<Guid, string>();
+                    foreach (UmbracoClient.ChildDocument twin in twins)
+                    {
+                        UmbracoClient.PlaceDetail twinDetail = await umbraco.GetPlaceDetailAsync(twin.Id);
+                        if (twinDetail.Source?.StartsWith("agent", StringComparison.OrdinalIgnoreCase) != true)
+                        {
+                            names.Clear();
+                            break;
+                        }
+
+                        names[twin.Id] = PlaceNaming.Qualified(twins.Key, twinDetail.Address);
+                    }
+
+                    if (names.Count == 0
+                        || names.Values.Distinct(StringComparer.OrdinalIgnoreCase).Count() != names.Count)
+                    {
+                        continue;
+                    }
+
+                    foreach (UmbracoClient.ChildDocument twin in twins.Where(t => t.Name != names[t.Id]))
+                    {
+                        renamed++;
+                        Console.WriteLine($"  ~ '{twin.Name}' -> '{names[twin.Id]}' ({company.Name})");
+                        if (!applyRegroup)
+                        {
+                            continue;
+                        }
+
+                        try
+                        {
+                            await umbraco.RenameDocumentAsync(twin.Id, names[twin.Id]);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.Error.WriteLine($"    ! renombrar '{twin.Name}': {ex.Message}");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Console.WriteLine($"\n{regrouped} sucursal(es) {(applyRegroup ? "agrupadas" : "por agrupar")}, "
+        + $"{companiesCreated} empresa(s) {(applyRegroup ? "creadas" : "por crear")}, "
+        + $"{renamed} nombre(s) {(applyRegroup ? "corregidos" : "por corregir")}"
+        + (regroupReview > 0 ? $", {regroupReview} para mover a mano." : "."));
+    return 0;
 }
 
 foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelected(r.ParentPath)) : [])
@@ -968,7 +1392,7 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelec
             // Branches inherit description/phone/website/hours from their company,
             // so they cost no LLM tokens.
             Guid? companyId = pinnedCompanyId ?? companies
-                .Where(c => TextMatch.Matches(c.Key, place.Name, 1.0))
+                .Where(c => TextMatch.ContainsPhrase(c.Key, place.Name))
                 .Select(c => (Guid?)c.Value)
                 .FirstOrDefault();
             Enrichment? enrichment = companyId is null
@@ -1013,7 +1437,7 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelec
             // "Pizzerías" — and keeps the description this place just paid for. Every
             // location after it is a branch that inherits and costs no tokens.
             if (companyId is null && run.CreatesCompanies
-                && TextMatch.Matches(run.CompanyName, place.Name, 1.0))
+                && TextMatch.ContainsPhrase(run.CompanyName, place.Name))
             {
                 companyId = await umbraco.CreateDocumentAsync(
                     targetParentId, companyTypeId, run.CompanyName,
@@ -1034,40 +1458,8 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelec
             string baseName = companyName is null
                 ? place.Name
                 : BranchNaming.For(place.Name, place.Address, companyName);
-            string name = baseName;
             Dictionary<string, Guid> siblings = await SiblingsAsync(targetParentId);
-            if (siblings.TryGetValue(baseName, out Guid twinId))
-            {
-                // The one already there was named before this twin existed, so it
-                // carries the bare name — qualify it too, or the pair still reads
-                // as one place with a number stuck on it.
-                try
-                {
-                    string qualified = PlaceNaming.Qualified(baseName, place.Address);
-                    string twinName = PlaceNaming.Qualified(
-                        baseName, await umbraco.GetPlaceAddressAsync(twinId));
-
-                    // Two branches on one corner can share an address line, and then
-                    // the qualifier tells them apart no better than the bare name
-                    // does. Leave both alone rather than repeat one name twice.
-                    if (qualified != twinName)
-                    {
-                        name = qualified;
-                    }
-
-                    if (twinName != baseName && twinName != name && !siblings.ContainsKey(twinName))
-                    {
-                        await umbraco.RenameDocumentAsync(twinId, twinName);
-                        siblings.Remove(baseName);
-                        siblings[twinName] = twinId;
-                        Console.WriteLine($"  ~ '{baseName}' -> '{twinName}' (nombre repetido)");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Console.Error.WriteLine($"  ! renombrar '{baseName}' existente: {ex.Message}");
-                }
-            }
+            string name = await NameApartAsync(siblings, baseName, place.Address);
 
             Guid id = await umbraco.CreatePlaceAsync(
                 targetParentId, place, enrichment, photoKey, companyName, name,

@@ -107,6 +107,49 @@ on:
           - plan
           - apply
         default: "no"
+      regroup_companies:
+        description: >-
+          Maintenance pass instead of the ingestion run: files under their chain the
+          places an earlier pass left flat beside the company (a Western Union counter
+          the Vimenca run reached first), renamed as branches, and creates the chains
+          the config lets a run create when their node is missing. Scoped by "section".
+          "plan" only prints what it would do.
+        type: choice
+        required: false
+        options:
+          - "no"
+          - plan
+          - apply
+        default: "no"
+      recycle_place:
+        description: >-
+          Maintenance pass instead of the ingestion run: content path of an agent-made
+          node to send to the recycle bin — the copy no rule can see, such as the same
+          Google listing filed under a second section.
+        required: false
+        default: ""
+      recycle_place_apply:
+        description: Write the recycle. Left off, it only prints what it would do.
+        type: boolean
+        required: false
+        default: false
+      exclude_place:
+        description: >-
+          Maintenance pass instead of the ingestion run: Google place ids (comma-separated)
+          to put on the city's "Lugares excluidos" and send to the recycle bin — a second
+          listing of one branch, a shop answered to a remesas query. Only agent-made nodes
+          are recycled.
+        required: false
+        default: ""
+      exclude_note:
+        description: Note written beside each excluded id, for the editor. Optional.
+        required: false
+        default: ""
+      exclude_apply:
+        description: Write the exclusion. Left off, it only prints what it would do.
+        type: boolean
+        required: false
+        default: false
       paid:
         description: >-
           Let the run use the two services that charge: Google Places (billed per
@@ -174,6 +217,12 @@ jobs:
           MOVE_TO: ${{ inputs.move_place_to }}
           MOVE_APPLY: ${{ inputs.move_place_apply }}
           PURGE_DUPLICATES: ${{ inputs.purge_duplicate_places }}
+          REGROUP_COMPANIES: ${{ inputs.regroup_companies }}
+          RECYCLE_PATH: ${{ inputs.recycle_place }}
+          RECYCLE_APPLY: ${{ inputs.recycle_place_apply }}
+          EXCLUDE_IDS: ${{ inputs.exclude_place }}
+          EXCLUDE_NOTE: ${{ inputs.exclude_note }}
+          EXCLUDE_APPLY: ${{ inputs.exclude_apply }}
           PUBLISH: ${{ inputs.publish }}
           PAID: ${{ inputs.paid }}
         run: |
@@ -203,6 +252,26 @@ jobs:
             else
               dotnet run -c Release -- --move-place "$MOVE_FROM" "$MOVE_TO" $paid_flag
             fi
+          elif [ -n "$RECYCLE_PATH" ]; then
+            if [ "$RECYCLE_APPLY" = "true" ]; then
+              dotnet run -c Release -- --recycle-place "$RECYCLE_PATH" --apply $paid_flag
+            else
+              dotnet run -c Release -- --recycle-place "$RECYCLE_PATH" $paid_flag
+            fi
+          elif [ -n "$EXCLUDE_IDS" ]; then
+            if [ "$EXCLUDE_APPLY" = "true" ]; then
+              dotnet run -c Release -- --exclude-place "$EXCLUDE_IDS" --note "$EXCLUDE_NOTE" --apply $paid_flag
+            else
+              dotnet run -c Release -- --exclude-place "$EXCLUDE_IDS" --note "$EXCLUDE_NOTE" $paid_flag
+            fi
+          elif [ "$REGROUP_COMPANIES" = "plan" ] && [ -n "$SECTION" ]; then
+            dotnet run -c Release -- --regroup-companies --section "$SECTION" $paid_flag
+          elif [ "$REGROUP_COMPANIES" = "apply" ] && [ -n "$SECTION" ]; then
+            dotnet run -c Release -- --regroup-companies --section "$SECTION" --apply $paid_flag
+          elif [ "$REGROUP_COMPANIES" = "plan" ]; then
+            dotnet run -c Release -- --regroup-companies $paid_flag
+          elif [ "$REGROUP_COMPANIES" = "apply" ]; then
+            dotnet run -c Release -- --regroup-companies --apply $paid_flag
           elif [ "$PURGE_DUPLICATES" = "plan" ]; then
             dotnet run -c Release -- --purge-duplicate-places $paid_flag
           elif [ "$PURGE_DUPLICATES" = "apply" ]; then
