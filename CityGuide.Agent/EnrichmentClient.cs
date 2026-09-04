@@ -2,7 +2,11 @@ using System.Text.Json;
 
 namespace CityGuide.Agent;
 
-public record Enrichment(string Description, string[] Facilities);
+public record Enrichment(
+    string Description,
+    string[] Facilities,
+    string MetaTitle,
+    string MetaDescription);
 
 /// <summary>
 /// The agent's model-backed steps: a Spanish description + facility mapping for a
@@ -28,6 +32,14 @@ public static class EnrichmentPrompt
         "Parqueo", "WiFi", "Delivery", "Terraza", "Música en Vivo", "Apto para Niños",
     ];
 
+    /// <summary>What the frontend's title budget leaves for the page's own title:
+    /// 60 characters minus the " | QueHacerRD" the template appends. A longer one is
+    /// dropped rather than cut, so the page falls back to the derived title.</summary>
+    public const int MaxMetaTitle = 47;
+
+    /// <summary>Google's snippet budget, the same the frontend truncates to.</summary>
+    public const int MaxMetaDescription = 160;
+
     public const string ToolName = "save_place";
     public const string ToolDescription = "Save the enriched place information for the city guide portal.";
 
@@ -49,8 +61,22 @@ public static class EnrichmentPrompt
                 items = new { type = "string", @enum = FacilityOptions },
                 description = "Facilidades que muy probablemente aplican según el tipo de lugar y sus horarios.",
             },
+            metaTitle = new
+            {
+                type = "string",
+                description = $"Título para Google, máximo {MaxMetaTitle} caracteres (se le añade \" | QueHacerRD\"). "
+                    + "Empieza por el nombre del lugar y añade lo que es y dónde está "
+                    + "(\"Sonoma Bistro, italiano en Piantini\"). Sin comillas ni mayúsculas de más.",
+            },
+            metaDescription = new
+            {
+                type = "string",
+                description = $"Descripción para el resultado de Google, entre 120 y {MaxMetaDescription} caracteres, "
+                    + "una sola frase en español que nombre el lugar, qué ofrece y en qué zona o ciudad está. "
+                    + "Sin comillas, sin emoji y sin repetir el título palabra por palabra.",
+            },
         },
-        required = new[] { "description", "facilities" },
+        required = new[] { "description", "facilities", "metaTitle", "metaDescription" },
     };
 
     public static string UserMessage(DiscoveredPlace place, string? categoryPrompt) =>
@@ -62,10 +88,11 @@ public static class EnrichmentPrompt
         Horario: {string.Join(" | ", place.Hours)}
         Sitio web: {place.Website ?? "n/a"}
         {(string.IsNullOrWhiteSpace(categoryPrompt) ? "" : $"\nInstrucciones del editor para esta categoría: {categoryPrompt}\n")}
-        Escribe la descripción y selecciona las facilidades.
+        Escribe la descripción, selecciona las facilidades y redacta el título y la
+        descripción para Google.
         """;
 
-    /// <summary>Parses the tool-call arguments ({description, facilities}) into an Enrichment.</summary>
+    /// <summary>Parses the tool-call arguments into an Enrichment.</summary>
     public static Enrichment Parse(JsonElement input)
     {
         string description = input.GetProperty("description").GetString() ?? "";
@@ -73,6 +100,21 @@ public static class EnrichmentPrompt
             && facilitiesElement.ValueKind == JsonValueKind.Array
             ? [.. facilitiesElement.EnumerateArray().Select(f => f.GetString()!).Where(FacilityOptions.Contains)]
             : [];
-        return new Enrichment(description, facilities);
+        return new Enrichment(description, facilities, MetaTitle(input), MetaDescription(input));
     }
+
+    /// <summary>The SEO title, or "" when the model went over budget: an over-long
+    /// title is stored verbatim by the frontend, so it is better to leave the field
+    /// empty and let the page derive its own.</summary>
+    private static string MetaTitle(JsonElement input) =>
+        Text(input, "metaTitle") is { Length: > 0 and <= MaxMetaTitle } title ? title : "";
+
+    /// <summary>The SEO description. A long one is kept: the frontend truncates every
+    /// description to the snippet budget on a word boundary.</summary>
+    private static string MetaDescription(JsonElement input) => Text(input, "metaDescription");
+
+    private static string Text(JsonElement input, string name) =>
+        input.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.String
+            ? (value.GetString() ?? "").Trim()
+            : "";
 }

@@ -1,12 +1,28 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import CityBadge from "@/components/CityBadge";
 import JsonLd from "@/components/JsonLd";
 import SiteLogo from "@/components/SiteLogo";
 import ThemeToggle from "@/components/ThemeToggle";
-import { itemListJsonLd } from "@/lib/seo";
+import {
+  itemListJsonLd,
+  pageMetadata,
+  SITE_DESCRIPTION,
+  SITE_TITLE,
+} from "@/lib/seo";
 import { getCities, isComingSoon, slugOf } from "@/lib/umbraco";
 
 export const revalidate = 600;
+
+// The root layout's defaults would cover the home page, but stating them here
+// keeps every route's canonical, Open Graph and robots directives coming from
+// the same builder. The title carries the brand already, so it is absolute.
+export const metadata: Metadata = pageMetadata({
+  title: SITE_TITLE,
+  description: SITE_DESCRIPTION,
+  path: "/",
+  absoluteTitle: true,
+});
 
 export default async function HomePage() {
   const cities = await getCities();

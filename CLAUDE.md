@@ -312,9 +312,25 @@ All of it is derived from the CMS item, so content published later is covered wi
 (60/160-char budgets, with progressively shorter title candidates instead of mid-word truncation),
 and every schema.org builder. `components/JsonLd.tsx` renders it.
 
-- **Per page** (`generateMetadata` in `app/[city]/[...slug]/page.tsx`, plus `app/[city]/page.tsx` and
-  the root layout): a self-referencing canonical, `og:*`/`twitter:*`, explicit robots directives, and a
-  document-type-specific title/description. Query strings (`?fecha=`, `?q=`) never reach the canonical.
+- **Per page** (`generateMetadata` in `app/[city]/[...slug]/page.tsx`, plus `app/[city]/page.tsx`,
+  `app/page.tsx` and the root layout): a self-referencing canonical, `og:*`/`twitter:*`, explicit robots
+  directives, and a document-type-specific title/description. Query strings (`?fecha=`, `?q=`) never
+  reach the canonical. The home page states its own metadata through `pageMetadata` too, from the
+  `SITE_TITLE`/`SITE_DESCRIPTION` the root layout also uses, so every route's canonical and OG tags come
+  from one builder.
+- **Listing pages** (`categoryPage`, `subcategory`): the editor's `intro` leads, and `listingLead`
+  supplies what the page actually holds — how many places, the section, the section above it and the
+  city. It is the meta description when there is no intro, and `listingDescription` appends it to an
+  intro shorter than 96 characters (a seeded "Tiendas y centros comerciales." leaves two thirds of the
+  snippet budget unused). The same sentence without the section name — the heading already carries it —
+  is the page's visible lead paragraph, so a subcategory page is no longer a heading with cards under
+  it. `subcategory` had no editable text at all until `EnsureSubcategoryIntroSchemaAsync`
+  gave it `intro`. The count comes from `listingCount`, which reuses the ISR-cached queries the view
+  itself runs, so the metadata pass costs no extra request.
+- **`og:image`**: a page with a photo sends it; a page without one falls back to
+  `app/opengraph-image.tsx`. That fallback only applies when the metadata declares no images at all, so
+  `pageMetadata` omits the key entirely instead of setting it to `undefined` — with the key present
+  every page went out without a preview image, home and section pages included.
 - **Structured data**: `BreadcrumbList` on every content page (from the existing breadcrumb),
   `Restaurant`/`BarOrPub`/`Store`/`MovieTheater`/`TouristAttraction`/`LocalBusiness` per section for
   places, `ShoppingCenter` for malls, `Organization` + branch `Place`s for companies, `Event`,
@@ -326,7 +342,17 @@ and every schema.org builder. `components/JsonLd.tsx` renders it.
 - **`NEXT_PUBLIC_SITE_URL`** must be set per environment — it is the origin of every canonical, OG URL
   and sitemap entry. It defaults to `https://quehacerrd.com`.
 - **Editor overrides**: the "SEO" tab (`metaTitle`, `metaDescription`, `noIndex`) exists on every
-  indexable document type, added by `EnsureSeoSchemaAsync` in the seeder. Empty is the normal case.
+  indexable document type, added by `EnsureSeoSchemaAsync` in the seeder. Empty is the normal case for
+  hand-made content.
+- **Agent-written SEO**: the enrichment call that describes a discovered place also returns its
+  `metaTitle` and `metaDescription` (`EnrichmentPrompt`), so the page carries a title and a snippet
+  written for it instead of the shape every place shares — and it costs nothing, being two more fields
+  on a call the place already pays for. A title over 47 characters (60 minus the ` | QueHacerRD` the
+  template appends) is dropped rather than cut, since the frontend stores an override verbatim; the
+  description is passed through, because `clampDescription` truncates every candidate on a word
+  boundary. Branch places carry neither: they have no enrichment of their own and their derived title is
+  already "Cadena — lo que la distingue". Events and movies carry none either — nothing per item is
+  written by the model there, and deriving their metadata in the agent would only duplicate `seo.ts`.
 - **A new document type needs**: a `case` in `generateMetadata`, a JSON-LD builder call in its view, an
   entry in `SITEMAP_HINTS`, and its alias in `SeoDocumentTypes` in the seeder.
 

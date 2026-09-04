@@ -131,6 +131,8 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
 
         await EnsureSectionPhotoSchemaAsync();
 
+        await EnsureSubcategoryIntroSchemaAsync();
+
         await EnsureAgentSchemaAsync();
 
         await EnsureCityStatusSchemaAsync();
@@ -233,6 +235,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         await CreateAsync(eventItem);
 
         IContentType subcategory = NewContentType("subcategory", "Subcategory", "icon-folder");
+        AddProperty(subcategory, "intro", "Introducción", textarea, 1);
         subcategory.AllowedContentTypes = [new ContentTypeSort(place.Key, 0, place.Alias)];
         await CreateAsync(subcategory);
 
@@ -704,6 +707,34 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
                 throw new InvalidOperationException(
                     $"Failed to add 'photo' to '{alias}': {attempt.Result}");
             }
+        }
+    }
+
+    /// <summary>
+    /// Adds the "intro" property to "subcategory", the one listing type with no
+    /// editable text of its own: its page carried a heading and the cards, and every
+    /// subcategory in the portal had to share one derived search snippet. The frontend
+    /// shows it as the page's lead paragraph and uses it as the meta description.
+    /// Guarded and run every startup so existing installations pick it up.
+    /// </summary>
+    private async Task EnsureSubcategoryIntroSchemaAsync()
+    {
+        IContentType? subcategory = _contentTypeService.Get("subcategory");
+        if (subcategory is null || subcategory.PropertyTypeExists("intro"))
+        {
+            return;
+        }
+
+        IDataType textarea = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.TextareaGuid))!;
+        _logger.LogInformation("CityGuide: adding 'intro' property to 'subcategory'");
+        AddProperty(subcategory, "intro", "Introducción", textarea, 1);
+
+        Attempt<ContentTypeOperationStatus> attempt =
+            await _contentTypeService.UpdateAsync(subcategory, Constants.Security.SuperUserKey);
+        if (!attempt.Success)
+        {
+            throw new InvalidOperationException(
+                $"Failed to add 'intro' to 'subcategory': {attempt.Result}");
         }
     }
 

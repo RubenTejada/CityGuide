@@ -1080,6 +1080,12 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
             branchOfCompany || asMall
                 ? null
                 : (object?)new { alias = "facilities", value = enrichment?.Facilities },
+            // SEO tab: the model writes the page's own title and snippet while it is
+            // already describing the place, so a discovered page carries a unique one
+            // instead of the shape the frontend derives for every place alike. A branch
+            // has no enrichment of its own and keeps the derived title.
+            branchOfCompany ? null : (object?)new { alias = "metaTitle", value = enrichment?.MetaTitle },
+            branchOfCompany ? null : (object?)new { alias = "metaDescription", value = enrichment?.MetaDescription },
             new { alias = "googlePlaceId", value = place.GooglePlaceId },
             new { alias = "googleRating", value = place.Rating },
             new { alias = "googleRatingCount", value = place.UserRatingCount },

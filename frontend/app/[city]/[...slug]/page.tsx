@@ -50,6 +50,8 @@ import {
   eventJsonLd,
   isNoIndex,
   itemListJsonLd,
+  listingDescription,
+  listingLead,
   movieJsonLd,
   organizationJsonLd,
   pageMetadata,
@@ -200,7 +202,16 @@ export async function generateMetadata({
       title = seoTitle(item, `${item.name}${inCity}`, item.name);
       description = seoDescription(
         item,
-        text(item, "intro"),
+        // The editor's introduction, completed with what the page actually
+        // holds when it is too short to be a snippet on its own.
+        listingDescription(
+          text(item, "intro"),
+          listingLead({
+            name: item.name,
+            cityName,
+            count: await listingCount(item.route.path),
+          }),
+        ),
         `${item.name}${inCity}: direcciones, teléfonos, horarios, valoraciones y mapa.`,
       );
       image = image ?? sectionListImage(item.route.path);
@@ -209,6 +220,15 @@ export async function generateMetadata({
       title = seoTitle(item, qualified, `${item.name}${inCity}`, item.name);
       description = seoDescription(
         item,
+        listingDescription(
+          text(item, "intro"),
+          listingLead({
+            name: item.name,
+            parentName,
+            cityName,
+            count: await listingCount(item.route.path),
+          }),
+        ),
         `${item.name} ${parentName ? `— ${parentName} ` : ""}${inCity}: los lugares recomendados con dirección, horario, teléfono y mapa.`,
       );
       image = image ?? sectionListImage(item.route.path);
@@ -399,6 +419,13 @@ async function listingEntries(path: string): Promise<UmbracoItem[]> {
     (p) => !under(companies, p) && !under(malls, p),
   );
   return [...malls, ...standaloneCompanies, ...standalonePlaces];
+}
+
+/** How many entries a listing page shows, from the queries the view itself
+ * runs: `generateMetadata` and the page render share one ISR cache entry, so
+ * counting costs the metadata pass nothing. */
+async function listingCount(path: string): Promise<number> {
+  return (await listingEntries(path)).length;
 }
 
 /**
@@ -635,9 +662,10 @@ async function CategoryView({
   citySlug?: string;
   fecha?: string;
 }) {
-  const [children, entries] = await Promise.all([
+  const [children, entries, city] = await Promise.all([
     getChildren(item.route.path),
     listingEntriesOrdered(item.route.path),
+    cityOf(item),
   ]);
   const subcategories = children.filter((c) => c.contentType === "subcategory");
   const categorySlug = item.route.path.split("/").filter(Boolean).pop();
@@ -661,6 +689,16 @@ async function CategoryView({
   // Attractions use the photo card "Qué Hacer" shows, three across on a wide
   // screen, instead of the two-column place card the other sections list.
   const showsAttractions = categorySlug === "atracciones";
+  // The editor's introduction, else the derived lead — what the page holds,
+  // which is also its meta description.
+  const lead =
+    text(item, "intro") ||
+    listingLead({
+      name: item.name,
+      cityName: city?.name,
+      count: entries.length,
+      named: false,
+    });
   const listing: ListingEntry[] = entries.map((entry) => ({
     id: entry.id,
     card: showsAttractions ? (
@@ -675,9 +713,7 @@ async function CategoryView({
     <PageShell item={item}>
       <JsonLd data={itemListJsonLd(item.name, entries)} />
       <h1 className="mt-4 text-3xl font-bold">{item.name}</h1>
-      {text(item, "intro") && (
-        <p className="mt-2 max-w-2xl text-neutral-600">{text(item, "intro")}</p>
-      )}
+      {lead && <p className="mt-2 max-w-2xl text-neutral-600">{lead}</p>}
       {showCartelera && (
         <Cartelera
           citySlug={citySlug!}
@@ -801,17 +837,31 @@ async function MovieView({
 }
 
 async function SubcategoryView({ item }: { item: UmbracoItem }) {
-  const entries = await listingEntriesOrdered(item.route.path);
+  const [entries, city, parent] = await Promise.all([
+    listingEntriesOrdered(item.route.path),
+    cityOf(item),
+    parentOf(item),
+  ]);
   const markers = await listingMarkers(item.route.path, entries);
   const listing: ListingEntry[] = entries.map((entry) => ({
     id: entry.id,
     card: <PlaceCard key={entry.id} place={entry} />,
     markers: markers.get(entry.id) ?? [],
   }));
+  const lead =
+    text(item, "intro") ||
+    listingLead({
+      name: item.name,
+      parentName: parent?.name,
+      cityName: city?.name,
+      count: entries.length,
+      named: false,
+    });
   return (
     <PageShell item={item}>
       <JsonLd data={itemListJsonLd(item.name, entries)} />
       <h1 className="mt-4 text-3xl font-bold">{item.name}</h1>
+      {lead && <p className="mt-2 max-w-2xl text-neutral-600">{lead}</p>}
       <ListingViews entries={listing} />
     </PageShell>
   );

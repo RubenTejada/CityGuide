@@ -12,6 +12,12 @@ import { num, photoUrl, text, type UmbracoItem } from "./umbraco";
 export const SITE_NAME = "QueHacerRD";
 export const SITE_LOCALE = "es_DO";
 
+/** Title and description of the portal itself: the home page's own metadata and
+ * the default every page below inherits from the root layout. */
+export const SITE_TITLE = "QueHacerRD.com — Planes, lugares y experiencias en RD";
+export const SITE_DESCRIPTION =
+  "Planes, lugares y experiencias en República Dominicana. Bares, restaurantes, tiendas, cines, eventos y un poco más. Ubícate con un clic.";
+
 /**
  * Public origin of the portal, used for canonicals, Open Graph URLs, the
  * sitemap and JSON-LD @ids. Override per environment with NEXT_PUBLIC_SITE_URL;
@@ -42,6 +48,8 @@ export function absoluteImage(url: string | null | undefined): string | undefine
 
 const MAX_TITLE = 60; // includes the " | QueHacerRD" suffix added by the template
 const MAX_DESCRIPTION = 160;
+/** Below this an editor's introduction is completed with the derived lead. */
+const MIN_STANDALONE_DESCRIPTION = 96;
 
 const TITLE_BUDGET = MAX_TITLE - ` | ${SITE_NAME}`.length;
 
@@ -134,7 +142,13 @@ export function pageMetadata({
   absoluteTitle = false,
 }: PageMetadataInput): Metadata {
   const url = absoluteUrl(path);
-  const images = absoluteImage(image) ? [{ url: absoluteImage(image)! }] : undefined;
+  // Only spread when there is one: an `images` key set to undefined still counts
+  // as metadata declaring its own images, and the branded fallback card
+  // (app/opengraph-image.tsx) is then never applied — every shared link lost its
+  // preview image.
+  const images = absoluteImage(image)
+    ? { images: [{ url: absoluteImage(image)! }] }
+    : {};
   return {
     title: absoluteTitle ? { absolute: title } : title,
     description: description || undefined,
@@ -149,14 +163,14 @@ export function pageMetadata({
       locale: SITE_LOCALE,
       title,
       description: description || undefined,
-      images,
+      ...images,
       ...(type === "article" ? { publishedTime, modifiedTime } : {}),
     },
     twitter: {
       card: "summary_large_image",
       title,
       description: description || undefined,
-      images,
+      ...images,
     },
   };
 }
@@ -208,6 +222,52 @@ export function itemListJsonLd(
       url: absoluteUrl(entry.route.path),
     })),
   };
+}
+
+/**
+ * The lead sentence of a listing page — what the page holds, in the words a
+ * visitor would type. Rendered on the page when no editor wrote an intro and
+ * used as its meta description, so the snippet and the page say the same thing;
+ * the section, the section above it and the count make it unique per page.
+ * Empty for an empty listing, which has nothing to promise.
+ */
+export function listingLead({
+  name,
+  parentName,
+  cityName,
+  count,
+  named = true,
+}: {
+  name: string;
+  parentName?: string;
+  cityName?: string;
+  count: number;
+  /** False on the page itself, where the heading already names the section. */
+  named?: boolean;
+}): string {
+  if (count <= 0) return "";
+  // Avoid "Restaurantes de Santo Domingo en Santo Domingo".
+  const where =
+    cityName && !name.toLowerCase().includes(cityName.toLowerCase())
+      ? ` en ${cityName}`
+      : "";
+  const places = count === 1 ? "1 lugar" : `${count} lugares`;
+  const held = `${places}${where} con dirección, teléfono, horario, valoración de Google y mapa.`;
+  if (!named) return held;
+  const what = parentName ? `${name} — ${parentName}` : name;
+  return `${what}${where}: ${places} con dirección, teléfono, horario, valoración de Google y mapa.`;
+}
+
+/**
+ * The meta description of a listing page: the editor's introduction, completed
+ * with the derived lead when it is too short to fill a snippet on its own
+ * ("Tiendas y centros comerciales." leaves two thirds of the budget unused, and
+ * says nothing a searcher can act on).
+ */
+export function listingDescription(intro: string, lead: string): string {
+  if (!intro) return lead;
+  if (!lead || intro.length >= MIN_STANDALONE_DESCRIPTION) return intro;
+  return `${intro} ${lead}`;
 }
 
 /** Most specific schema.org business type per portal section. */

@@ -3,7 +3,14 @@ import { Geist, Geist_Mono, Oswald } from "next/font/google";
 import Analytics from "@/components/Analytics";
 import InlineScript from "@/components/InlineScript";
 import JsonLd from "@/components/JsonLd";
-import { SITE_LOCALE, SITE_NAME, SITE_URL, siteJsonLd } from "@/lib/seo";
+import {
+  SITE_DESCRIPTION,
+  SITE_LOCALE,
+  SITE_NAME,
+  SITE_TITLE,
+  SITE_URL,
+  siteJsonLd,
+} from "@/lib/seo";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -23,10 +30,6 @@ const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
 });
-
-const SITE_DESCRIPTION =
-  "Planes, lugares y experiencias en República Dominicana. Bares, restaurantes, tiendas, cines, eventos y un poco más. Ubícate con un clic.";
-const SITE_TITLE = "QueHacerRD.com — Planes, lugares y experiencias en RD";
 
 export const metadata: Metadata = {
   // Lets every page below express canonical/OG URLs as paths.

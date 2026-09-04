@@ -36,7 +36,7 @@ public class AzureOpenAiClient(HttpClient http, AzureOpenAiConfig config) : IEnr
             EnrichmentPrompt.UserMessage(place, categoryPrompt), place.Name);
         // The content filter occasionally trips on nightlife venues; create the
         // draft without a description rather than losing the place.
-        return arguments is null ? new Enrichment("", []) : EnrichmentPrompt.Parse(arguments.Value);
+        return arguments is null ? new Enrichment("", [], "", "") : EnrichmentPrompt.Parse(arguments.Value);
     }
 
     public async Task<Dictionary<int, string>> ClassifyEventsAsync(IReadOnlyList<ScrapedEvent> events)
