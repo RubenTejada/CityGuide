@@ -23,13 +23,16 @@ public class CaribbeanCinemasClient(HttpClient http)
 {
     private const string BaseUrl = "https://rd.caribbeancinemas.com";
     private const string CircuitId = "5"; // Caribbean Cinemas Dominican Republic
+    // DR homepage site, the header the SPA sends for queries that span every
+    // cinema; the queries themselves filter by siteIds.
+    private const string AggregateSiteId = "132";
 
-    private async Task<JsonDocument?> QueryAsync(string siteId, string query)
+    private async Task<JsonDocument?> QueryAsync(string siteId, string query, object? variables = null)
     {
         var request = new HttpRequestMessage(HttpMethod.Post, $"{BaseUrl}/graphql")
         {
             Content = new StringContent(
-                JsonSerializer.Serialize(new { query }),
+                JsonSerializer.Serialize(new { query, variables = variables ?? new { } }),
                 System.Text.Encoding.UTF8, "application/json"),
         };
         request.Headers.Add("site-id", siteId);
@@ -65,20 +68,71 @@ public class CaribbeanCinemasClient(HttpClient http)
             Number(site, "lon"));
     }
 
-    /// <summary>Every movie currently listed for the site (now playing + coming soon).</summary>
-    public async Task<List<CinemaMovie>> GetMoviesAsync(string siteId)
+    /// <summary>
+    /// The dates the portal can show, in the same window its date tabs offer:
+    /// every date with a showing at the sites from today on, at most 7.
+    /// </summary>
+    public async Task<List<string>> GetShowingDatesAsync(IReadOnlyList<string> siteIds)
     {
-        using JsonDocument? doc = await QueryAsync(siteId,
-            "{ movies { data { name urlSlug posterImage synopsis genre rating duration trailerYoutubeId releaseDate } } }");
+        using JsonDocument? doc = await QueryAsync(AggregateSiteId,
+            "query ($siteIds: [ID]) { datesWithShowing(siteIds: $siteIds) { value } }",
+            new { siteIds });
+        // The API returns the list as a JSON-encoded string in `value`.
+        string? encoded = doc?.RootElement.GetProperty("data")
+            .TryGetProperty("datesWithShowing", out JsonElement dates) == true
+            && dates.ValueKind == JsonValueKind.Object
+                ? Text(dates, "value") : null;
+        if (encoded is null)
+        {
+            return [];
+        }
+
+        List<string> parsed;
+        try
+        {
+            parsed = JsonSerializer.Deserialize<List<string>>(encoded) ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+
+        string today = TodayInDr();
+        return [.. parsed.Where(d => string.CompareOrdinal(d, today) >= 0).Order(StringComparer.Ordinal).Take(7)];
+    }
+
+    /// <summary>Every movie with a showing at the sites on the date, with the
+    /// catalog fields its page needs.</summary>
+    public async Task<List<CinemaMovie>> GetMoviesForDateAsync(string date, IReadOnlyList<string> siteIds)
+    {
+        using JsonDocument? doc = await QueryAsync(AggregateSiteId,
+            """
+            query ($date: String, $siteIds: [ID]) {
+              showingsForDate(date: $date, siteIds: $siteIds) {
+                data {
+                  movie {
+                    name urlSlug posterImage synopsis genre rating duration trailerYoutubeId releaseDate
+                  }
+                }
+              }
+            }
+            """,
+            new { date, siteIds });
         var movies = new List<CinemaMovie>();
-        if (doc?.RootElement.GetProperty("data").TryGetProperty("movies", out JsonElement list) != true
-            || !list.TryGetProperty("data", out JsonElement items))
+        if (doc?.RootElement.GetProperty("data").TryGetProperty("showingsForDate", out JsonElement showings) != true
+            || showings.ValueKind != JsonValueKind.Object
+            || !showings.TryGetProperty("data", out JsonElement rows))
         {
             return movies;
         }
 
-        foreach (JsonElement m in items.EnumerateArray())
+        foreach (JsonElement row in rows.EnumerateArray())
         {
+            if (!row.TryGetProperty("movie", out JsonElement m) || m.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
             string? name = Text(m, "name");
             string? slug = Text(m, "urlSlug");
             if (name is null || slug is null)
@@ -97,6 +151,10 @@ public class CaribbeanCinemasClient(HttpClient http)
 
         return movies;
     }
+
+    /// <summary>Today in the Dominican Republic (UTC-4 all year, no DST).</summary>
+    private static string TodayInDr() =>
+        DateTime.UtcNow.AddHours(-4).ToString("yyyy-MM-dd");
 
     private static string? Text(JsonElement el, string name) =>
         el.TryGetProperty(name, out JsonElement v) && v.ValueKind == JsonValueKind.String

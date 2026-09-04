@@ -117,11 +117,16 @@ public class CinemaSync(
 
     private async Task SyncMoviesAsync(Guid cinesId)
     {
-        // Union of every configured cinema's catalog (each site lists its own copy).
+        // Every movie the portal can put on screen: the ones with a showing on one
+        // of the dates its date tabs offer. The site's own `movies` list is not
+        // that set — it is paginated (10 by default) and carries titles that are
+        // no longer scheduled, so a cartelera row would find no catalog entry to
+        // link to and lose its detail page.
+        string[] siteIds = [.. config.Sites.Select(site => site.Id)];
         var catalog = new Dictionary<string, CinemaMovie>(StringComparer.OrdinalIgnoreCase);
-        foreach (CinemaSiteConfig siteConfig in config.Sites)
+        foreach (string date in await caribbean.GetShowingDatesAsync(siteIds))
         {
-            foreach (CinemaMovie movie in await caribbean.GetMoviesAsync(siteConfig.Id))
+            foreach (CinemaMovie movie in await caribbean.GetMoviesForDateAsync(date, siteIds))
             {
                 catalog.TryAdd(movie.Name, movie);
             }
@@ -132,6 +137,8 @@ public class CinemaSync(
             Console.Error.WriteLine("  ! Caribbean returned no movies; leaving existing catalog untouched");
             return;
         }
+
+        Console.WriteLine($"  cartelera: {catalog.Count} movies scheduled");
 
         Guid movieTypeId = await umbraco.GetDocumentTypeIdAsync("Movie");
         List<UmbracoClient.ChildDocument> existing =
@@ -146,8 +153,9 @@ public class CinemaSync(
             string? trailerId = await trailers.FindAsync(movie.Name) ?? movie.TrailerYoutubeId;
 
             // A PUT replaces the document, so the scores of a movie whose lookup
-            // fails this run have to be read back and written again unchanged.
-            Dictionary<string, string?> stored = match is not null && reviews.Enabled
+            // fails this run — or whose run has no keys at all, as a local pass
+            // does — have to be read back and written again unchanged.
+            Dictionary<string, string?> stored = match is not null
                 ? await umbraco.GetTextValuesAsync(match.Id)
                 : [];
             MovieRatings? scores = await reviews.LookupAsync(
