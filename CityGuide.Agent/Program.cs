@@ -472,9 +472,13 @@ if (args.Contains("--regroup-malls"))
 
     var duplicates = 0;
     var converted = 0;
+    // --section narrows this the way it narrows every other pass: a city slug is a
+    // segment of its own paths, so "--section punta-cana" reviews one city's plazas
+    // and leaves the others exactly as they are.
     foreach (string citySlug in config.Runs
         .Select(r => r.ParentPath.Trim('/').Split('/').First())
-        .Distinct(StringComparer.OrdinalIgnoreCase))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .Where(SectionSelected))
     {
         List<KnownMall> malls = await MallsAsync(citySlug);
         // The category the plazas live in ("/santo-domingo/tiendas"): everything
