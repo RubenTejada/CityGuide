@@ -172,8 +172,8 @@ already stored is recognised by name and distance (`MallMatching.Same`: one name
 with the other, within 400 m, ignoring any address appended to tell twins apart) and only
 lends it its `googlePlaceId`, which is what the next pass and the rating backfill dedupe
 by. `--regroup-malls` applies those two rules (recreate, deduplicate) to content already
-in the CMS and is how the shops section was cleaned up; without `--apply` it only prints
-the plan, and what it removes goes to the recycle bin and only when the agent created it.
+in the CMS and is how the shops section was cleaned up; `--section` narrows it to one
+city like every other pass, and without `--apply` it only prints the plan, and what it removes goes to the recycle bin and only when the agent created it.
 `--move-place <ruta> <ruta padre>` files one node under another parent, for what no rule
 can decide — an establishment an earlier pass parented to a plaza, whose section only a
 person knows ("Carrefour" is a supermarket and nothing stored says so); the plaza it

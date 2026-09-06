@@ -278,6 +278,10 @@ jobs:
             dotnet run -c Release -- --purge-duplicate-places $paid_flag
           elif [ "$PURGE_DUPLICATES" = "apply" ]; then
             dotnet run -c Release -- --purge-duplicate-places --apply $paid_flag
+          elif [ "$REGROUP" = "plan" ] && [ -n "$SECTION" ]; then
+            dotnet run -c Release -- --regroup-malls --section "$SECTION" $paid_flag
+          elif [ "$REGROUP" = "apply" ] && [ -n "$SECTION" ]; then
+            dotnet run -c Release -- --regroup-malls --section "$SECTION" --apply $paid_flag
           elif [ "$REGROUP" = "plan" ]; then
             dotnet run -c Release -- --regroup-malls $paid_flag
           elif [ "$REGROUP" = "apply" ]; then
