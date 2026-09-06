@@ -647,7 +647,15 @@ if (args.Contains("--exclude-place"))
         ? "== Excluyendo lugares"
         : "== Lugares por excluir (simulación; agrega --apply para aplicarla)");
 
-    List<UmbracoClient.PublishedPlace> published = await umbraco.GetPublishedPlacesAsync("place");
+    // Plazas too, not only places: a plaza is what Google answers a "centro comercial"
+    // query with, so a listing worth excluding — one with no real name, or one that is
+    // the building rather than a business — is as likely to be a "mall" node as a place.
+    var published = new List<UmbracoClient.PublishedPlace>();
+    foreach (string contentType in new[] { "place", "mall" })
+    {
+        published.AddRange(await umbraco.GetPublishedPlacesAsync(contentType));
+    }
+
     var linesByCity = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
     var recycledForExclusion = 0;
     foreach (string id in excludedIds.Distinct(StringComparer.Ordinal))
