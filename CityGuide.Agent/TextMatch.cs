@@ -89,4 +89,25 @@ public static class TextMatch
         string haystack = Normalize(candidate);
         return tokens.Count(haystack.Contains) >= tokens.Length * ratio;
     }
+
+    /// <summary>
+    /// True when every significant word of <paramref name="reference"/> is a word of
+    /// <paramref name="candidate"/> — not merely a run of letters inside one. This is
+    /// the strict cousin of <see cref="Matches"/>, for deciding whether a file found on
+    /// an open catalogue really pictures this place: "Scape Park" is contained in
+    /// "RiverScape MetroPark, Dayton" and is not the same thing.
+    /// </summary>
+    public static bool MatchesWords(string reference, string? candidate)
+    {
+        if (string.IsNullOrWhiteSpace(candidate))
+        {
+            return false;
+        }
+
+        string[] tokens = Tokens(reference);
+        var words = new HashSet<string>(
+            Normalize(candidate).Split(Separators, StringSplitOptions.RemoveEmptyEntries),
+            StringComparer.Ordinal);
+        return tokens.Length > 0 && tokens.All(words.Contains);
+    }
 }

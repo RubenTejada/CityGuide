@@ -145,6 +145,8 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
 
         bool citiesSeeded = EnsureCitiesSeeded();
 
+        bool cityContentSeeded = EnsureCityContentSeeded();
+
         EnsureContactInboxSeeded();
 
         bool agentConfigSeeded = EnsureAgentConfigSeeded();
@@ -173,6 +175,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         if (_examineManager.TryGetIndex(Constants.UmbracoIndexes.DeliveryApiContentIndexName, out IIndex index)
             && (banksSeeded
                 || citiesSeeded
+                || cityContentSeeded
                 || logosRestored
                 || agentConfigSeeded
                 || thingsToDoMigrated
@@ -770,6 +773,11 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
                 "Rectángulo al que se limitan las búsquedas de Google: esquina suroeste y "
                 + "noreste, \"lat,lng;lat,lng\". Sin él Google responde con todo el país "
                 + "(bares de Punta Cana en una búsqueda de Santo Domingo).", 3),
+            ("agentQueryLog", textarea, "Consultas ya hechas",
+                "La memoria del agente: una línea \"aaaa-mm-dd la consulta\" por búsqueda de "
+                + "Google ya pagada. Mientras la fecha sea reciente el agente no vuelve a "
+                + "pagarla (Google:QueryCooldownDays, 30 días). Vaciar este campo hace que la "
+                + "próxima pasada busque todo otra vez.", 5),
             ("agentExcludedPlaces", textarea, "Lugares excluidos",
                 "Ids de Google que el agente nunca debe crear, uno por línea, con un "
                 + "comentario opcional después de #. P. ej. "
@@ -934,31 +942,57 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
     }
 
     /// <summary>
-    /// Seeds default agent configuration on the Santo Domingo city node. Runs every
-    /// startup and fills each field only while it is still empty, so a field added
-    /// after the node was seeded gets its default and an editor's own value is kept.
+    /// The description prompts the agent appends per category, shared by every city:
+    /// what makes a good line about a restaurant does not change with the city.
+    /// </summary>
+    private const string AgentPrompts =
+        """
+        restaurantes: Menciona el tipo de cocina y para qué ocasión funciona el lugar.
+        bares-y-clubes: Tono nocturno y cercano; menciona la música y el ambiente.
+        tiendas: Menciona qué se consigue allí y por qué vale la pena visitarla.
+        """;
+
+    /// <summary>
+    /// Seeds default agent configuration on every city node. Runs every startup and
+    /// fills each field only while it is still empty, so a field added after the node
+    /// was seeded gets its default and an editor's own value is kept.
     /// </summary>
     private bool EnsureAgentConfigSeeded()
     {
         IContent? site = _contentService.GetRootContent().FirstOrDefault(c => c.ContentType.Alias == "site");
-        IContent? city = site is null ? null : Descendant(site, "city", "Santo Domingo");
-        if (city is null)
+        if (site is null)
+        {
+            return false;
+        }
+
+        // Greater Santo Domingo: the Distrito Nacional plus Este, Norte and Oeste.
+        // Boca Chica, Punta Cana and Santiago fall outside it — each of those has
+        // its own rectangle, and no two of them overlap, so an event or a place
+        // belongs to exactly one city.
+        bool seeded = FillAgentConfig(site, "Santo Domingo",
+            "Santo Domingo, República Dominicana", "18.35,-70.05;18.62,-69.75");
+        foreach (SeedCity city in SeedCities)
+        {
+            seeded |= FillAgentConfig(site, city.Name, city.AgentCityName, city.AgentArea);
+        }
+
+        return seeded;
+    }
+
+    /// <summary>Fills the "Agente" tab of one city, field by field, leaving anything
+    /// an editor already wrote untouched.</summary>
+    private bool FillAgentConfig(IContent site, string cityName, string agentCityName, string agentArea)
+    {
+        if (Descendant(site, "city", cityName) is not IContent city)
         {
             return false;
         }
 
         var defaults = new (string Alias, string Value)[]
         {
-            ("agentCityName", "Santo Domingo, República Dominicana"),
-            ("agentPrompts",
-                """
-                restaurantes: Menciona el tipo de cocina y para qué ocasión funciona el lugar.
-                bares-y-clubes: Tono nocturno y cercano; menciona la música y el ambiente.
-                tiendas: Menciona qué se consigue allí y por qué vale la pena visitarla.
-                """),
-            // Greater Santo Domingo: the Distrito Nacional plus Este, Norte and Oeste.
-            // Boca Chica, Punta Cana and Santiago fall outside it.
-            ("agentArea", "18.35,-70.05;18.62,-69.75"),
+            ("agentCityName", agentCityName),
+            ("agentPrompts", AgentPrompts),
+            ("agentArea", agentArea),
         };
 
         var seeded = new List<string>();
@@ -978,29 +1012,139 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
             return false;
         }
 
-        _logger.LogInformation("CityGuide: seeding {Fields} on 'Santo Domingo'", string.Join(", ", seeded));
+        _logger.LogInformation("CityGuide: seeding {Fields} on '{City}'", string.Join(", ", seeded), cityName);
         _contentService.Save(city);
         _contentService.Publish(city, ["*"]);
         return true;
     }
 
+    /// <summary>How the intro of an announced-but-empty city ended, before it opened.</summary>
+    private const string ComingSoonNotice = "Estamos armando la guía.";
+
+    private sealed record SeedSection(string Name, string Intro, string[] Subcategories);
+
     /// <summary>
-    /// The cities the portal offers besides the seeded Santo Domingo. They hold no content
-    /// yet: they exist so a visitor can pick them in the city switcher, and their page says
-    /// as much.
+    /// A city the portal opens besides the seeded Santo Domingo: the node itself, the
+    /// sections it opens with, and the attractions it opens with. Everything else —
+    /// restaurants, bars, shops — is what the ingestion agent discovers, and the
+    /// cinemas and events are what its nightly free pass syncs.
     /// </summary>
-    private static readonly (string Name, string Country, decimal Latitude, decimal Longitude, string Intro)[] ComingSoonCities =
+    private sealed record SeedCity(
+        string Name, string Country, decimal Latitude, decimal Longitude, string Intro,
+        string AgentCityName, string AgentArea, SeedSection[] Sections, Atraccion[] Attractions);
+
+    private static readonly SeedSection[] CommonSections =
     [
-        ("Santiago", "República Dominicana", 19.4517m, -70.6970m,
-            "Santiago de los Caballeros: bares, restaurantes y atracciones. Estamos armando la guía."),
-        ("Punta Cana", "República Dominicana", 18.5820m, -68.4055m,
-            "Playas, resorts, restaurantes y vida nocturna de Punta Cana. Estamos armando la guía."),
+        new("Restaurantes", "Los mejores restaurantes de la ciudad.", []),
+        new("Bares y Clubes", "Vida nocturna: bares, lounges y discotecas.", []),
+        // The three subcategories the agent's runs file into: it creates the ones it
+        // is told to name (Subcategory), never the parent path it writes under.
+        new("Tiendas", "Tiendas y centros comerciales.",
+            ["Plazas Comerciales y Malls", "Supermercados", "Farmacias"]),
+        new("Cines", "Carteleras y salas de cine.", []),
+    ];
+
+    private static readonly SeedCity[] SeedCities =
+    [
+        new("Santiago", "República Dominicana", 19.4517m, -70.6970m,
+            "Santiago de los Caballeros: restaurantes, bares, cines y la vida del Cibao. Ubícate con un clic.",
+            "Santiago de los Caballeros, República Dominicana",
+            // El Gran Santiago: el casco urbano, Gurabo y Licey, sin salir a Moca ni a La Vega.
+            "19.38,-70.78;19.54,-70.58",
+            [.. CommonSections, new("Atracciones",
+                "Monumentos, museos y parques de la ciudad corazón del Cibao.", [])],
+            [
+                new("Monumento a los Héroes de la Restauración",
+                    "El monumento que corona la ciudad: una torre de 67 metros levantada sobre la colina de Villa Progreso, con murales de Vela Zanetti en su interior y un mirador con toda Santiago a los pies.",
+                    "Av. Francia, Santiago de los Caballeros", "",
+                    "",
+                    19.4509m, -70.6947m,
+                    ["Parqueo", "Apto para Niños"]),
+                new("Centro León",
+                    "El museo de arte y antropología de la familia León Jimenes: colección de arte dominicano, exposiciones temporales, jardines y una réplica de la fábrica de cigarros que se puede recorrer.",
+                    "Av. 27 de Febrero 146, Villa Progreso", "809-582-2315",
+                    "",
+                    19.4633m, -70.6707m,
+                    ["Aire Acondicionado", "Parqueo", "Apto para Niños"],
+                    Website: "https://centroleon.org.do"),
+                new("Gran Teatro del Cibao",
+                    "La sala mayor del Cibao: ópera, ballet, conciertos y teatro en un edificio de mármol frente al Monumento. Su programación cambia cada mes.",
+                    "Av. Las Carreras, Santiago de los Caballeros", "809-583-1150",
+                    "",
+                    19.4512m, -70.6924m,
+                    ["Aire Acondicionado", "Parqueo"]),
+                new("Fortaleza San Luis",
+                    "La fortaleza colonial de Santiago, hoy museo y sede de la Fortaleza Cultural: cañones, patios y salas de historia militar de la ciudad.",
+                    "Calle San Luis, Reparto Universitario", "",
+                    "",
+                    19.4483m, -70.7028m,
+                    ["Apto para Niños"]),
+                new("Parque Duarte",
+                    "La plaza del centro histórico, frente a la Catedral Santiago Apóstol: bancos a la sombra, la Casa del Arte y el punto de partida de cualquier paseo por la Calle del Sol.",
+                    "Calle del Sol esq. Benito Monción, Centro Histórico", "",
+                    "Abierto 24 horas",
+                    19.4509m, -70.7065m,
+                    ["Apto para Niños"]),
+                new("Catedral Santiago Apóstol",
+                    "La catedral de Santiago, del siglo XIX, frente al Parque Duarte: fachada neoclásica con detalles góticos, vitrales de José Rincón Mora y la tumba del dictador Ulises Heureaux.",
+                    "Calle Duvergé, frente al Parque Duarte", "",
+                    "",
+                    19.4502m, -70.7066m,
+                    []),
+            ]),
+        new("Punta Cana", "República Dominicana", 18.5820m, -68.4055m,
+            "Playas, resorts, restaurantes y vida nocturna de Punta Cana y Bávaro. Ubícate con un clic.",
+            "Punta Cana, República Dominicana",
+            // De Cap Cana a Uvero Alto, la franja costera del este: Higüey queda fuera.
+            "18.45,-68.62;18.85,-68.28",
+            [.. CommonSections, new("Atracciones",
+                "Playas, parques naturales y excursiones del este dominicano.", [])],
+            [
+                new("Playa Bávaro",
+                    "La playa que dio nombre a la zona: kilómetros de arena blanca y agua turquesa protegidos por un arrecife, con los hoteles todo incluido a un lado y las lanchas de excursión al otro.",
+                    "Bávaro, Punta Cana", "",
+                    "Abierto 24 horas",
+                    18.6890m, -68.4230m,
+                    ["Apto para Niños"]),
+                new("Playa El Cortecito",
+                    "El pedazo de Bávaro donde la playa es pública de verdad: pescadores, comedores con los pies en la arena, artesanía y la vida local que no se ve desde el resort.",
+                    "El Cortecito, Bávaro", "",
+                    "Abierto 24 horas",
+                    18.6682m, -68.3985m,
+                    ["Apto para Niños"]),
+                new("Playa Macao",
+                    "La playa abierta al Atlántico, entre acantilados y cocoteros: oleaje fuerte, escuela de surf y el paisaje que sale en las postales, a media hora de Bávaro.",
+                    "Macao, Higüey", "",
+                    "Abierto 24 horas",
+                    18.7725m, -68.5341m,
+                    []),
+                new("Playa Juanillo",
+                    "La playa de Cap Cana: arena blanquísima, agua calmada y clubes de playa con sombrillas y restaurante. La más tranquila del destino.",
+                    "Cap Cana, Punta Cana", "",
+                    "Abierto 24 horas",
+                    18.4997m, -68.3781m,
+                    ["Parqueo"]),
+                new("Scape Park",
+                    "El parque de aventura de Cap Cana: el cenote Hoyo Azul al pie del acantilado, tirolinas, cuevas, senderos y baño en manantiales. Se recorre en medio día.",
+                    "Boulevard Cap Cana, Punta Cana", "",
+                    "",
+                    18.4841m, -68.4409m,
+                    ["Parqueo", "Apto para Niños"],
+                    Website: "https://scapepark.com"),
+                new("Marina Cap Cana",
+                    "La marina más grande del Caribe: muelles de yates, restaurantes con vista al agua y el punto de salida de la pesca deportiva y las excursiones en barco.",
+                    "Cap Cana, Punta Cana", "",
+                    "",
+                    18.5025m, -68.3839m,
+                    ["Parqueo", "Terraza"]),
+            ]),
     ];
 
     /// <summary>
-    /// Idempotent, runs every startup: creates the announced-but-empty cities, each flagged
-    /// "comingSoon". Only missing ones are created, so a city an editor later fills (and
-    /// unflags) is left alone.
+    /// Idempotent, runs every startup: creates the cities the portal opens besides
+    /// Santo Domingo. Only missing ones are created; their sections and their opening
+    /// content are seeded separately (<see cref="EnsureCityContentSeeded"/>), so a
+    /// city created by an earlier version — announced and empty — gets them too.
     /// </summary>
     private bool EnsureCitiesSeeded()
     {
@@ -1011,26 +1155,134 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         }
 
         var created = new List<IContent>();
-        foreach ((string name, string country, decimal latitude, decimal longitude, string intro) in ComingSoonCities)
+        foreach (SeedCity definition in SeedCities)
         {
-            if (Descendant(site, "city", name) is not null)
+            if (Descendant(site, "city", definition.Name) is not null)
             {
                 continue;
             }
 
-            _logger.LogInformation("CityGuide: seeding city '{City}' (en construcción)", name);
-            IContent city = _contentService.Create(name, site.Id, "city");
-            city.SetValue("intro", intro);
-            city.SetValue("country", country);
-            city.SetValue("latitude", latitude);
-            city.SetValue("longitude", longitude);
-            city.SetValue("comingSoon", true);
+            _logger.LogInformation("CityGuide: seeding city '{City}'", definition.Name);
+            IContent city = _contentService.Create(definition.Name, site.Id, "city");
+            city.SetValue("intro", definition.Intro);
+            city.SetValue("country", definition.Country);
+            city.SetValue("latitude", definition.Latitude);
+            city.SetValue("longitude", definition.Longitude);
             _contentService.Save(city);
             created.Add(city);
         }
 
         PublishSeeded(created);
         return created.Count > 0;
+    }
+
+    /// <summary>
+    /// Idempotent, runs every startup: gives each seeded city the same structure Santo
+    /// Domingo has — its sections and shop subcategories, the events page, the "Qué
+    /// Hacer" guide — plus the attractions it opens with, and takes it out of "en
+    /// construcción" once that structure exists. Guarded per node, so a section an
+    /// editor renamed or removed is not recreated on the next startup and one added
+    /// here later reaches installations that already carry the city.
+    /// </summary>
+    private bool EnsureCityContentSeeded()
+    {
+        IContent? site = _contentService.GetRootContent().FirstOrDefault(c => c.ContentType.Alias == "site");
+        if (site is null)
+        {
+            return false;
+        }
+
+        var changed = false;
+        foreach (SeedCity definition in SeedCities)
+        {
+            if (Descendant(site, "city", definition.Name) is not IContent city)
+            {
+                continue;
+            }
+
+            var created = new List<IContent>();
+            foreach (SeedSection section in definition.Sections)
+            {
+                IContent? category = Descendant(city, "categoryPage", section.Name);
+                if (category is null)
+                {
+                    _logger.LogInformation("CityGuide: seeding '{Section}' in '{City}'", section.Name, definition.Name);
+                    category = CreateCategory(city, section.Name, section.Intro);
+                    created.Add(category);
+                }
+
+                foreach (string subcategory in section.Subcategories)
+                {
+                    if (Descendant(category, "subcategory", subcategory) is not null)
+                    {
+                        continue;
+                    }
+
+                    IContent child = _contentService.Create(subcategory, category.Id, "subcategory");
+                    _contentService.Save(child);
+                    created.Add(child);
+                }
+            }
+
+            if (Descendant(city, "eventsPage", "Eventos") is null)
+            {
+                IContent eventos = _contentService.Create("Eventos", city.Id, "eventsPage");
+                _contentService.Save(eventos);
+                created.Add(eventos);
+            }
+
+            if (Descendant(city, "thingsToDoPage", "Qué Hacer") is null)
+            {
+                IContent queHacer = _contentService.Create("Qué Hacer", city.Id, "thingsToDoPage");
+                queHacer.SetValue("intro", ThingsToDoIntro);
+                _contentService.Save(queHacer);
+                created.Add(queHacer);
+            }
+
+            if (Descendant(city, "categoryPage", "Atracciones") is IContent atracciones)
+            {
+                foreach (Atraccion a in definition.Attractions)
+                {
+                    if (Descendant(atracciones, "place", a.Name) is not null)
+                    {
+                        continue;
+                    }
+
+                    _logger.LogInformation("CityGuide: seeding attraction '{Name}' in '{City}'", a.Name, definition.Name);
+                    created.Add(CreatePlace(atracciones.Id, a.Name, a.Description, a.Address, a.Phone,
+                        a.Hours, a.Latitude, a.Longitude, a.Facilities, website: a.Website));
+                }
+            }
+
+            PublishSeeded(created);
+            changed |= created.Count > 0;
+
+            // The city has sections and content now: it is no longer "en construcción".
+            // Only the flag this seeder set is cleared — a city an editor flagged back
+            // on stays that way, since the value is only touched while it is true and
+            // the structure above is in place. The announcement that came with it
+            // ("Estamos armando la guía") is replaced by the city's real intro for the
+            // same reason, and by that sentence alone: anything an editor wrote instead
+            // stays where it is.
+            bool opening = city.GetValue<bool>("comingSoon");
+            bool announcing = city.GetValue<string>("intro")?.TrimEnd()
+                .EndsWith(ComingSoonNotice, StringComparison.Ordinal) == true;
+            if (opening || announcing)
+            {
+                _logger.LogInformation("CityGuide: opening '{City}' to visitors", definition.Name);
+                city.SetValue("comingSoon", false);
+                if (announcing)
+                {
+                    city.SetValue("intro", definition.Intro);
+                }
+
+                _contentService.Save(city);
+                _contentService.Publish(city, ["*"]);
+                changed = true;
+            }
+        }
+
+        return changed;
     }
 
     private static readonly string ThingsToDoIntro =

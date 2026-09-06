@@ -21,7 +21,13 @@ export interface Cinema {
   lng: number;
 }
 
-/** Caribbean Cinemas theaters per CityGuide city slug. */
+/**
+ * Caribbean Cinemas theaters per CityGuide city slug. `name` is the join key with
+ * the CMS: the cinema sync names each branch place exactly as the Caribbean API
+ * names the site, and the branch page shows the live cartelera of the cinema whose
+ * name matches. `id` is the site the GraphQL queries filter by, `slug` the path
+ * segment booking links are built on (the site's own `hostname`).
+ */
 export const CINEMAS_BY_CITY: Record<string, Cinema[]> = {
   "santo-domingo": [
     {
@@ -92,7 +98,7 @@ export const CINEMAS_BY_CITY: Record<string, Cinema[]> = {
   santiago: [
     {
       id: "86",
-      name: "Plaza Internacional",
+      name: "Plaza Internacional Santiago",
       slug: "plaza-internacional-santiago",
       address: "Av. Juan Pablo Duarte, Plaza Internacional",
       lat: 19.4448,
@@ -105,6 +111,16 @@ export const CINEMAS_BY_CITY: Record<string, Cinema[]> = {
       address: "Av. 27 de Febrero, Colinas Mall",
       lat: 19.4733,
       lng: -70.7136,
+    },
+  ],
+  "punta-cana": [
+    {
+      id: "90",
+      name: "Bávaro",
+      slug: "bavaro",
+      address: "Cruce Coco Loco, Av. Barceló Km. 9, Bávaro",
+      lat: 18.6403,
+      lng: -68.3986,
     },
   ],
 };

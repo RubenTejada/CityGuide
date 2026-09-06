@@ -190,9 +190,31 @@ export function categoryPath(routePath: string): string {
   return `/${segments.slice(0, depth).join("/")}`;
 }
 
+/**
+ * Section photos that belong to one city and cannot be shared: "Atracciones" is
+ * the Alcázar de Colón in Santo Domingo, the Monumento in Santiago and a beach in
+ * Punta Cana. Keyed "<ciudad>/<sección>"; a city without an entry for a section
+ * takes the shared photo, which is what every city-neutral section uses.
+ */
+const CITY_SECTION_LIST_IMAGES: Record<string, string> = {
+  "santiago/atracciones":
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/Santiago_de_los_Caballeros_-_Monumento_a_los_H%C3%A9roes_de_la_Restauraci%C3%B3n_0459.JPG/1280px-Santiago_de_los_Caballeros_-_Monumento_a_los_H%C3%A9roes_de_la_Restauraci%C3%B3n_0459.JPG",
+  "santiago/que-hacer":
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/1/15/Park_Colon%2C_calle_Del_Sol_214.jpg/1280px-Park_Colon%2C_calle_Del_Sol_214.jpg",
+  "punta-cana/atracciones":
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b8/2023_-_Playa_Bavaro_Punta_Cana_-_01.jpg/1280px-2023_-_Playa_Bavaro_Punta_Cana_-_01.jpg",
+  "punta-cana/que-hacer":
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/d/df/2023_-_Playa_Bavaro_Punta_Cana_-_08.jpg/1280px-2023_-_Playa_Bavaro_Punta_Cana_-_08.jpg",
+};
+
 /** Representative photo of the section a content path belongs to. */
 export function sectionListImage(routePath: string): string {
-  return SECTION_LIST_IMAGES[sectionSlug(routePath)] ?? "/sections/default.svg";
+  const segments = routePath.split("/").filter(Boolean);
+  return (
+    CITY_SECTION_LIST_IMAGES[`${segments[0] ?? ""}/${segments[1] ?? ""}`] ??
+    SECTION_LIST_IMAGES[sectionSlug(routePath)] ??
+    "/sections/default.svg"
+  );
 }
 
 /** Map-pin icon of the section a content path belongs to. */

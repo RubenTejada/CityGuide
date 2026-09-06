@@ -17,24 +17,25 @@ public class CinemaSync(
     CaribbeanCinemasClient caribbean,
     YoutubeTrailerFinder trailers,
     MovieRatingsClient reviews,
-    CinemasConfig config)
+    CinemasConfig config,
+    CinemaCityConfig city)
 {
     public async Task RunAsync()
     {
-        Console.WriteLine($"\n== Cinema sync: {config.CityPath}/cines");
+        Console.WriteLine($"\n== Cinema sync: {city.CityPath}/cines");
 
-        (Guid Id, string Name)? cines = await umbraco.GetContentByPathAsync($"{config.CityPath}/cines");
+        (Guid Id, string Name)? cines = await umbraco.GetContentByPathAsync($"{city.CityPath}/cines");
         if (cines is null)
         {
-            (Guid Id, string Name)? city = await umbraco.GetContentByPathAsync(config.CityPath);
-            if (city is null)
+            (Guid Id, string Name)? cityNode = await umbraco.GetContentByPathAsync(city.CityPath);
+            if (cityNode is null)
             {
-                Console.Error.WriteLine($"  City path not found in CMS, skipping: {config.CityPath}");
+                Console.Error.WriteLine($"  City path not found in CMS, skipping: {city.CityPath}");
                 return;
             }
 
             Guid categoryTypeId = await umbraco.GetDocumentTypeIdAsync("Category Page");
-            Guid newId = await umbraco.CreateDocumentAsync(city.Value.Id, categoryTypeId, "Cines",
+            Guid newId = await umbraco.CreateDocumentAsync(cityNode.Value.Id, categoryTypeId, "Cines",
                 [new { alias = "intro", value = "Carteleras y salas de cine." }]);
             cines = (newId, "Cines");
             Console.WriteLine("  + created 'Cines' category");
@@ -71,7 +72,7 @@ public class CinemaSync(
         Guid placeTypeId = await umbraco.GetDocumentTypeIdAsync("Place");
         List<UmbracoClient.ChildDocument> existing = await umbraco.GetChildrenAsync(companyId);
 
-        foreach (CinemaSiteConfig siteConfig in config.Sites)
+        foreach (CinemaSiteConfig siteConfig in city.Sites)
         {
             CinemaSite? site = await caribbean.GetSiteAsync(siteConfig.Id);
             if (site is null)
@@ -122,7 +123,7 @@ public class CinemaSync(
         // that set — it is paginated (10 by default) and carries titles that are
         // no longer scheduled, so a cartelera row would find no catalog entry to
         // link to and lose its detail page.
-        string[] siteIds = [.. config.Sites.Select(site => site.Id)];
+        string[] siteIds = [.. city.Sites.Select(site => site.Id)];
         var catalog = new Dictionary<string, CinemaMovie>(StringComparer.OrdinalIgnoreCase);
         foreach (string date in await caribbean.GetShowingDatesAsync(siteIds))
         {

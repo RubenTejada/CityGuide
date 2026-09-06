@@ -16,7 +16,7 @@ Content flows: editors use the Umbraco backoffice; the agent discovers places wi
 
 `site` → `city` (landing per city) → `categoryPage` (Restaurantes, Bares y Clubes, Tiendas, Cines, Empresas y Servicios) → `subcategory` → `place`, plus `eventsPage`/`eventItem` and `specialsPage`/`specialItem` under each city.
 
-The schema and a seeded Santo Domingo sample tree are created automatically on first boot by `CityGuideWeb/CityGuide/CityGuideSeeder.cs` (idempotent).
+The schema and a seeded Santo Domingo sample tree are created automatically on first boot by `CityGuideWeb/CityGuide/CityGuideSeeder.cs` (idempotent), which also opens Santiago and Punta Cana: the same sections, their events and "Qué Hacer" pages, and the attractions each city starts with. The rest of those cities is filled by the agent — the cartelera and the events on the nightly free pass, the places on a dispatched `--paid` run.
 
 ## Running locally
 

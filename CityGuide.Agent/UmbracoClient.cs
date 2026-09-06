@@ -34,7 +34,8 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         string CityName,
         Dictionary<string, string> CategoryPrompts,
         GeoArea? Area,
-        HashSet<string> ExcludedPlaceIds);
+        HashSet<string> ExcludedPlaceIds,
+        Dictionary<string, DateOnly> QueryLog);
 
     /// <summary>
     /// Agent configuration stored on the city node ("Agente" tab): the city name
@@ -74,8 +75,37 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         }
 
         return new CityAgentConfig(
-            cityName, prompts, ParseArea(Text("agentArea")), ParseExcluded(Text("agentExcludedPlaces")));
+            cityName, prompts, ParseArea(Text("agentArea")), ParseExcluded(Text("agentExcludedPlaces")),
+            ParseQueryLog(Text("agentQueryLog")));
     }
+
+    /// <summary>
+    /// The "Consultas ya hechas" field: one "yyyy-MM-dd la consulta tal cual se envió"
+    /// line per Google text search the agent has paid for. It is the agent's own memory,
+    /// kept on the city node because the container it runs in keeps nothing; an editor
+    /// who empties it is asking for the next pass to search everything again.
+    /// </summary>
+    private static Dictionary<string, DateOnly> ParseQueryLog(string? value)
+    {
+        var log = new Dictionary<string, DateOnly>(StringComparer.OrdinalIgnoreCase);
+        foreach (string line in (value ?? "").Split('\n'))
+        {
+            string[] parts = line.Trim().Split(' ', 2, StringSplitOptions.TrimEntries);
+            if (parts.Length == 2
+                && DateOnly.TryParse(parts[0], System.Globalization.CultureInfo.InvariantCulture, out DateOnly date)
+                && parts[1].Length > 0)
+            {
+                log[parts[1]] = date;
+            }
+        }
+
+        return log;
+    }
+
+    /// <summary>The same field written back, newest date per query, one line each.</summary>
+    public static string FormatQueryLog(Dictionary<string, DateOnly> log) => string.Join("\n",
+        log.OrderBy(entry => entry.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(entry => $"{entry.Value:yyyy-MM-dd} {entry.Key}"));
 
     /// <summary>
     /// The "Lugares excluidos" field: one Google place id per line, with an optional
@@ -373,7 +403,8 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
     public record PublishedPlace(
         Guid Id, string Name, string Path, double Latitude, double Longitude,
         string? Address, string? GooglePlaceId, Guid? PhotoMediaKey, bool HasRating,
-        string? Source, DateTime CreateDate)
+        string? Source, DateTime CreateDate,
+        string? Phone = null, string? Website = null, string? Hours = null)
     {
         public bool HasPhoto => PhotoMediaKey is not null;
 
@@ -420,7 +451,8 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
                 item.GetProperty("route").GetProperty("path").GetString()!,
                 Coord("latitude"), Coord("longitude"), Text("address"), Text("googlePlaceId"), photoKey,
                 Coord("googleRating") > 0, Text("source"),
-                item.GetProperty("createDate").GetDateTime()));
+                item.GetProperty("createDate").GetDateTime(),
+                Text("phone"), Text("website"), Text("hours")));
         }
 
         return places;
@@ -578,16 +610,28 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
             ? e.GetString()
             : null;
 
+    /// <summary>What <see cref="CompletePlaceAsync"/> wrote: the rating, the photo, and
+    /// the names of the empty fields it filled in ("teléfono", "horario"…).</summary>
+    public record Completion(bool Rating, bool Photo, IReadOnlyList<string> Filled)
+    {
+        public bool Anything => Rating || Photo || Filled.Count > 0;
+    }
+
     /// <summary>
-    /// Fills in whatever Google data a node is missing — rating, place id, main photo —
-    /// leaving every other value untouched, and refreshes a rating that changed. The
-    /// photo is only asked for (<paramref name="photoFactory"/> downloads and uploads it)
-    /// when the node has none, so a node that is already complete costs one read and no
-    /// image traffic. Returns what was written.
+    /// Fills in whatever Google data a node is missing — rating, place id, main photo,
+    /// and the contact fields in <paramref name="details"/> — leaving every value the
+    /// node already carries untouched, and refreshes a rating that changed. The photo is
+    /// only asked for (<paramref name="photoFactory"/> finds and uploads it) when the
+    /// node has none, so a node that is already complete costs one read and no image
+    /// traffic. <paramref name="details"/> is what the Enterprise answer carried anyway:
+    /// address, phone, website and hours ride along on the request the rating paid for,
+    /// so a node seeded by hand is completed for nothing. A blank stays blank — Google
+    /// saying nothing about a field never erases what an editor wrote. Returns what was
+    /// written.
     /// </summary>
-    public async Task<(bool Rating, bool Photo)> CompletePlaceAsync(
+    public async Task<Completion> CompletePlaceAsync(
         Guid id, double? rating, int? ratingCount, string? googlePlaceId = null,
-        Func<Task<Guid?>>? photoFactory = null)
+        Func<Task<Guid?>>? photoFactory = null, DiscoveredPlace? details = null)
     {
         (string name, string state, Dictionary<string, object?> values) = await ReadDocumentAsync(id);
 
@@ -614,12 +658,41 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
             photoWritten = true;
         }
 
-        if (ratingWritten || idWritten || photoWritten)
+        // What the same answer carried and the node still lacks. Only ever writes into
+        // an empty field: a branch place stores nothing on purpose (it inherits its
+        // company's), and an editor's phone number outranks Google's.
+        var filled = new List<string>();
+        void Fill(string alias, string? value, string label)
+        {
+            if (string.IsNullOrWhiteSpace(value) || !string.IsNullOrWhiteSpace(Text(values, alias)))
+            {
+                return;
+            }
+
+            values[alias] = value;
+            filled.Add(label);
+        }
+
+        if (details is not null)
+        {
+            Fill("address", details.Address, "dirección");
+            Fill("phone", details.Phone, "teléfono");
+            Fill("website", details.Website, "web");
+            Fill("hours", details.Hours.Length > 0 ? string.Join("\n", details.Hours) : null, "horario");
+            if (Number(values, "latitude") is null or 0 && details.Latitude != 0)
+            {
+                values["latitude"] = Math.Round(details.Latitude, 6);
+                values["longitude"] = Math.Round(details.Longitude, 6);
+                filled.Add("coordenadas");
+            }
+        }
+
+        if (ratingWritten || idWritten || photoWritten || filled.Count > 0)
         {
             await WriteDocumentAsync(id, name, values, state);
         }
 
-        return (ratingWritten, photoWritten);
+        return new Completion(ratingWritten, photoWritten, filled);
     }
 
     /// <summary>True when the node already carries a main image. An empty picker comes
