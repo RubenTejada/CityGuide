@@ -28,9 +28,38 @@ public record GeoArea(double SouthLat, double WestLng, double NorthLat, double E
         && longitude >= WestLng && longitude <= EastLng;
 }
 
-/// <summary>Google Places API (New) — Text Search.</summary>
+/// <summary>
+/// Google Places API (New) — Text Search and Place Details.
+///
+/// Every request is billed at the tier of the most expensive field the mask asks
+/// for, and the tiers are far apart: a mask of ids and photos alone is free and
+/// uncapped ("Essentials — IDs Only"), while one field of rating, phone, website
+/// or opening hours makes the whole request Enterprise ($35 per 1.000 text
+/// searches, $20 per 1.000 details, and only 1.000 free a month). So each lookup
+/// here asks for exactly what its caller uses, and the expensive mask is reserved
+/// for the two answers that need it: discovering a place the CMS does not have,
+/// and refreshing a rating. Where Enterprise is paid anyway, the mask asks for
+/// everything that tier carries — address, phone, website, hours cost nothing
+/// extra once rating is in the mask, and they are what completes a node.
+/// </summary>
 public class GooglePlacesClient(HttpClient http, string apiKey)
 {
+    /// <summary>Everything the Enterprise tier carries and the agent stores. Asking
+    /// for less does not make the request cheaper once rating is in it.</summary>
+    private static readonly string[] FullFields =
+    [
+        "id", "displayName", "formattedAddress", "location", "types",
+        "nationalPhoneNumber", "websiteUri", "regularOpeningHours.weekdayDescriptions",
+        "rating", "userRatingCount", "photos",
+    ];
+
+    /// <summary>The free tier: the place id and its photo names, nothing else. A
+    /// display name would make the request Pro, a rating Enterprise.</summary>
+    private static readonly string[] PhotoFields = ["id", "photos"];
+
+    private static string Mask(string[] fields, bool search) => string.Join(",",
+        search ? fields.Select(f => $"places.{f}") : fields);
+
     /// <summary>False when no key is configured, or when the run left it out because it
     /// was told to spend nothing. Every lookup then answers "nothing found" without
     /// leaving the process: an unkeyed request would only earn a 403 per call, and the
@@ -78,12 +107,7 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
                 }),
             };
             request.Headers.Add("X-Goog-Api-Key", apiKey);
-            request.Headers.Add("X-Goog-FieldMask", string.Join(",",
-                "nextPageToken",
-                "places.id", "places.displayName", "places.formattedAddress", "places.location",
-                "places.nationalPhoneNumber", "places.websiteUri",
-                "places.regularOpeningHours.weekdayDescriptions", "places.types",
-                "places.rating", "places.userRatingCount", "places.photos"));
+            request.Headers.Add("X-Goog-FieldMask", $"nextPageToken,{Mask(FullFields, search: true)}");
 
             HttpResponseMessage response = await http.SendAsync(request);
             if (!response.IsSuccessStatusCode)
@@ -142,19 +166,42 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
     /// <summary>
     /// First Google photo of the best text-search match for a free-text query
     /// (used to illustrate an event by its venue). Null when nothing matches or
-    /// the match has no photo.
+    /// the match has no photo. Asks for ids and photos alone, which is the free
+    /// tier: the caller wants a picture, not a place.
     /// </summary>
     public async Task<string?> FindPhotoAsync(string query)
     {
-        List<DiscoveredPlace> matches = await SearchAsync(query, 1);
-        return matches.FirstOrDefault()?.PhotoName;
+        if (!Enabled)
+        {
+            return null;
+        }
+
+        var request = new HttpRequestMessage(HttpMethod.Post, "https://places.googleapis.com/v1/places:searchText")
+        {
+            Content = JsonContent.Create(new { textQuery = query, languageCode = "es", pageSize = 1 }),
+        };
+        request.Headers.Add("X-Goog-Api-Key", apiKey);
+        request.Headers.Add("X-Goog-FieldMask", Mask(PhotoFields, search: true));
+
+        HttpResponseMessage response = await http.SendAsync(request);
+        if (!response.IsSuccessStatusCode)
+        {
+            return null;
+        }
+
+        SearchResponse? data = await response.Content.ReadFromJsonAsync<SearchResponse>();
+        return (data?.Places ?? []).FirstOrDefault()?.Photos?.FirstOrDefault()?.Name;
     }
 
-    public record RatingLookup(
-        string GooglePlaceId, string Name, double? Rating, int? UserRatingCount, string? PhotoName = null);
-
-    /// <summary>Current rating of a known place — Place Details by id. Null when the place is gone.</summary>
-    public async Task<RatingLookup?> GetRatingByIdAsync(string placeId)
+    /// <summary>
+    /// The photo names of a place the CMS already identifies by id, on the free
+    /// tier. This is the whole answer the backfill needs for a node that carries
+    /// its rating and only misses an image, and asking for it this way instead of
+    /// through the details call below is the difference between free and $20 per
+    /// 1.000. Null when the place is gone or the request fails — a missing photo
+    /// never blocks anything.
+    /// </summary>
+    public async Task<string?> GetPhotoByIdAsync(string placeId)
     {
         if (!Enabled)
         {
@@ -164,7 +211,36 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
         var request = new HttpRequestMessage(
             HttpMethod.Get, $"https://places.googleapis.com/v1/places/{placeId}");
         request.Headers.Add("X-Goog-Api-Key", apiKey);
-        request.Headers.Add("X-Goog-FieldMask", "id,displayName,rating,userRatingCount,photos");
+        request.Headers.Add("X-Goog-FieldMask", Mask(PhotoFields, search: false));
+
+        HttpResponseMessage response = await http.SendAsync(request);
+        if (!response.IsSuccessStatusCode)
+        {
+            return null;
+        }
+
+        PlaceModel? place = await response.Content.ReadFromJsonAsync<PlaceModel>();
+        return place?.Photos?.FirstOrDefault()?.Name;
+    }
+
+    /// <summary>
+    /// Everything Google knows about a place the CMS identifies by id — Place Details
+    /// on the Enterprise tier, which is what a rating costs. The mask therefore asks
+    /// for the address, the phone, the website and the opening hours too: they ride
+    /// along at no extra cost and are what a node seeded by hand is missing. Null when
+    /// the place is gone.
+    /// </summary>
+    public async Task<DiscoveredPlace?> GetPlaceByIdAsync(string placeId)
+    {
+        if (!Enabled)
+        {
+            return null;
+        }
+
+        var request = new HttpRequestMessage(
+            HttpMethod.Get, $"https://places.googleapis.com/v1/places/{placeId}");
+        request.Headers.Add("X-Goog-Api-Key", apiKey);
+        request.Headers.Add("X-Goog-FieldMask", Mask(FullFields, search: false));
 
         HttpResponseMessage response = await http.SendAsync(request);
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
@@ -179,10 +255,7 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
         }
 
         PlaceModel? place = await response.Content.ReadFromJsonAsync<PlaceModel>();
-        return place?.Id is null
-            ? null
-            : new RatingLookup(place.Id, place.DisplayName?.Text ?? "", place.Rating, place.UserRatingCount,
-                place.Photos?.FirstOrDefault()?.Name);
+        return place is null ? null : Convert(place);
     }
 
     /// <summary>
@@ -192,7 +265,7 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
     /// the one of the building a place sits in is ever attached: a cinema inside a plaza
     /// shares its coordinates with the plaza, and the plaza is the bigger Google result.
     /// </summary>
-    public async Task<RatingLookup?> FindRatingNearAsync(
+    public async Task<DiscoveredPlace?> FindRatingNearAsync(
         string name, string? address, double latitude, double longitude)
     {
         if (!Enabled)
@@ -219,9 +292,7 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
             }),
         };
         request.Headers.Add("X-Goog-Api-Key", apiKey);
-        request.Headers.Add("X-Goog-FieldMask", string.Join(",",
-            "places.id", "places.displayName", "places.location",
-            "places.rating", "places.userRatingCount", "places.photos"));
+        request.Headers.Add("X-Goog-FieldMask", Mask(FullFields, search: true));
 
         HttpResponseMessage response = await http.SendAsync(request);
         if (!response.IsSuccessStatusCode)
@@ -239,10 +310,7 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
             .OrderBy(x => x.Distance)
             .Select(x => x.Place)
             .FirstOrDefault();
-        return best is null
-            ? null
-            : new RatingLookup(best.Id!, best.DisplayName?.Text ?? "", best.Rating, best.UserRatingCount,
-                best.Photos?.FirstOrDefault()?.Name);
+        return best is null ? null : Convert(best);
     }
 
     /// <summary>
@@ -251,7 +319,7 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
     /// to bias its search with. The city rectangle keeps the answer in town and the name
     /// still has to match, so a same-named business in another city is never taken for it.
     /// </summary>
-    public async Task<RatingLookup?> FindRatingInAreaAsync(string name, string? address, GeoArea? area)
+    public async Task<DiscoveredPlace?> FindRatingInAreaAsync(string name, string? address, GeoArea? area)
     {
         if (!Enabled)
         {
@@ -259,12 +327,17 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
         }
 
         List<DiscoveredPlace> matches = await SearchAsync($"{name} {address}".Trim(), 5, area);
-        DiscoveredPlace? best = matches.FirstOrDefault(p => TextMatch.Matches(name, p.Name));
-        return best is null
-            ? null
-            : new RatingLookup(
-                best.GooglePlaceId, best.Name, best.Rating, best.UserRatingCount, best.PhotoName);
+        return matches.FirstOrDefault(p => TextMatch.Matches(name, p.Name));
     }
+
+    /// <summary>One Google place as the agent stores it. A field the mask left out
+    /// comes back empty, which is exactly how the callers read it: what Google did
+    /// not say, the node keeps as it was.</summary>
+    private static DiscoveredPlace Convert(PlaceModel p) => new(
+        p.Id ?? "", p.DisplayName?.Text ?? "", p.FormattedAddress, p.NationalPhoneNumber, p.WebsiteUri,
+        p.RegularOpeningHours?.WeekdayDescriptions ?? [],
+        p.Location?.Latitude ?? 0, p.Location?.Longitude ?? 0, p.Types ?? [],
+        p.Rating, p.UserRatingCount, p.Photos?.FirstOrDefault()?.Name);
 
     private static double HaversineMeters(double lat1, double lng1, double lat2, double lng2)
     {

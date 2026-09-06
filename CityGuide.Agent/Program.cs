@@ -101,30 +101,16 @@ if (!discoveryEnabled && config.Runs.Count > 0)
         : "Descubrimiento de lugares omitido (modo gratuito).");
 }
 
-// The first Google photo of a place, downloaded and stored in the Media library. Shared
-// by the three callers that need one — creating a place, completing a place the CMS
-// already has, and the backfill — so a photo failure is reported the same way everywhere
-// and never blocks the write it was meant to illustrate.
-async Task<Guid?> UploadPhotoAsync(string name, string? photoName)
-{
-    if (photoName is null)
-    {
-        return null;
-    }
+// The main image of a place, from the cheapest source that has one: Wikimedia for a
+// landmark, the site's own og:image for a business, Google last (see PlacePhotos).
+// Shared by every caller that needs one — creating a place, completing a place the CMS
+// already has, the backfill and the event venues — so a photo failure is reported the
+// same way everywhere and never blocks the write it was meant to illustrate.
+var photos = new PlacePhotos(google, new FreePhotos(http), umbraco);
 
-    try
-    {
-        (byte[] Bytes, string ContentType)? image = await google.DownloadPhotoAsync(photoName);
-        return image is null
-            ? null
-            : await umbraco.CreateMediaImageAsync(name, image.Value.Bytes, image.Value.ContentType);
-    }
-    catch (Exception ex)
-    {
-        Console.Error.WriteLine($"  ! foto de {name}: {ex.Message}");
-        return null;
-    }
-}
+Task<Guid?> UploadPhotoAsync(DiscoveredPlace place, string routePath, GeoArea? cityArea) =>
+    photos.UploadAsync(place.Name, () => Task.FromResult(place.PhotoName), routePath, place.Types,
+        place.Website, routePath.Trim('/').Split('/').FirstOrDefault()?.Replace('-', ' '), cityArea);
 
 // Per-city agent config from the CMS ("Agente" tab on the city node), cached per city slug.
 var cityConfigs = new Dictionary<string, UmbracoClient.CityAgentConfig?>(StringComparer.OrdinalIgnoreCase);
@@ -139,11 +125,26 @@ async Task<UmbracoClient.CityAgentConfig?> CityConfigAsync(string citySlug)
     return cached;
 }
 
+// The cities each sync covers on this pass: every configured city whose section
+// --section selected (the city slug is a segment of the path, so "--section santiago"
+// is also how one city is run on its own). One scrape cache for the whole pass: the
+// national portals are listed by every city and their feed is the same, only the
+// rectangle that filters it differs.
+List<EventsCityConfig> eventCities =
+    [.. config.Events.Cities.Where(c => SectionSelected($"{c.CityPath}/eventos"))];
+var eventScrapes = new EventSync.ScrapeCache();
+EventSync EventSyncOf(EventsCityConfig city) =>
+    new(http, umbraco, config.Events, city, eventScrapes, photos, google, enricher);
+
 // Diagnostic: scrape the configured event sources and print what each yields, plus
 // whether the city filter would keep it. Reads the city node and Google; writes nothing.
 if (args.Contains("--scrape-events"))
 {
-    await new EventSync(http, umbraco, config.Events, google, enricher).ReportSourcesAsync();
+    foreach (EventsCityConfig city in eventCities)
+    {
+        await EventSyncOf(city).ReportSourcesAsync();
+    }
+
     return 0;
 }
 
@@ -160,8 +161,11 @@ if (args.Contains("--purge-event-source"))
         return 1;
     }
 
-    await new EventSync(http, umbraco, config.Events, google, enricher)
-        .PurgeSourceAsync(source, args.Contains("--apply"));
+    foreach (EventsCityConfig city in eventCities)
+    {
+        await EventSyncOf(city).PurgeSourceAsync(source, args.Contains("--apply"));
+    }
+
     return 0;
 }
 
@@ -181,8 +185,11 @@ if (args.Contains("--recategorize-events"))
         return 1;
     }
 
-    await new EventSync(http, umbraco, config.Events, google, enricher)
-        .RecategorizeAsync(args.Contains("--apply"));
+    foreach (EventsCityConfig city in eventCities)
+    {
+        await EventSyncOf(city).RecategorizeAsync(args.Contains("--apply"));
+    }
+
     return 0;
 }
 
@@ -192,8 +199,11 @@ if (args.Contains("--recategorize-events"))
 // that are not there go to the recycle bin. Prints the plan without --apply.
 if (args.Contains("--purge-foreign-events"))
 {
-    await new EventSync(http, umbraco, config.Events, google, enricher)
-        .PurgeForeignAsync(args.Contains("--apply"));
+    foreach (EventsCityConfig city in eventCities)
+    {
+        await EventSyncOf(city).PurgeForeignAsync(args.Contains("--apply"));
+    }
+
     return 0;
 }
 
@@ -1228,12 +1238,44 @@ if (args.Contains("--regroup-companies"))
     return 0;
 }
 
+// What each city has already asked Google, and when: the queries this pass runs are
+// written back to the city node at the end, so a pass repeated inside the cooldown
+// pays for nothing it already paid for. --force asks everything again.
+var queryLogs = new Dictionary<string, Dictionary<string, DateOnly>>(StringComparer.OrdinalIgnoreCase);
+var queryLogsChanged = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+int cooldownDays = Math.Max(0, config.Google.QueryCooldownDays);
+bool forceQueries = args.Contains("--force");
+DateOnly today = DateOnly.FromDateTime(DateTime.UtcNow);
+var skippedByCooldown = 0;
+
 foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelected(r.ParentPath)) : [])
 {
     // /santo-domingo/bares-y-clubes → city slug "santo-domingo", category slug "bares-y-clubes".
     string[] segments = run.ParentPath.Trim('/').Split('/');
     UmbracoClient.CityAgentConfig? cityConfig = segments.Length > 0 ? await CityConfigAsync(segments[0]) : null;
     string query = run.Query.Replace("{city}", cityConfig?.CityName ?? segments[0].Replace('-', ' '));
+
+    // Google answers the same query with the same places for weeks, and every page of
+    // it is billed, so a query asked recently is left alone. The date comes from the
+    // city node, which is where this pass will write today's back.
+    if (segments.Length > 0 && cityConfig is not null
+        && !queryLogs.ContainsKey(segments[0]))
+    {
+        queryLogs[segments[0]] = new Dictionary<string, DateOnly>(cityConfig.QueryLog, StringComparer.OrdinalIgnoreCase);
+    }
+
+    if (!forceQueries && cooldownDays > 0 && segments.Length > 0
+        && queryLogs.TryGetValue(segments[0], out Dictionary<string, DateOnly>? cityLog)
+        && cityLog.TryGetValue(query, out DateOnly asked)
+        && today.DayNumber - asked.DayNumber < cooldownDays)
+    {
+        skippedByCooldown++;
+        Console.WriteLine($"\n== Run: \"{query}\" -> {run.ParentPath}"
+            + $"\n  omitida: Google la respondió hace {today.DayNumber - asked.DayNumber} día(s) "
+            + $"(se repite a los {cooldownDays}; --force la fuerza)");
+        continue;
+    }
+
     string? categoryPrompt = segments.Length > 1 && cityConfig is not null
         && cityConfig.CategoryPrompts.TryGetValue(segments[1], out string? prompt)
         ? prompt
@@ -1349,11 +1391,12 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelec
             knownPlaceIds[place.GooglePlaceId] = storedMall.Id;
             try
             {
-                (bool ratingWritten, bool photoWritten) = await umbraco.CompletePlaceAsync(
+                UmbracoClient.Completion filled = await umbraco.CompletePlaceAsync(
                     storedMall.Id, place.Rating, place.UserRatingCount, place.GooglePlaceId,
-                    () => UploadPhotoAsync(place.Name, place.PhotoName));
+                    () => UploadPhotoAsync(place, run.ParentPath, cityConfig?.Area), details: place);
                 Console.WriteLine($"  = {place.Name} (ya existe como plaza, id de Google guardado"
-                    + (ratingWritten ? ", rating" : "") + (photoWritten ? ", foto" : "") + ")");
+                    + (filled.Rating ? ", rating" : "") + (filled.Photo ? ", foto" : "")
+                    + (filled.Filled.Count > 0 ? ", " + string.Join(", ", filled.Filled) : "") + ")");
             }
             catch (Exception ex)
             {
@@ -1373,10 +1416,15 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelec
             // a node an editor typed in without either, is repaired for free.
             try
             {
-                (bool ratingWritten, bool photoWritten) = await umbraco.CompletePlaceAsync(
+                // Rating and photo only: whether this node is a branch — which stores
+                // nothing of its own and inherits its company's phone, site and hours —
+                // is not something the id in hand can answer. The backfill, which reads
+                // every node's path, is where the contact fields are completed.
+                UmbracoClient.Completion completed = await umbraco.CompletePlaceAsync(
                     existingId, place.Rating, place.UserRatingCount,
-                    photoFactory: () => UploadPhotoAsync(place.Name, place.PhotoName));
-                string filled = (ratingWritten ? " rating" : "") + (photoWritten ? " foto" : "");
+                    photoFactory: () => UploadPhotoAsync(place, run.ParentPath, cityConfig?.Area));
+                string filled = (completed.Rating ? " rating" : "") + (completed.Photo ? " foto" : "")
+                    + (completed.Filled.Count > 0 ? " " + string.Join(", ", completed.Filled) : "");
                 Console.WriteLine($"  = {place.Name} ({(filled.Length == 0 ? "ya en el CMS" : "completado:" + filled)})");
             }
             catch (Exception ex)
@@ -1401,7 +1449,7 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelec
 
             // Main image: first Google photo, uploaded to the Media library.
             // Photo failures never block creating the place.
-            Guid? photoKey = await UploadPhotoAsync(place.Name, place.PhotoName);
+            Guid? photoKey = await UploadPhotoAsync(place, run.ParentPath, cityConfig?.Area);
 
             // The plaza this establishment sits inside, when its address says so and its
             // coordinates agree. It never becomes the parent: a place lives in the
@@ -1505,9 +1553,40 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelec
         }
     }
 
+    // Paid for and answered: the cooldown starts now.
+    if (segments.Length > 0 && queryLogs.TryGetValue(segments[0], out Dictionary<string, DateOnly>? log))
+    {
+        log[query] = today;
+        queryLogsChanged.Add(segments[0]);
+    }
+
     // Queries overlap on purpose (a broad one plus per-sector and per-cuisine
     // ones): the skipped count is how much of this run the others already had.
     Console.WriteLine($"  Run: {runCreated} nuevos, {runSkipped} ya en el CMS");
+}
+
+// The agent's memory of what it has already asked Google, kept where it survives the
+// container: the "Agente" tab of each city.
+foreach (string citySlug in queryLogsChanged)
+{
+    try
+    {
+        if (await umbraco.GetContentByPathAsync($"/{citySlug}") is { } cityNode)
+        {
+            await umbraco.SetTextValueAsync(cityNode.Id, "agentQueryLog",
+                UmbracoClient.FormatQueryLog(queryLogs[citySlug]));
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"  ! registrar las consultas de {citySlug}: {ex.Message}");
+    }
+}
+
+if (skippedByCooldown > 0)
+{
+    Console.WriteLine($"\n{skippedByCooldown} consulta(s) omitida(s) por el enfriamiento "
+        + $"de {cooldownDays} días.");
 }
 
 Console.WriteLine($"\nDone. Created {created} place(s)" +
@@ -1621,36 +1700,95 @@ if (!string.IsNullOrEmpty(config.Google.ApiKey))
     {
         try
         {
-            string searchName = CompanyOf(node.Path) is { } company
-                && !TextMatch.Matches(company, node.Name, 1.0)
+            string citySlug = node.Path.Trim('/').Split('/').First();
+            UmbracoClient.CityAgentConfig? nodeCity = await CityConfigAsync(citySlug);
+            string? company = CompanyOf(node.Path);
+
+            // A node that carries its id and its rating, on a day that is not its turn
+            // to refresh, is only here for a picture — and a picture is answered by the
+            // free sources first and, failing those, by the tier of Google that costs
+            // nothing (ids and photo names). Nothing else is asked, so what used to be
+            // an Enterprise request per photo is now a free one, or none at all.
+            if (node.GooglePlaceId is { } photoOnlyId
+                && node.HasRating
+                && RefreshBucket(node.Id, refreshDays) != todayBucket)
+            {
+                UmbracoClient.Completion picture = await umbraco.CompletePlaceAsync(
+                    node.Id, rating: null, ratingCount: null,
+                    photoFactory: () => photos.UploadAsync(
+                        node.Name, () => google.GetPhotoByIdAsync(photoOnlyId), node.Path,
+                        website: node.Website, cityName: nodeCity?.CityName ?? citySlug.Replace('-', ' '),
+                        cityArea: nodeCity?.Area));
+                Console.WriteLine(picture.Photo
+                    ? $"  * {node.Name} +foto"
+                    : $"  ? {node.Name}: sin foto en ninguna fuente");
+                continue;
+            }
+
+            string searchName = company is not null && !TextMatch.Matches(company, node.Name, 1.0)
                 ? $"{company} {node.Name}"
                 : node.Name;
-            GooglePlacesClient.RatingLookup? found = node.GooglePlaceId is not null
-                ? await google.GetRatingByIdAsync(node.GooglePlaceId)
-                : node.Latitude != 0 || node.Longitude != 0
-                    ? await google.FindRatingNearAsync(
-                        searchName, node.Address, node.Latitude, node.Longitude)
-                    : await google.FindRatingInAreaAsync(
-                        searchName, node.Address,
-                        (await CityConfigAsync(node.Path.Trim('/').Split('/').First()))?.Area);
+            DiscoveredPlace? found = null;
+            string? lookupFailure = null;
+            try
+            {
+                found = node.GooglePlaceId is not null
+                    ? await google.GetPlaceByIdAsync(node.GooglePlaceId)
+                    : node.Latitude != 0 || node.Longitude != 0
+                        ? await google.FindRatingNearAsync(
+                            searchName, node.Address, node.Latitude, node.Longitude)
+                        : await google.FindRatingInAreaAsync(searchName, node.Address, nodeCity?.Area);
+            }
+            catch (Exception ex)
+            {
+                lookupFailure = ex.Message;
+            }
+
+            // Google not knowing a place, or not answering at all, says nothing about
+            // whether Wikimedia has a photograph of it: a node without a picture is worth
+            // the free sources either way, and they cost nothing to ask.
             if (found is null)
             {
-                Console.WriteLine($"  ? {node.Name}: sin match en Google, omitido");
+                if (!node.HasPhoto)
+                {
+                    UmbracoClient.Completion freeSources = await umbraco.CompletePlaceAsync(
+                        node.Id, rating: null, ratingCount: null,
+                        photoFactory: () => photos.UploadAsync(
+                            node.Name, googlePhoto: null, node.Path, website: node.Website,
+                            cityName: nodeCity?.CityName ?? citySlug.Replace('-', ' '),
+                            cityArea: nodeCity?.Area));
+                    if (freeSources.Photo)
+                    {
+                        Console.WriteLine($"  * {node.Name} +foto (fuente gratuita)");
+                        continue;
+                    }
+                }
+
+                Console.WriteLine(lookupFailure is null
+                    ? $"  ? {node.Name}: sin match en Google, omitido"
+                    : $"  ! {node.Name}: {lookupFailure}");
                 continue;
             }
 
             // Plazas carry the same Google properties as places, so both are completed
             // the same way: whatever is missing is written, and nothing else is touched.
-            (bool ratingWritten, bool photoAdded) = await umbraco.CompletePlaceAsync(
+            // The address, phone, website and hours of that same answer are written too,
+            // except on a branch, which stores nothing of its own and reads its company's.
+            UmbracoClient.Completion completed = await umbraco.CompletePlaceAsync(
                 node.Id, found.Rating, found.UserRatingCount,
                 node.GooglePlaceId is null ? found.GooglePlaceId : null,
-                () => UploadPhotoAsync(node.Name, found.PhotoName));
+                () => photos.UploadAsync(
+                    node.Name, () => Task.FromResult(found.PhotoName), node.Path, found.Types,
+                    node.Website ?? found.Website, nodeCity?.CityName ?? citySlug.Replace('-', ' '),
+                    nodeCity?.Area),
+                details: company is null ? found : null);
 
             Console.WriteLine(
-                $"  {(ratingWritten || photoAdded ? "*" : "=")} {node.Name}"
+                $"  {(completed.Anything ? "*" : "=")} {node.Name}"
                 + (found.Rating is double r ? $": ★ {r:0.0} ({found.UserRatingCount ?? 0})" : "")
-                + (photoAdded ? " +foto" : "")
-                + (!node.HasPhoto && !photoAdded ? " (sin foto en Google)" : "")
+                + (completed.Photo ? " +foto" : "")
+                + (!node.HasPhoto && !completed.Photo ? " (sin foto en ninguna fuente)" : "")
+                + (completed.Filled.Count > 0 ? $" +{string.Join(", +", completed.Filled)}" : "")
                 + (node.GooglePlaceId is null ? $" ← \"{found.Name}\"" : ""));
         }
         catch (Exception ex)
@@ -1660,34 +1798,43 @@ if (!string.IsNullOrEmpty(config.Google.ApiKey))
     }
 }
 
-// Daily job: one sync failing must not stop the others.
+// Daily job: one sync failing must not stop the others — not the other cities either,
+// so each city is its own try.
 int failures = 0;
-if (config.Cinemas.Enabled && config.Cinemas.Sites.Count > 0 && SectionSelected($"{config.Cinemas.CityPath}/cines"))
+if (config.Cinemas.Enabled)
 {
-    try
+    var caribbean = new CaribbeanCinemasClient(http);
+    var trailers = new YoutubeTrailerFinder(http);
+    var reviews = new MovieRatingsClient(http, config.Cinemas.Ratings);
+    foreach (CinemaCityConfig city in config.Cinemas.Cities
+                 .Where(c => c.Sites.Count > 0 && SectionSelected($"{c.CityPath}/cines")))
     {
-        var cinemaSync = new CinemaSync(
-            umbraco, new CaribbeanCinemasClient(http), new YoutubeTrailerFinder(http),
-            new MovieRatingsClient(http, config.Cinemas.Ratings), config.Cinemas);
-        await cinemaSync.RunAsync();
-    }
-    catch (Exception ex)
-    {
-        failures++;
-        Console.Error.WriteLine($"\n! Cinema sync failed: {ex.Message}");
+        try
+        {
+            await new CinemaSync(umbraco, caribbean, trailers, reviews, config.Cinemas, city)
+                .RunAsync();
+        }
+        catch (Exception ex)
+        {
+            failures++;
+            Console.Error.WriteLine($"\n! Cinema sync failed ({city.CityPath}): {ex.Message}");
+        }
     }
 }
 
-if (config.Events.Enabled && config.Events.Sources.Count > 0 && SectionSelected($"{config.Events.CityPath}/eventos"))
+if (config.Events.Enabled)
 {
-    try
+    foreach (EventsCityConfig city in eventCities.Where(c => c.Sources.Count > 0))
     {
-        await new EventSync(http, umbraco, config.Events, google, enricher).RunAsync();
-    }
-    catch (Exception ex)
-    {
-        failures++;
-        Console.Error.WriteLine($"\n! Event sync failed: {ex.Message}");
+        try
+        {
+            await EventSyncOf(city).RunAsync();
+        }
+        catch (Exception ex)
+        {
+            failures++;
+            Console.Error.WriteLine($"\n! Event sync failed ({city.CityPath}): {ex.Message}");
+        }
     }
 }
 

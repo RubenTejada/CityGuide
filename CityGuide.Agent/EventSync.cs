@@ -30,16 +30,44 @@ public record ScrapedEvent(
 /// the category (see <see cref="EventCategories"/>), which no portal states.
 /// </summary>
 public partial class EventSync(
-    HttpClient http, UmbracoClient umbraco, EventsConfig config,
+    HttpClient http, UmbracoClient umbraco, EventsConfig config, EventsCityConfig city,
+    EventSync.ScrapeCache scrapes, PlacePhotos photos,
     GooglePlacesClient? google = null, IEnrichmentClient? enricher = null)
 {
+    /// <summary>
+    /// The events each source yielded, shared by the cities of one pass. Every portal
+    /// lists the whole country, so the national ones (TodoTickets, Eventbrite RD) are
+    /// configured under every city and would otherwise be fetched — listing plus one
+    /// request per detail page — once per city. The feed is the same; only the
+    /// rectangle that filters it differs. A source that throws is not cached, so the
+    /// next city tries it again.
+    /// </summary>
+    public sealed class ScrapeCache
+    {
+        private readonly Dictionary<string, List<ScrapedEvent>> _byUrl =
+            new(StringComparer.OrdinalIgnoreCase);
+
+        public async Task<List<ScrapedEvent>> GetAsync(
+            EventSourceConfig source, Func<EventSourceConfig, Task<List<ScrapedEvent>>> scrape)
+        {
+            if (_byUrl.TryGetValue(source.Url, out List<ScrapedEvent>? cached))
+            {
+                return cached;
+            }
+
+            List<ScrapedEvent> events = await scrape(source);
+            _byUrl[source.Url] = events;
+            return events;
+        }
+    }
+
     [GeneratedRegex("""<script type=.application/ld\+json.[^>]*>(.*?)</script>""", RegexOptions.Singleline)]
     private static partial Regex JsonLdBlocks();
 
     public async Task RunAsync()
     {
-        Console.WriteLine($"\n== Event sync: {config.CityPath}/eventos");
-        (Guid Id, string Name)? eventos = await umbraco.GetContentByPathAsync($"{config.CityPath}/eventos");
+        Console.WriteLine($"\n== Event sync: {city.CityPath}/eventos");
+        (Guid Id, string Name)? eventos = await umbraco.GetContentByPathAsync($"{city.CityPath}/eventos");
         if (eventos is null)
         {
             Console.Error.WriteLine("  Events page not found in CMS, skipping.");
@@ -86,12 +114,12 @@ public partial class EventSync(
             }
         }
 
-        foreach (EventSourceConfig source in config.Sources)
+        foreach (EventSourceConfig source in city.Sources)
         {
             List<ScrapedEvent> events;
             try
             {
-                events = await ScrapeSourceAsync(source);
+                events = await scrapes.GetAsync(source, ScrapeSourceAsync);
             }
             catch (Exception ex)
             {
@@ -146,7 +174,7 @@ public partial class EventSync(
 
             if (foreign > 0)
             {
-                Console.WriteLine($"  {foreign} fuera de {config.CityPath.Trim('/')}, descartado(s)");
+                Console.WriteLine($"  {foreign} fuera de {city.CityPath.Trim('/')}, descartado(s)");
             }
 
             Dictionary<int, string> categories = await ClassifyAsync(pending);
@@ -246,12 +274,12 @@ public partial class EventSync(
     /// </summary>
     private async Task<EventVenues> VenuesAsync()
     {
-        UmbracoClient.CityAgentConfig? city = await umbraco.GetCityAgentConfigAsync(config.CityPath);
-        var venues = new EventVenues(umbraco, google, enricher, config, city);
+        UmbracoClient.CityAgentConfig? cityNode = await umbraco.GetCityAgentConfigAsync(city.CityPath);
+        var venues = new EventVenues(umbraco, google, enricher, photos, city, cityNode);
         if (venues.Area is null)
         {
             Console.Error.WriteLine(
-                $"  ! {config.CityPath} no tiene \"agentArea\" — sin ese rectángulo no se puede "
+                $"  ! {city.CityPath} no tiene \"agentArea\" — sin ese rectángulo no se puede "
                 + "saber qué eventos son de la ciudad y se importan todos.");
         }
 
@@ -270,10 +298,10 @@ public partial class EventSync(
     public async Task PurgeForeignAsync(bool apply)
     {
         Console.WriteLine(apply
-            ? $"\n== Eliminando eventos fuera de {config.CityPath.Trim('/')}"
+            ? $"\n== Eliminando eventos fuera de {city.CityPath.Trim('/')}"
             : "\n== Eventos fuera de la ciudad (simulación; agrega --apply para aplicarla)");
 
-        (Guid Id, string Name)? eventos = await umbraco.GetContentByPathAsync($"{config.CityPath}/eventos");
+        (Guid Id, string Name)? eventos = await umbraco.GetContentByPathAsync($"{city.CityPath}/eventos");
         if (eventos is null)
         {
             Console.Error.WriteLine("  Events page not found in CMS, skipping.");
@@ -384,10 +412,11 @@ public partial class EventSync(
     public async Task PurgeSourceAsync(string source, bool apply)
     {
         Console.WriteLine(apply
-            ? $"\n== Eliminando los eventos importados de {source}"
-            : $"\n== Eventos importados de {source} (simulación; agrega --apply para aplicarla)");
+            ? $"\n== Eliminando los eventos importados de {source} en {city.CityPath.Trim('/')}"
+            : $"\n== Eventos importados de {source} en {city.CityPath.Trim('/')} "
+              + "(simulación; agrega --apply para aplicarla)");
 
-        (Guid Id, string Name)? eventos = await umbraco.GetContentByPathAsync($"{config.CityPath}/eventos");
+        (Guid Id, string Name)? eventos = await umbraco.GetContentByPathAsync($"{city.CityPath}/eventos");
         if (eventos is null)
         {
             Console.Error.WriteLine("  Events page not found in CMS, skipping.");
@@ -429,7 +458,7 @@ public partial class EventSync(
     public async Task RecategorizeAsync(bool apply)
     {
         Console.WriteLine(apply
-            ? $"\n== Recategorizando eventos del agente en {config.CityPath}/eventos"
+            ? $"\n== Recategorizando eventos del agente en {city.CityPath}/eventos"
             : $"\n== Recategorización de eventos (simulación; agrega --apply para aplicarla)");
         if (enricher is null)
         {
@@ -437,7 +466,7 @@ public partial class EventSync(
             return;
         }
 
-        (Guid Id, string Name)? eventos = await umbraco.GetContentByPathAsync($"{config.CityPath}/eventos");
+        (Guid Id, string Name)? eventos = await umbraco.GetContentByPathAsync($"{city.CityPath}/eventos");
         if (eventos is null)
         {
             Console.Error.WriteLine("  Events page not found in CMS, skipping.");
@@ -496,13 +525,14 @@ public partial class EventSync(
     /// </summary>
     public async Task ReportSourcesAsync()
     {
+        Console.WriteLine($"\n######## {city.CityPath.Trim('/')}");
         EventVenues venues = await VenuesAsync();
-        foreach (EventSourceConfig source in config.Sources)
+        foreach (EventSourceConfig source in city.Sources)
         {
             List<ScrapedEvent> scraped;
             try
             {
-                scraped = await ScrapeSourceAsync(source);
+                scraped = await scrapes.GetAsync(source, ScrapeSourceAsync);
             }
             catch (Exception ex)
             {
@@ -618,8 +648,8 @@ public partial class EventSync(
             return null;
         }
 
-        string city = config.CityPath.Trim('/').Split('/').Last().Replace('-', ' ');
-        string? photoName = await google.FindPhotoAsync($"{ev.Venue}, {city}");
+        string cityName = city.CityPath.Trim('/').Split('/').Last().Replace('-', ' ');
+        string? photoName = await google.FindPhotoAsync($"{ev.Venue}, {cityName}");
         return photoName is null ? null : await google.DownloadPhotoAsync(photoName);
     }
 

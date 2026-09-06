@@ -24,10 +24,19 @@ public class EventsConfig
 {
     public bool Enabled { get; set; } = true;
 
-    /// <summary>Umbraco route path of the city whose "eventos" section is synced.</summary>
-    public string CityPath { get; set; } = "/santo-domingo";
-
     public int MaxPerSource { get; set; } = 30;
+
+    /// <summary>One entry per city whose "eventos" section is synced. Every portal
+    /// lists the whole country, so the same national source appears under several
+    /// cities and each city keeps only what its rectangle contains; the scrape
+    /// itself is shared (see EventSync.ScrapeCache).</summary>
+    public List<EventsCityConfig> Cities { get; set; } = [];
+}
+
+public class EventsCityConfig
+{
+    /// <summary>Umbraco route path of the city whose "eventos" section is synced.</summary>
+    public string CityPath { get; set; } = "";
 
     public List<EventSourceConfig> Sources { get; set; } = [];
 
@@ -37,7 +46,8 @@ public class EventsConfig
     /// the city; once Google has been asked that question the answer is a full
     /// place, and a venue the portal does not have yet (a bar, a theatre) is worth
     /// a page of its own. A venue whose types match no section is only used for the
-    /// event's coordinates.
+    /// event's coordinates. The paths live in this city, so a venue is never filed
+    /// in another city's section.
     /// </summary>
     public List<VenueSectionConfig> VenueSections { get; set; } = [];
 }
@@ -84,12 +94,23 @@ public class GoogleConfig
     public string ApiKey { get; set; } = "";
 
     /// <summary>How often a node that already carries everything is asked of Google
-    /// again. Every request is billed, and a rating moves by hundredths in a day, so
-    /// refreshing the whole catalogue daily buys nothing: the complete nodes are spread
-    /// over this many days and each one comes up on its own day. Nodes still missing a
-    /// rating, a photo or the place id are outside the rotation — they are the point of
-    /// the pass and are asked every time. 1 restores the daily refresh.</summary>
-    public int RatingRefreshDays { get; set; } = 14;
+    /// again. A rating question is billed on the Enterprise tier ($20 per 1.000 place
+    /// details, of which only 1.000 a month are free) and a rating moves by hundredths
+    /// in a month, so refreshing the whole catalogue often buys nothing: the complete
+    /// nodes are spread over this many days and each one comes up on its own day. Nodes
+    /// still missing a rating or the place id are outside the rotation — they are the
+    /// point of the pass and are asked every time; one that only lacks a photo is asked
+    /// on the free tier instead. 1 restores the daily refresh.</summary>
+    public int RatingRefreshDays { get; set; } = 30;
+
+    /// <summary>How long a discovery query is left alone after Google answered it. The
+    /// same text search returns almost the same places a month later, and every page of
+    /// every query is billed at the Enterprise rate, so a pass repeated inside this
+    /// window skips the queries it already paid for and only runs the ones it has not.
+    /// The dates live on the city node ("Consultas ya hechas"), so the memory survives a
+    /// container that does not. 0 turns the cooldown off, and --force ignores it for one
+    /// pass.</summary>
+    public int QueryCooldownDays { get; set; } = 30;
 
     /// <summary>Ceiling on the Google requests one backfill pass may spend, whatever the
     /// rotation yields. A catalogue that grows, or a day the rotation lands badly, must
@@ -122,17 +143,26 @@ public class CinemasConfig
 {
     public bool Enabled { get; set; } = true;
 
-    /// <summary>Umbraco route path of the city whose "cines" section is synced.</summary>
-    public string CityPath { get; set; } = "/santo-domingo";
-
     public string CompanyName { get; set; } = "Caribbean Cinemas";
 
-    /// <summary>Caribbean (Indy) site ids to sync, with coordinate fallbacks for
-    /// sites where the Caribbean API has no lat/lon.</summary>
-    public List<CinemaSiteConfig> Sites { get; set; } = [];
+    /// <summary>One entry per city whose "cines" section is synced. The chain and the
+    /// ratings keys are shared: the keys arrive as Cinemas__Ratings__* from the
+    /// workflow, which a per-city list would break.</summary>
+    public List<CinemaCityConfig> Cities { get; set; } = [];
 
     /// <summary>IMDb / Rotten Tomatoes lookup for the movie catalog.</summary>
     public MovieRatingsConfig Ratings { get; set; } = new();
+}
+
+public class CinemaCityConfig
+{
+    /// <summary>Umbraco route path of the city whose "cines" section is synced.</summary>
+    public string CityPath { get; set; } = "";
+
+    /// <summary>Caribbean (Indy) site ids of the cinemas in this city, with coordinate
+    /// fallbacks for sites where the Caribbean API has no lat/lon. The catalogue under
+    /// the city's "Cines" is exactly what these sites are showing.</summary>
+    public List<CinemaSiteConfig> Sites { get; set; } = [];
 }
 
 public class MovieRatingsConfig

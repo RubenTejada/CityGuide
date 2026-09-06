@@ -28,10 +28,16 @@ public class EventVenues(
     UmbracoClient umbraco,
     GooglePlacesClient? google,
     IEnrichmentClient? enricher,
-    EventsConfig config,
+    PlacePhotos? photos,
+    EventsCityConfig config,
     UmbracoClient.CityAgentConfig? city)
 {
     private readonly Dictionary<string, Guid> _knownPlaceIds = new(StringComparer.Ordinal);
+
+    /// <summary>Every venue name this pass has already looked up, and what Google said
+    /// about it. A portal lists a season of one venue — eight nights at the Gran Arena —
+    /// and each of those events would otherwise pay for the same Enterprise search.</summary>
+    private readonly Dictionary<string, DiscoveredPlace?> _venues = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, (Guid Id, Dictionary<string, Guid> Siblings)> _sections =
         new(StringComparer.OrdinalIgnoreCase);
 
@@ -91,9 +97,16 @@ public class EventVenues(
             return null;
         }
 
+        if (_venues.TryGetValue(venue, out DiscoveredPlace? cached))
+        {
+            return cached;
+        }
+
         string cityName = city?.CityName ?? config.CityPath.Trim('/').Split('/').Last().Replace('-', ' ');
         List<DiscoveredPlace> found = await google.SearchAsync($"{venue}, {cityName}", 5, area);
-        return found.FirstOrDefault(p => TextMatch.Matches(venue, p.Name, 1.0));
+        DiscoveredPlace? resolved = found.FirstOrDefault(p => TextMatch.Matches(venue, p.Name, 1.0));
+        _venues[venue] = resolved;
+        return resolved;
     }
 
     /// <summary>
@@ -139,23 +152,13 @@ public class EventVenues(
             return namesake;
         }
 
-        Guid? photoKey = null;
-        if (venue.PhotoName is not null)
-        {
-            try
-            {
-                (byte[] Bytes, string ContentType)? image = await google.DownloadPhotoAsync(venue.PhotoName);
-                if (image is not null)
-                {
-                    photoKey = await umbraco.CreateMediaImageAsync(
-                        venue.Name, image.Value.Bytes, image.Value.ContentType);
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine($"  ! foto de {venue.Name}: {ex.Message}");
-            }
-        }
+        // Same order as any other place: Wikimedia for a theatre or a park, the venue's
+        // own og:image next, and Google's billed photo only if neither had one.
+        Guid? photoKey = photos is null
+            ? null
+            : await photos.UploadAsync(
+                venue.Name, () => Task.FromResult(venue.PhotoName), parentPath, venue.Types,
+                venue.Website, city?.CityName, city?.Area);
 
         // The category prompt of the section it lands in ("bares-y-clubes"), the same
         // one a discovery run would have used for this very place.

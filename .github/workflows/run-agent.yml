@@ -13,8 +13,10 @@ on:
       section:
         description: >-
           Limit the run to these sections (comma-separated), matched against
-          any segment of a Run's ParentPath, plus "cines"/"eventos". Empty
-          runs everything, like the daily schedule.
+          any segment of a Run's ParentPath, plus "cines"/"eventos". A city
+          slug is a segment too, so "santiago" runs one city and
+          "santiago,punta-cana" two. Empty runs everything, like the daily
+          schedule.
         required: false
         default: ""
       recategorize_events:
