@@ -45,6 +45,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
     private readonly IConfigurationEditorJsonSerializer _configSerializer;
     private readonly IExamineManager _examineManager;
     private readonly IIndexRebuilder _indexRebuilder;
+    private readonly ILanguageService _languageService;
     private readonly IUserService _userService;
     private readonly IUserGroupService _userGroupService;
     private readonly IBackOfficeUserClientCredentialsManager _clientCredentialsManager;
@@ -67,6 +68,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         IConfigurationEditorJsonSerializer configSerializer,
         IExamineManager examineManager,
         IIndexRebuilder indexRebuilder,
+        ILanguageService languageService,
         IUserService userService,
         IUserGroupService userGroupService,
         IBackOfficeUserClientCredentialsManager clientCredentialsManager,
@@ -88,6 +90,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         _configSerializer = configSerializer;
         _examineManager = examineManager;
         _indexRebuilder = indexRebuilder;
+        _languageService = languageService;
         _userService = userService;
         _userGroupService = userGroupService;
         _clientCredentialsManager = clientCredentialsManager;
@@ -138,6 +141,10 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         await EnsureCityStatusSchemaAsync();
 
         await EnsureSeoSchemaAsync();
+
+        await EnsureLanguagesAsync();
+
+        await EnsureCultureVariationAsync();
 
         await EnsureContactSchemaAsync();
 
@@ -612,6 +619,182 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
                 $"Failed to add event properties to 'eventItem': {attempt.Result}");
         }
     }
+
+    /// <summary>The culture every page the portal holds today is written in.</summary>
+    public const string SpanishCulture = "es-DO";
+
+    /// <summary>The second culture the portal is offered in.</summary>
+    public const string EnglishCulture = "en-US";
+
+    /// <summary>
+    /// Document types offered in both languages, each with the properties carrying text
+    /// a reader sees. Everything not listed stays invariant and is shared by both
+    /// cultures: coordinates, phone, website, photos, Google ids and ratings say the
+    /// same thing in either language, and "facilities" is a closed vocabulary the
+    /// frontend translates on render. The node *name* varies for every type here, which
+    /// is what gives each culture its own URL segment ("restaurantes" / "restaurants").
+    /// </summary>
+    private static readonly (string Alias, string[] Properties)[] TranslatedDocumentTypes =
+    [
+        ("city", ["intro", "country", "metaTitle", "metaDescription"]),
+        ("categoryPage", ["intro", "metaTitle", "metaDescription"]),
+        ("subcategory", ["intro", "metaTitle", "metaDescription"]),
+        ("place", ["description", "hours", "metaTitle", "metaDescription"]),
+        ("company", ["description", "hours", "metaTitle", "metaDescription"]),
+        ("mall", ["description", "hours", "metaTitle", "metaDescription"]),
+        ("eventsPage", ["metaTitle", "metaDescription"]),
+        ("eventItem", ["description", "category", "metaTitle", "metaDescription"]),
+        ("thingsToDoPage", ["intro", "metaTitle", "metaDescription"]),
+        ("articlesPage", ["intro", "metaTitle", "metaDescription"]),
+        ("article", ["summary", "body", "category", "metaTitle", "metaDescription"]),
+        ("movie", ["synopsis", "genre", "metaTitle", "metaDescription"]),
+    ];
+
+    /// <summary>
+    /// Registers the portal's two languages and makes Spanish the default one. The
+    /// default matters beyond the backoffice: when a document type is switched from
+    /// invariant to culture-variant, Umbraco moves the values it already holds into the
+    /// *default* culture — and an Umbraco install defaults to en-US, which would file
+    /// every Spanish description the portal has under English. English is created
+    /// without a fallback on purpose: a page nobody has translated must be absent from
+    /// the English site rather than serve Spanish text under an English URL, which is
+    /// what would make the two hreflang variants duplicates of each other.
+    /// </summary>
+    private async Task EnsureLanguagesAsync()
+    {
+        ILanguage? spanish = await _languageService.GetAsync(SpanishCulture);
+        if (spanish is null)
+        {
+            _logger.LogInformation("CityGuide: creating language '{Culture}'", SpanishCulture);
+            spanish = new Language(SpanishCulture, "Español (República Dominicana)") { IsDefault = true };
+            await _languageService.CreateAsync(spanish, Constants.Security.SuperUserKey);
+        }
+        else if (!spanish.IsDefault)
+        {
+            spanish.IsDefault = true;
+            await _languageService.UpdateAsync(spanish, Constants.Security.SuperUserKey);
+        }
+
+        ILanguage? english = await _languageService.GetAsync(EnglishCulture);
+        if (english is null)
+        {
+            _logger.LogInformation("CityGuide: creating language '{Culture}'", EnglishCulture);
+            await _languageService.CreateAsync(
+                new Language(EnglishCulture, "English (United States)"), Constants.Security.SuperUserKey);
+        }
+        else if (english.IsMandatory || english.FallbackIsoCode is not null)
+        {
+            // Mandatory would block publishing anything not translated yet; a fallback
+            // would serve Spanish under the English URL.
+            english.IsMandatory = false;
+            english.FallbackIsoCode = null;
+            await _languageService.UpdateAsync(english, Constants.Security.SuperUserKey);
+        }
+    }
+
+    /// <summary>
+    /// Switches the document types the portal publishes to vary by culture, along with
+    /// the properties that carry translatable text. Guarded per type and per property
+    /// and run every startup, so an existing installation picks it up on its next
+    /// deploy. **This rewrites content data**: every value a variant property already
+    /// holds is moved to the default culture, which is why it refuses to run until
+    /// Spanish is that default.
+    /// </summary>
+    private async Task EnsureCultureVariationAsync()
+    {
+        ILanguage? spanish = await _languageService.GetAsync(SpanishCulture);
+        if (spanish?.IsDefault != true)
+        {
+            // EnsureLanguagesAsync just asked for this; if it has not taken effect yet,
+            // leave the content alone and migrate on the next startup instead of filing
+            // every Spanish value under English.
+            _logger.LogWarning(
+                "CityGuide: '{Culture}' is not the default language yet; skipping the culture migration",
+                SpanishCulture);
+            return;
+        }
+
+        foreach ((string alias, string[] properties) in TranslatedDocumentTypes)
+        {
+            IContentType? contentType = _contentTypeService.Get(alias);
+            if (contentType is null)
+            {
+                continue;
+            }
+
+            bool changed = false;
+            if (!contentType.VariesByCulture())
+            {
+                contentType.Variations = ContentVariation.Culture;
+                changed = true;
+            }
+
+            foreach (string property in properties)
+            {
+                IPropertyType? propertyType = contentType.PropertyTypes
+                    .FirstOrDefault(p => p.Alias == property);
+                if (propertyType is null || propertyType.VariesByCulture())
+                {
+                    continue;
+                }
+
+                propertyType.Variations = ContentVariation.Culture;
+                changed = true;
+            }
+
+            if (!changed)
+            {
+                continue;
+            }
+
+            _logger.LogInformation(
+                "CityGuide: '{Alias}' now varies by culture; moving its values to '{Culture}'",
+                alias, SpanishCulture);
+            Attempt<ContentTypeOperationStatus> attempt =
+                await _contentTypeService.UpdateAsync(contentType, Constants.Security.SuperUserKey);
+            if (!attempt.Success)
+            {
+                throw new InvalidOperationException(
+                    $"Failed to make '{alias}' vary by culture: {attempt.Result}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Creates a content node, naming it in Spanish when its type varies by culture —
+    /// a variant node's URL segment comes from its per-culture name, and one saved with
+    /// only the invariant name cannot be published at all.
+    /// </summary>
+    private IContent CreateContent(string name, int parentId, string contentTypeAlias)
+    {
+        IContent content = _contentService.Create(name, parentId, contentTypeAlias);
+        if (content.ContentType.VariesByCulture())
+        {
+            content.SetCultureName(name, SpanishCulture);
+        }
+
+        return content;
+    }
+
+    /// <summary>Writes a seeded value, in Spanish for the properties that vary by culture.</summary>
+    private static void SetSeedValue(IContent content, string alias, object? value)
+    {
+        if (content.Properties[alias]?.PropertyType.VariesByCulture() == true)
+        {
+            content.SetValue(alias, value, SpanishCulture);
+            return;
+        }
+
+        content.SetValue(alias, value);
+    }
+
+    /// <summary>
+    /// The cultures to publish a seeded node in: Spanish alone for variant content,
+    /// since the seeder writes no English. "*" on a variant node would try to publish a
+    /// culture that has neither name nor values.
+    /// </summary>
+    private static string[] SeededCultures(IContent content) =>
+        content.ContentType.VariesByCulture() ? [SpanishCulture] : ["*"];
 
     /// Document types whose pages are indexable and therefore get the "SEO" tab.
     private static readonly string[] SeoDocumentTypes =

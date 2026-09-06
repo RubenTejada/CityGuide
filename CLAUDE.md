@@ -130,7 +130,7 @@ every location after it inherits and costs no tokens. Such a run does not pin th
 for its whole answer — Google returns the chain's rivals to a query for it, and those
 belong in the category — so the name match decides place by place. The brand node is
 created without a logo; an editor adds it, and until then the frontend falls back to the
-section image. A run may name the subcategory its places are filed in (`Subcategory`,
+section image. The runs that fill a plaza's page are the retail ones and, after them, one "tiendas en <plaza>" per big mall: Google answers those with locals whose address names the mall, which is exactly what `MallMatching` needs to hang them from it — in Santiago and Punta Cana the address of a place is usually a plus code, so a tenant is invisible to that rule unless the query itself names the plaza. They run last in their city's block, after the per-category ones, so a clothing store lands in "Ropa y Moda" instead of flat under "Tiendas": whichever run sees a place first decides where it lives. A run may name the subcategory its places are filed in (`Subcategory`,
 created under `ParentPath` when missing, through the same code path `AutoCategorize` uses
 for cuisines): the retail runs — ropa y moda, calzado, perfumerías y cosméticos, joyería
 y accesorios, tiendas por departamento — need it because what a shop sells is what the
