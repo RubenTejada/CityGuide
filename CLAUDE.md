@@ -100,6 +100,15 @@ cd CityGuide.Agent && dotnet run -- --scrape-events
 cd CityGuide.Agent && dotnet run -- --paid --gallery 2 --section restaurantes
 cd CityGuide.Agent && dotnet run -- --paid --gallery 2 --section restaurantes --apply
 
+# The menu of the best-rated restaurants, read from their own site: Google's Places
+# API states no menu, only the address of the site, so that is the one source there
+# is. A PDF becomes one image per page, a "carta" page gives up the pictures on it,
+# and a restaurant that publishes its menu only on Instagram keeps the page it has.
+# Nothing is billed — no Google request and no model token — so it needs no --paid.
+# Plan until --apply, and --section is what keeps it on the restaurants.
+cd CityGuide.Agent && dotnet run -- --menus 25 --section restaurantes
+cd CityGuide.Agent && dotnet run -- --menus 25 --section restaurantes --apply
+
 # IMDb / Rotten Tomatoes scores on the movie catalog need two free keys, set as
 # user-secrets (leave either empty to run without it — the scores just stay blank):
 #   Cinemas:Ratings:TmdbApiKey  (themoviedb.org, matches the Spanish release title)
@@ -324,15 +333,15 @@ because `photo` is the single image every listing card, map popup and Open Graph
 and has to stay one choice. `--gallery [n]` (`PlaceGalleries`, scoped by `--section`,
 needs `--paid`) fills it for the best-rated places that have none: Google names a place's
 photos on the free tier however many there are, and only the download is billed, so what
-the pass costs is exactly the pictures it brings home — ten per place by default
-(`Google:GalleryPhotos`, which is also as many as Google names), over as many places as
-the command line asks (`Google:MaxGalleryPlaces` otherwise). The frontend shows it when
+the pass costs is exactly the pictures it brings home — seven per place by default
+(`Google:GalleryPhotos`: the six the strip holds plus the one extra the viewer offers),
+over as many places as the command line asks (`Google:MaxGalleryPlaces` otherwise). The frontend shows it when
 there are at least four images (`PhotoGallery`): the place keeps the single main photo it
 always had on the left, and the gallery closes the row beside it: a place with
 one reads as three bands — the photo, then what the place says (address, description,
 facilities), then the gallery, each taking half of the column beside the photo. The
 gallery is its own main photo over a strip of three per row, one row or two (three images,
-or six from nine up), flush inside one rounded rectangle. The strip does not move: what
+or six from seven up), flush inside one rounded rectangle. The strip does not move: what
 rotates is the main photo, which raises the strip's photos one after another — the one up
 there is the one the strip shows at full opacity — fading in softly over the one it
 replaces. Any photo opens a modal viewer where they are all seen large, the ones the strip
@@ -341,6 +350,38 @@ Without a gallery the row is the photo and the details, as it always was, and on
 screen the three bands stack. Fewer photos than the strip holds is not a gallery and the
 column starts at the details, as before; the rotation stops while the pointer is over the
 gallery or the viewer is open, and never starts under `prefers-reduced-motion`.
+
+**A restaurant's menu is read from its own site.** Google states no menu — the Places
+API carries the address of the site and nothing of what is on it — so the site is the
+only source, and `--menus [n]` (`PlaceMenus` over `MenuSources`, scoped by `--section`)
+walks it for the best-rated places that have none. It is the one pass that costs nothing
+at all: no Google request, no model token, only somebody else's pages fetched through the
+same throttled client the free photos use, which is why it needs no `--paid`. The home
+page is asked for what it declares as its menu (schema.org `hasMenu`), then for the links
+whose address or text says "carta" or "menú" — a file before a page, since the PDF is the
+menu itself — and each candidate is followed once: a PDF is rasterized page by page
+(`PDFtoImage`, pdfium and SkiaSharp, natives for every platform the agent runs on), a page
+gives up the images whose own address or `alt` says they are the menu, and a page that
+only links the PDF is followed one step further. Nothing is taken on size alone, or every
+menu would be the dining room and the chef. Three kinds of site are left alone: a social
+profile (`WebFiles.ReadableSite`, the same rule that governs the free photos), a delivery
+app or review portal storing somebody else's catalogue (`MenuSources.CanRead`), and a
+branch, which stores no website of its own. **Measured on the fifteen best-rated
+restaurants of the CMS that have their own site, three answered.** The rest publish their
+carta as HTML text (Adrián Tropical, Zola) or behind JavaScript (the Wix ones), neither of
+which is an image; a structured menu written by the model over the same pages is what
+would reach them, and none of this pass has to change for that. The pages are stored on
+`place` as `menu`, a third multi-image property (`EnsurePlaceMenuSchemaAsync`, with
+`menuSource` and `menuUpdated` beside it): images say the same thing in both languages, so
+none of the three varies by culture. The source is stored because a menu is the one thing
+on the page that goes stale without anybody noticing — it is what an editor follows to
+check a price, what the visitor sees under the button, and what the page declares to a
+search engine as `hasMenu` (only on the types schema.org lets carry one, so a shop never
+does). The frontend puts it beside the opening hours, as one more thing consulted before
+going: a button with the first page as its thumbnail and the page count
+(`MenuViewer`), opening the same modal the gallery opens — that viewer is now
+`ImageViewer`, shared by both, since it is the same images seen large and a second copy
+would only let the two drift apart. A place with no menu shows nothing.
 
 Every event gets a main image: the one the source declares, else the `og:image` of its
 ticket page, else a Google photo of its venue. `EventSync` runs once per city in `Events:Cities` (each entry a `CityPath`, its own `Sources` and its own `VenueSections`) and fills that city's `eventos` from public event portals (TodoTickets detail pages, Eventbrite listings) via per-source strategies ("jsonld-listing", "jsonld-detail"); the national portals are listed by every city and scraped once for the whole pass (`EventSync.ScrapeCache`, keyed by source URL) — the feed is the same and only the rectangle that filters it differs, so the second city costs no request; events publish immediately, dedupe by ticket URL and name+date, and only agent-created (`source` = `agent:*`) past events are deleted — TuBoleta (JS-loaded dates), Uepa Tickets (Cloudflare) and TicketExpress (a listing frozen in 2020 whose pages state neither venue nor a real date, so the prose parser invented future ones) are deliberately not scraped. Every portal lists the whole country, so an event is only imported when its location is inside the city's `agentArea` rectangle (`EventVenues`): the portals state the venue's coordinates in their JSON-LD and the rectangle decides for free — the locality they file it under does not, since Escenario 360 reads "Los Alcarrizos" and stands on Av. John F. Kennedy — and an event without coordinates is kept only when its venue name resolves, on Google restricted to that same rectangle, to a place carrying every significant word of the name. A failed lookup is never read as "not in the city", and a city with no `agentArea` keeps importing everything. Resolving the venue also yields a full place, so the venue is created in the section its Google types belong to (`Events:VenueSections` — bars and attractions; a hotel or a shop matches none and only gives the event its coordinates, which is what puts it on the events map), like any discovered place and deduped by Google place id. `dotnet run -- --purge-foreign-events [--apply]` applies the same rule to the events already imported and recycles the ones outside the city (seeded and hand-made events are never touched); the "Run agent" workflow exposes it as the `purge_foreign_events` input. Each event's "Categoría" comes from the model (`EventCategories`: one batched call per portal, from the vocabulary the seeded events use), because no portal states one and the title is usually just the artist's name — an event stays uncategorized, never mislabelled, when no model is configured or the call fails. `dotnet run -- --scrape-events` prints what each source yields, and whether the city filter would keep it, without touching the CMS; `dotnet run -- --recategorize-events [--apply]` reclassifies the events the agent already created (only `agent:*` ones — hand-made and seeded events keep their editor's category), and the "Run agent" workflow exposes it as the `recategorize_events` input so it can be run against Azure. `dotnet run -- --purge-event-source <portal> [--apply]` recycles what a retired portal left behind: dropping a source from a city's `Sources` stops new imports but not the old ones, which are neither past nor locatable (TicketExpress's seven events sat there until this removed them). A venue is looked up once per pass, not once per event: a portal lists a season at one

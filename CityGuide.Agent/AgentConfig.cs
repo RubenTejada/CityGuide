@@ -9,7 +9,31 @@ public class AgentConfig
     public List<RunConfig> Runs { get; set; } = [];
     public CinemasConfig Cinemas { get; set; } = new();
     public EventsConfig Events { get; set; } = new();
+    public MenusConfig Menus { get; set; } = new();
     public ThrottleConfig Throttle { get; set; } = new();
+}
+
+/// <summary>
+/// The menu pass. It reads the place's own site and nothing else — Google states no
+/// menu and no model is asked anything — so none of this is about money: it is about
+/// how far into a site the agent walks and how much of a carta is worth showing.
+/// </summary>
+public class MenusConfig
+{
+    /// <summary>How many pages of one menu are kept. A carta is two to six pages; a
+    /// PDF that goes on for thirty is the catering brochure, and the viewer is not a
+    /// document reader.</summary>
+    public int MaxPages { get; set; } = 8;
+
+    /// <summary>How many places one "--menus" pass covers when the command line does
+    /// not say ("--menus 25"). The pass is free, but each place is a handful of
+    /// requests to somebody else's site, and the throttler makes them slow on purpose.</summary>
+    public int MaxPlaces { get; set; } = 25;
+
+    /// <summary>How many Google reviews a place needs before the menu pass ranks it,
+    /// for the same reason the gallery has one: a five-star average over five reviews
+    /// is not what a section leads with.</summary>
+    public int MinReviews { get; set; } = 100;
 }
 
 public class ThrottleConfig
@@ -118,10 +142,11 @@ public class GoogleConfig
     public int MaxBackfillRequests { get; set; } = 400;
 
     /// <summary>How many photos the gallery pass downloads per place. The detail page
-    /// shows a main image over six tiles and rotates the rest through them, so ten is
-    /// what makes the rotation worth watching — and ten is also as many as Google names
-    /// for a place. Naming them is free; each download is billed at $7 per 1.000.</summary>
-    public int GalleryPhotos { get; set; } = 10;
+    /// shows a strip of six and rotates them through the main image above it, so six is
+    /// what it takes to fill one and the seventh is the one extra the viewer offers.
+    /// Naming a place's photos is free however many there are; each download is billed at
+    /// $7 per 1.000, which is the whole cost of this pass.</summary>
+    public int GalleryPhotos { get; set; } = 7;
 
     /// <summary>How many places one "--gallery" pass covers when the command line does
     /// not say ("--gallery 25"). A gallery is for the handful of places a section leads

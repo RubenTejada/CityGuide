@@ -198,7 +198,7 @@ html.dark .theme-icon-light {
 }
 
 /* ---------------------------------------------------------------------------
-   Galería de fotos de un lugar (PhotoGallery)
+   Galería de fotos de un lugar (PhotoGallery) y visor (ImageViewer)
    La foto que entra se funde despacio sobre la que sale, que se queda debajo
    hasta que termina. La misma entrada usa el visor al cambiar de foto.
    --------------------------------------------------------------------------- */

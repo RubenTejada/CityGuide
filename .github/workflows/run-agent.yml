@@ -183,6 +183,23 @@ on:
         description: How many places the gallery pass covers. Empty uses the default (10).
         required: false
         default: ""
+      menus:
+        description: >-
+          Maintenance pass instead of the ingestion run: reads the menu of the
+          best-rated places of "section" from their own site and stores its pages as
+          images. Free — Google states no menu, so nothing but the site is fetched —
+          and meant with section "restaurantes". "plan" only lists the places.
+        type: choice
+        required: false
+        options:
+          - "no"
+          - plan
+          - apply
+        default: "no"
+      menus_places:
+        description: How many places the menu pass covers. Empty uses the default (25).
+        required: false
+        default: ""
       paid:
         description: >-
           Let the run use the two services that charge: Google Places (billed per
@@ -259,6 +276,8 @@ jobs:
           TRANSLATE: ${{ inputs.translate }}
           GALLERY: ${{ inputs.gallery }}
           GALLERY_PLACES: ${{ inputs.gallery_places }}
+          MENUS: ${{ inputs.menus }}
+          MENUS_PLACES: ${{ inputs.menus_places }}
           PUBLISH: ${{ inputs.publish }}
           PAID: ${{ inputs.paid }}
         run: |
@@ -272,6 +291,10 @@ jobs:
             apply_flag=""
             if [ "$GALLERY" = "apply" ]; then apply_flag="--apply"; fi
             dotnet run -c Release -- --gallery $GALLERY_PLACES $apply_flag $section_flag $paid_flag
+          elif [ "$MENUS" = "plan" ] || [ "$MENUS" = "apply" ]; then
+            apply_flag=""
+            if [ "$MENUS" = "apply" ]; then apply_flag="--apply"; fi
+            dotnet run -c Release -- --menus $MENUS_PLACES $apply_flag $section_flag
           elif [ "$TRANSLATE" = "plan" ]; then
             dotnet run -c Release -- --translate $section_flag $paid_flag
           elif [ "$TRANSLATE" = "apply" ]; then

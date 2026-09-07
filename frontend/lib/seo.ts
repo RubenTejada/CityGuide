@@ -349,6 +349,9 @@ const SECTION_BUSINESS_TYPES: Record<string, string> = {
   "empresas-y-servicios": "LocalBusiness",
 };
 
+/** The types schema.org lets carry a menu: a shop with a "hasMenu" is invalid data. */
+const MENU_TYPES = new Set(["Restaurant", "BarOrPub", "CafeOrCoffeeShop", "FoodEstablishment"]);
+
 export function businessType(routePath: string): string {
   const section = canonicalPath(routePath).split("/").filter(Boolean)[1] ?? "";
   return SECTION_BUSINESS_TYPES[section] ?? "LocalBusiness";
@@ -551,6 +554,11 @@ export function placeJsonLd({
     address: postalAddress(text(item, "address"), cityName, country),
     geo: geo(item),
     openingHoursSpecification: openingHoursJsonLd(hours ?? text(item, "hours")),
+    // The menu the portal shows is a set of images, which says nothing to a search
+    // engine; the page it was read from is the address Google asks for.
+    hasMenu: MENU_TYPES.has(type ?? businessType(item.route.path))
+      ? firstText(text(item, "menuSource")) || undefined
+      : undefined,
     aggregateRating: aggregateRating(item),
     amenityFeature: (
       item.properties["facilities"] as string[] | undefined

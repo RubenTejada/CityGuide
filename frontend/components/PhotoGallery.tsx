@@ -1,14 +1,16 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
+import ImageViewer from "@/components/ImageViewer";
 import { useWords } from "@/components/LocaleProvider";
 
 /** Cada cuánto sube a la foto principal la siguiente de la tira. */
 const INTERVAL_MS = 4500;
-/** Con nueve fotos o más la tira de abajo es de seis; con menos, de tres. */
-const WIDE_FROM = 9;
+/** Con siete fotos o más la tira de abajo es de seis; con menos, de tres. Siete es lo
+ *  que baja el agente: las seis de la tira y una más que solo se ve en el visor. */
+const WIDE_FROM = 7;
 
 /**
  * La galería de un lugar: una foto principal y, pegada debajo, una tira de tres o seis,
@@ -33,6 +35,7 @@ export default function PhotoGallery({
   name: string;
   label: string;
 }) {
+  const words = useWords();
   const tiles = photos.length >= WIDE_FROM ? 6 : 3;
   // Cuenta de vueltas, no posición: el primer render no tiene foto saliente y así se
   // distingue de la vuelta completa, sin guardar el valor anterior en un ref.
@@ -89,10 +92,18 @@ export default function PhotoGallery({
       </div>
 
       {viewing !== null && (
-        <Lightbox
-          photos={photos}
+        <ImageViewer
+          images={photos}
           name={name}
           start={viewing}
+          labels={{
+            title: words.place.gallery,
+            count: words.place.galleryCount,
+            open: words.place.galleryOpen,
+            previous: words.place.galleryPrevious,
+            next: words.place.galleryNext,
+            close: words.place.galleryClose,
+          }}
           onClose={() => setViewing(null)}
         />
       )}
@@ -154,170 +165,5 @@ function Cell({
         }`}
       />
     </button>
-  );
-}
-
-/**
- * El visor: la foto en grande dentro de un modal, con las demás en una tira debajo para
- * saltar a cualquiera y una flecha a cada lado para pasarlas. Es un &lt;dialog&gt; modal,
- * así el navegador se encarga del foco y de cerrar con Escape; un clic en el fondo cierra
- * también.
- */
-function Lightbox({
-  photos,
-  name,
-  start,
-  onClose,
-}: {
-  photos: string[];
-  name: string;
-  start: number;
-  onClose: () => void;
-}) {
-  const words = useWords();
-  const dialog = useRef<HTMLDialogElement>(null);
-  const [index, setIndex] = useState(start);
-
-  useEffect(() => {
-    dialog.current?.showModal();
-  }, []);
-
-  const go = useCallback(
-    (step: number) => setIndex((i) => (i + step + photos.length) % photos.length),
-    [photos.length],
-  );
-
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "ArrowRight") go(1);
-      if (event.key === "ArrowLeft") go(-1);
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [go]);
-
-  return (
-    <dialog
-      ref={dialog}
-      onClose={onClose}
-      // Un clic en el fondo del modal llega al propio <dialog>, no a su contenido.
-      onClick={(event) => {
-        if (event.target === dialog.current) dialog.current?.close();
-      }}
-      aria-label={words.place.gallery}
-      className="m-auto h-[85vh] w-[92vw] max-w-5xl overflow-hidden rounded-2xl bg-neutral-900 p-0 shadow-2xl backdrop:bg-black/80"
-    >
-      <div className="flex h-full flex-col">
-        <div className="flex items-center justify-between px-4 py-3 text-sm text-white">
-          <span>{words.place.galleryCount(index + 1, photos.length)}</span>
-          <button
-            type="button"
-            onClick={() => dialog.current?.close()}
-            aria-label={words.place.galleryClose}
-            className="rounded-full p-2 hover:bg-white/20"
-          >
-            <CloseIcon />
-          </button>
-        </div>
-
-        <div className="relative min-h-0 flex-1">
-          <Image
-            key={photos[index]}
-            src={photos[index]}
-            alt={name}
-            fill
-            sizes="(min-width: 1024px) 64rem, 92vw"
-            className="gallery-enter object-contain"
-            priority
-          />
-          <Arrow
-            side="left"
-            label={words.place.galleryPrevious}
-            onClick={() => go(-1)}
-          />
-          <Arrow
-            side="right"
-            label={words.place.galleryNext}
-            onClick={() => go(1)}
-          />
-        </div>
-
-        <div className="flex gap-2 overflow-x-auto px-4 py-3">
-          {photos.map((photo, i) => (
-            <button
-              key={photo}
-              type="button"
-              onClick={() => setIndex(i)}
-              aria-label={words.place.galleryOpen(i + 1, photos.length)}
-              aria-current={i === index}
-              className={`relative h-16 w-24 shrink-0 overflow-hidden rounded ${
-                i === index
-                  ? "ring-2 ring-white"
-                  : "opacity-60 hover:opacity-100"
-              }`}
-            >
-              <Image
-                src={photo}
-                alt=""
-                fill
-                sizes="6rem"
-                className="object-cover"
-              />
-            </button>
-          ))}
-        </div>
-      </div>
-    </dialog>
-  );
-}
-
-/** Una de las dos flechas del visor: redonda, clara y del tamaño de un dedo. */
-function Arrow({
-  side,
-  label,
-  onClick,
-}: {
-  side: "left" | "right";
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      className={`absolute top-1/2 -translate-y-1/2 rounded-full bg-white/90 p-3 text-neutral-900 shadow-lg transition hover:bg-white ${
-        side === "left" ? "left-3" : "right-3"
-      }`}
-    >
-      <Chevron flipped={side === "right"} />
-    </button>
-  );
-}
-
-const ICON = {
-  viewBox: "0 0 24 24",
-  fill: "none",
-  stroke: "currentColor",
-  strokeWidth: 2.5,
-  strokeLinecap: "round",
-  strokeLinejoin: "round",
-  "aria-hidden": true,
-} as const;
-
-/** La punta de flecha del visor; a la derecha va la misma, girada. */
-function Chevron({ flipped }: { flipped: boolean }) {
-  return (
-    <svg {...ICON} className={`size-6 ${flipped ? "rotate-180" : ""}`}>
-      <path d="M15 4 7 12l8 8" />
-    </svg>
-  );
-}
-
-function CloseIcon() {
-  return (
-    <svg {...ICON} className="size-5">
-      <path d="M6 6l12 12M18 6L6 18" />
-    </svg>
   );
 }

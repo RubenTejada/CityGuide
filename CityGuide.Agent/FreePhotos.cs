@@ -17,7 +17,7 @@ public record FoundImage(byte[] Bytes, string ContentType, string Source);
 /// order the caller uses is Commons for landmarks, the site's own og:image next, and
 /// Google last (see PhotoAsync in Program).
 /// </summary>
-public partial class FreePhotos(HttpClient http)
+public partial class FreePhotos(WebFiles web)
 {
     [GeneratedRegex("""<meta[^>]+(?:property|name)=["'](?:og:image(?::secure_url)?|twitter:image)["'][^>]*>""",
         RegexOptions.IgnoreCase)]
@@ -182,9 +182,7 @@ public partial class FreePhotos(HttpClient http)
     /// </summary>
     public async Task<FoundImage?> FromWebsiteAsync(string website)
     {
-        if (!Uri.TryCreate(website, UriKind.Absolute, out Uri? site)
-            || (site.Scheme != Uri.UriSchemeHttp && site.Scheme != Uri.UriSchemeHttps)
-            || SocialHosts.Any(host => site.Host.EndsWith(host, StringComparison.OrdinalIgnoreCase)))
+        if (WebFiles.ReadableSite(website) is not Uri site)
         {
             return null;
         }
@@ -213,28 +211,16 @@ public partial class FreePhotos(HttpClient http)
     /// not end up as a place's main picture.</summary>
     private async Task<(byte[] Bytes, string ContentType)?> DownloadAsync(string url)
     {
-        try
+        if (await web.GetFileAsync(url) is not (byte[] bytes, string contentType))
         {
-            var request = new HttpRequestMessage(HttpMethod.Get, url);
-            request.Headers.Add("user-agent", UserAgent);
-            HttpResponseMessage response = await http.SendAsync(request);
-            string? contentType = response.Content.Headers.ContentType?.MediaType;
-            if (!response.IsSuccessStatusCode
-                || contentType is null
-                || !contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
-                || contentType.Contains("svg", StringComparison.OrdinalIgnoreCase))
-            {
-                return null;
-            }
-
-            byte[] bytes = await response.Content.ReadAsByteArrayAsync();
-            return bytes.Length < 15_000 ? null : (bytes, contentType);
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"  ! imagen gratuita {url}: {ex.Message}");
             return null;
         }
+
+        return !contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
+            || contentType.Contains("svg", StringComparison.OrdinalIgnoreCase)
+            || bytes.Length < 15_000
+                ? null
+                : (bytes, contentType);
     }
 
     private async Task<JsonDocument?> GetJsonAsync(string url)
@@ -255,31 +241,5 @@ public partial class FreePhotos(HttpClient http)
         }
     }
 
-    private async Task<string?> GetStringAsync(string url)
-    {
-        try
-        {
-            var request = new HttpRequestMessage(HttpMethod.Get, url);
-            request.Headers.Add("user-agent", UserAgent);
-            HttpResponseMessage response = await http.SendAsync(request);
-            return response.IsSuccessStatusCode ? await response.Content.ReadAsStringAsync() : null;
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"  ! fuente gratuita {url}: {ex.Message}");
-            return null;
-        }
-    }
-
-    /// <summary>Places whose "website" is a social profile: their og:image is the
-    /// account's avatar or a generic card, never a picture of the place, so they are
-    /// left to Google rather than turned into a logo on a card.</summary>
-    private static readonly string[] SocialHosts =
-        ["instagram.com", "facebook.com", "fb.com", "linktr.ee", "x.com", "twitter.com", "tiktok.com"];
-
-    /// <summary>Wikimedia's policy asks for an agent that identifies the tool and
-    /// says where to reach it; the same one goes to every site so nobody has to guess
-    /// who is fetching. The portal's own contact page is the address.</summary>
-    private const string UserAgent =
-        "QueHacerRD-Agent/1.0 (+https://quehacerrd.com/santo-domingo/contacto)";
+    private Task<string?> GetStringAsync(string url) => web.GetStringAsync(url);
 }

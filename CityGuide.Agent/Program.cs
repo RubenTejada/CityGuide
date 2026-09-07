@@ -106,7 +106,8 @@ if (!discoveryEnabled && config.Runs.Count > 0)
 // Shared by every caller that needs one — creating a place, completing a place the CMS
 // already has, the backfill and the event venues — so a photo failure is reported the
 // same way everywhere and never blocks the write it was meant to illustrate.
-var photos = new PlacePhotos(google, new FreePhotos(http), umbraco);
+var web = new WebFiles(http);
+var photos = new PlacePhotos(google, new FreePhotos(web), umbraco);
 
 Task<Guid?> UploadPhotoAsync(DiscoveredPlace place, string routePath, GeoArea? cityArea) =>
     photos.UploadAsync(place.Name, () => Task.FromResult(place.PhotoName), routePath, place.Types,
@@ -234,6 +235,24 @@ if (args.Contains("--gallery"))
     await new PlaceGalleries(
             google, umbraco, config.Google.GalleryPhotos, config.Google.GalleryMinReviews)
         .RunAsync(args.Contains("--apply"), SectionSelected, galleryPlaces);
+    return 0;
+}
+
+// Maintenance pass: the menu of the places a section leads with, read from their own
+// site — Google's Places API states no menu, only the address of the site, so this is
+// the one source there is. It is free: no Google request and no model token, only
+// somebody else's pages fetched through the throttler. Intended with "--section
+// restaurantes"; without it every place with a website is walked, which costs nothing
+// but time. Nothing is written without --apply.
+if (args.Contains("--menus"))
+{
+    int menuPlaces =
+        int.TryParse(args.SkipWhile(a => a != "--menus").Skip(1).FirstOrDefault(), out int askedMenus)
+            ? askedMenus
+            : config.Menus.MaxPlaces;
+    await new PlaceMenus(
+            new MenuSources(web, config.Menus.MaxPages), umbraco, config.Menus.MinReviews)
+        .RunAsync(args.Contains("--apply"), SectionSelected, menuPlaces);
     return 0;
 }
 

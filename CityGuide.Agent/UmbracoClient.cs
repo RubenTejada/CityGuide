@@ -637,7 +637,7 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         string? Address, string? GooglePlaceId, Guid? PhotoMediaKey, double Rating,
         string? Source, DateTime CreateDate,
         string? Phone = null, string? Website = null, string? Hours = null,
-        int RatingCount = 0, int GalleryCount = 0)
+        int RatingCount = 0, int GalleryCount = 0, int MenuCount = 0)
     {
         public bool HasPhoto => PhotoMediaKey is not null;
 
@@ -683,10 +683,11 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
             // How many images the gallery already holds, so the pass that fills it can
             // tell a place that has one from a place that does not without reading the
             // document — the picture URLs themselves are the frontend's business.
-            int galleryCount = props.TryGetProperty("gallery", out JsonElement gallery)
-                && gallery.ValueKind == JsonValueKind.Array
-                ? gallery.GetArrayLength()
-                : 0;
+            int Images(string alias) =>
+                props.TryGetProperty(alias, out JsonElement images)
+                    && images.ValueKind == JsonValueKind.Array
+                    ? images.GetArrayLength()
+                    : 0;
             places.Add(new PublishedPlace(
                 item.GetProperty("id").GetGuid(),
                 item.GetProperty("name").GetString()!,
@@ -695,7 +696,7 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
                 Coord("googleRating"), Text("source"),
                 item.GetProperty("createDate").GetDateTime(),
                 Text("phone"), Text("website"), Text("hours"),
-                (int)Coord("googleRatingCount"), galleryCount));
+                (int)Coord("googleRatingCount"), Images("gallery"), Images("menu")));
         }
 
         return places;
@@ -986,6 +987,22 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         (string name, string state, Dictionary<string, object?> values) = await ReadDocumentAsync(id);
         values["gallery"] = JsonSerializer.SerializeToElement(
             mediaKeys.Select(mediaKey => new { key = Guid.NewGuid(), mediaKey }));
+        await WriteDocumentAsync(id, name, values, state);
+    }
+
+    /// <summary>
+    /// Replaces a place's menu with the given pages, in order, and records where they
+    /// were read from and when. The source is what an editor follows to check a price
+    /// and what the page declares to a search engine; the date is what says a carta is
+    /// old, which is the only way a menu goes wrong without anyone noticing.
+    /// </summary>
+    public async Task SetMenuAsync(Guid id, IReadOnlyList<Guid> mediaKeys, string sourceUrl)
+    {
+        (string name, string state, Dictionary<string, object?> values) = await ReadDocumentAsync(id);
+        values["menu"] = JsonSerializer.SerializeToElement(
+            mediaKeys.Select(mediaKey => new { key = Guid.NewGuid(), mediaKey }));
+        values["menuSource"] = sourceUrl;
+        values["menuUpdated"] = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss");
         await WriteDocumentAsync(id, name, values, state);
     }
 

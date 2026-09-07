@@ -19,6 +19,7 @@ import ListingViews, {
 import { type MapMarker } from "@/components/MarkersMap";
 import PaginatedList from "@/components/PaginatedList";
 import PlaceCard from "@/components/PlaceCard";
+import MenuViewer from "@/components/MenuViewer";
 import PhotoGallery from "@/components/PhotoGallery";
 import PlaceMap from "@/components/PlaceMap";
 import Rating from "@/components/Rating";
@@ -1393,6 +1394,10 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
   // foto principal, y con menos de cuatro fotos no hay rejilla que rote.
   const gallery = photoUrls(item, "gallery");
   const hasGallery = gallery.length >= 4;
+  // La carta va junto al horario: es lo mismo que el horario, algo que se consulta
+  // antes de ir. Una sola página ya es un menú — hay restaurantes cuya carta cabe en
+  // una hoja — así que basta con tener alguna.
+  const menu = photoUrls(item, "menu");
   const ownPhoto = photoUrl(item);
   const inheritedPhoto = ownPhoto ?? (company ? photoUrl(company) : null);
   // No photo and no company logo: fall back to the section's image.
@@ -1449,6 +1454,15 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
               <p className="mt-1 whitespace-pre-line text-sm text-neutral-600">
                 {inherited("hours")}
               </p>
+            </div>
+          )}
+          {menu.length > 0 && (
+            <div className="mt-4">
+              <MenuViewer
+                pages={menu}
+                name={displayName}
+                source={text(item, "menuSource") || null}
+              />
             </div>
           )}
         </div>

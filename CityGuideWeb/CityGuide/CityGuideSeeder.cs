@@ -142,6 +142,8 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
 
         await EnsurePlaceGallerySchemaAsync();
 
+        await EnsurePlaceMenuSchemaAsync();
+
         await EnsureAgentSchemaAsync();
 
         await EnsureCityStatusSchemaAsync();
@@ -1009,6 +1011,68 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         {
             throw new InvalidOperationException(
                 $"Failed to add 'gallery' to 'place': {attempt.Result}");
+        }
+    }
+
+    /// <summary>
+    /// Idempotent, runs every startup: gives "place" the menu a restaurant's detail page
+    /// opens in a viewer — the pages of its carta as images ("menu"), the address they
+    /// were read from ("menuSource") and the date of the reading ("menuUpdated").
+    ///
+    /// The pages are images and not prose, so nothing here varies by culture: a carta
+    /// says the same thing on both sides of the portal. The source is stored because a
+    /// menu is the one thing on the page that goes stale without anybody noticing — it
+    /// is what an editor follows to check a price and what the page declares to a search
+    /// engine as "hasMenu"; the date is what says how old the reading is.
+    ///
+    /// Each property is guarded on its own, so an installation that already carries one
+    /// of them still gets the rest.
+    /// </summary>
+    private async Task EnsurePlaceMenuSchemaAsync()
+    {
+        IContentType? place = _contentTypeService.Get("place");
+        if (place is null)
+        {
+            return;
+        }
+
+        IDataType menuPicker =
+            (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.MediaPicker3MultipleImagesGuid))!;
+        IDataType textstring = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.TextstringGuid))!;
+        IDataType datePicker =
+            (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.DatePickerWithTimeGuid))!;
+
+        var wanted = new (string Alias, IDataType Editor, string Name, int SortOrder)[]
+        {
+            ("menu", menuPicker, "Menú (páginas)", 13),
+            ("menuSource", textstring, "Origen del menú", 14),
+            ("menuUpdated", datePicker, "Menú actualizado", 15),
+        };
+
+        var added = false;
+        foreach ((string alias, IDataType editor, string name, int sortOrder) in wanted)
+        {
+            if (place.PropertyTypeExists(alias))
+            {
+                continue;
+            }
+
+            _logger.LogInformation("CityGuide: adding '{Alias}' property to 'place'", alias);
+            AddProperty(place, alias, name, editor, sortOrder);
+            added = true;
+        }
+
+        if (!added)
+        {
+            return;
+        }
+
+        Attempt<ContentTypeOperationStatus> menuAttempt =
+            await _contentTypeService.UpdateAsync(place, Constants.Security.SuperUserKey);
+        if (!menuAttempt.Success)
+        {
+            throw new InvalidOperationException(
+                $"Failed to add the menu properties to 'place': {menuAttempt.Result}");
         }
     }
 
