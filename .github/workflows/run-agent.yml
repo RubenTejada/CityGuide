@@ -248,8 +248,13 @@ concurrency:
 
 jobs:
   run:
+    # The throttler is what sets the pace: every request to an outside host waits its
+    # interval, so a pass is slow by design. A menu sweep over every restaurant with a
+    # site of its own is a few requests each and runs into the hours; 350 is just under
+    # the six-hour ceiling GitHub puts on a hosted runner, and a job that finishes in
+    # eight minutes costs no more for being allowed six hours.
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 350
     steps:
       - uses: actions/checkout@v4
 
