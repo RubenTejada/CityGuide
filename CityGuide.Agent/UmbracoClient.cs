@@ -634,11 +634,14 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
 
     public record PublishedPlace(
         Guid Id, string Name, string Path, double Latitude, double Longitude,
-        string? Address, string? GooglePlaceId, Guid? PhotoMediaKey, bool HasRating,
+        string? Address, string? GooglePlaceId, Guid? PhotoMediaKey, double Rating,
         string? Source, DateTime CreateDate,
-        string? Phone = null, string? Website = null, string? Hours = null)
+        string? Phone = null, string? Website = null, string? Hours = null,
+        int RatingCount = 0, int GalleryCount = 0)
     {
         public bool HasPhoto => PhotoMediaKey is not null;
+
+        public bool HasRating => Rating > 0;
 
         /// <summary>True when the node still lacks something the agent can fill in from
         /// Google. The backfill does these first: a pass cut short must not leave them
@@ -677,14 +680,22 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
                 && mediaKey.TryGetGuid(out Guid key)
                 ? key
                 : null;
+            // How many images the gallery already holds, so the pass that fills it can
+            // tell a place that has one from a place that does not without reading the
+            // document — the picture URLs themselves are the frontend's business.
+            int galleryCount = props.TryGetProperty("gallery", out JsonElement gallery)
+                && gallery.ValueKind == JsonValueKind.Array
+                ? gallery.GetArrayLength()
+                : 0;
             places.Add(new PublishedPlace(
                 item.GetProperty("id").GetGuid(),
                 item.GetProperty("name").GetString()!,
                 item.GetProperty("route").GetProperty("path").GetString()!,
                 Coord("latitude"), Coord("longitude"), Text("address"), Text("googlePlaceId"), photoKey,
-                Coord("googleRating") > 0, Text("source"),
+                Coord("googleRating"), Text("source"),
                 item.GetProperty("createDate").GetDateTime(),
-                Text("phone"), Text("website"), Text("hours")));
+                Text("phone"), Text("website"), Text("hours"),
+                (int)Coord("googleRatingCount"), galleryCount));
         }
 
         return places;
@@ -962,6 +973,19 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
     {
         (string name, string state, Dictionary<string, object?> values) = await ReadDocumentAsync(id);
         values[alias] = value;
+        await WriteDocumentAsync(id, name, values, state);
+    }
+
+    /// <summary>
+    /// Replaces a place's photo gallery with the given media items, in order. Everything
+    /// else the document holds survives, including the main "photo": the gallery is the
+    /// extra a detail page rotates, not a replacement for the one image the cards use.
+    /// </summary>
+    public async Task SetGalleryAsync(Guid id, IReadOnlyList<Guid> mediaKeys)
+    {
+        (string name, string state, Dictionary<string, object?> values) = await ReadDocumentAsync(id);
+        values["gallery"] = JsonSerializer.SerializeToElement(
+            mediaKeys.Select(mediaKey => new { key = Guid.NewGuid(), mediaKey }));
         await WriteDocumentAsync(id, name, values, state);
     }
 

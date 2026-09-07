@@ -252,6 +252,29 @@ export function sectionMapIcon(routePath: string): string {
 }
 
 /**
+ * Icono de un nodo en la ruta de navegación, resuelto por la profundidad de su
+ * ruta: la marca del portal para el inicio, el emblema de la ciudad, el dibujo
+ * de la sección y, por debajo de ella, el glifo de la subcategoría. Es una
+ * descripción, no un elemento, porque la migaja se pinta en el cliente y cada
+ * clase de icono se dibuja distinto (una imagen, un SVG de ciudad, un glifo).
+ */
+export type NavIcon =
+  | { kind: "site" }
+  | { kind: "city"; slug: string }
+  | { kind: "image"; src: string }
+  | { kind: "glyph"; glyph: string };
+
+export function navIcon(routePath: string): NavIcon {
+  const segments = keySegments(routePath);
+  if (segments.length === 0) return { kind: "site" };
+  // El slug de la ciudad no se traduce, así que sirve tal cual como emblema.
+  if (segments.length === 1) return { kind: "city", slug: segments[0] };
+  if (segments.length === 2)
+    return { kind: "image", src: sectionMapIcon(routePath) };
+  return { kind: "glyph", glyph: subcategoryIcon(routePath) };
+}
+
+/**
  * Icon drawn inside a map pin, and beside the place in the panel list next to
  * the map: the logo of the company the place belongs to, otherwise the section
  * glyph. A place's own photo is never used — a pin is a 40px badge, a cropped

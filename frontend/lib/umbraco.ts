@@ -59,10 +59,20 @@ export function facilities(item: UmbracoItem): string[] {
  * fetches from local IPs since Next 16).
  */
 export function photoUrl(item: UmbracoItem, alias = "photo"): string | null {
+  return photoUrls(item, alias)[0] ?? null;
+}
+
+/**
+ * Every image URL of a MediaPicker3 property, in the order the picker holds them.
+ * "photo" is a single picture and "gallery" the several a detail page rotates, but
+ * both come back from the Delivery API as a list of media items.
+ */
+export function photoUrls(item: UmbracoItem, alias = "gallery"): string[] {
   const value = item.properties[alias];
-  if (!Array.isArray(value) || value.length === 0) return null;
-  const media = value[0] as MediaItem;
-  return media?.url || null;
+  if (!Array.isArray(value)) return [];
+  return (value as MediaItem[])
+    .map((media) => media?.url)
+    .filter((url): url is string => Boolean(url));
 }
 
 /**

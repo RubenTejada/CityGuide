@@ -79,14 +79,23 @@ export async function getItem(
   return res.json();
 }
 
-/** Fetch direct children of a content item, ordered by sortOrder. */
+/**
+ * Fetch direct children of a content item, ordered by sortOrder. `contentType`
+ * narrows them where the children are of several kinds and only one is wanted:
+ * a section holds its subcategories beside hundreds of places, and without the
+ * filter the page of children comes back full of places.
+ */
 export async function getChildren(
   path: string,
   take = 100,
   locale?: Locale,
+  contentType?: string,
 ): Promise<UmbracoItem[]> {
   const res = await api(
-    `/content?fetch=${encodeURIComponent(`children:${path}`)}&sort=sortOrder:asc&take=${take}`,
+    `/content?fetch=${encodeURIComponent(`children:${path}`)}&sort=sortOrder:asc&take=${take}` +
+      (contentType
+        ? `&filter=${encodeURIComponent(`contentType:${contentType}`)}`
+        : ""),
     locale,
   );
   if (!res.ok) return [];

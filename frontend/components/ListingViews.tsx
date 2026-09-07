@@ -39,8 +39,7 @@ export interface ListingEntry {
 /**
  * A listing in its two views — the paginated grid of cards and the map of the
  * same results — with one multi-select dropdown per filter group, rendered in
- * a single row with whatever is passed as `children` (the subcategory pills)
- * to their left. Filters narrow both views at once.
+ * a single row. Filters narrow both views at once.
  * `gridClassName` is the grid the cards sit in: two wide columns by default,
  * overridden by listings whose cards are the narrower "Qué Hacer" ones.
  * `emptyLabel` is what an empty listing says; a listing that is not of places
@@ -57,13 +56,11 @@ export default function ListingViews({
   filters = [],
   emptyLabel,
   gridClassName = "mt-8 grid gap-4 md:grid-cols-2",
-  children,
 }: {
   entries: ListingEntry[];
   filters?: FilterGroup[];
   emptyLabel?: string;
   gridClassName?: string;
-  children?: ReactNode;
 }) {
   const words = useWords();
   const { params, set } = useUrlQuery();
@@ -120,9 +117,8 @@ export default function ListingViews({
 
   return (
     <div>
-      {(children || groups.length > 0 || mappable) && (
+      {(groups.length > 0 || mappable) && (
         <div className="mt-6 flex flex-wrap items-center gap-2">
-          {children}
           {groups.map((group) => (
             <FilterDropdown
               key={group.key}

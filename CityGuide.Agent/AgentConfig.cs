@@ -116,6 +116,24 @@ public class GoogleConfig
     /// rotation yields. A catalogue that grows, or a day the rotation lands badly, must
     /// not turn into a bill nobody chose; what is skipped comes up on the next pass.</summary>
     public int MaxBackfillRequests { get; set; } = 400;
+
+    /// <summary>How many photos the gallery pass downloads per place. The detail page
+    /// shows a main image over six tiles and rotates the rest through them, so ten is
+    /// what makes the rotation worth watching — and ten is also as many as Google names
+    /// for a place. Naming them is free; each download is billed at $7 per 1.000.</summary>
+    public int GalleryPhotos { get; set; } = 10;
+
+    /// <summary>How many places one "--gallery" pass covers when the command line does
+    /// not say ("--gallery 25"). A gallery is for the handful of places a section leads
+    /// with, not for the catalogue: it is the only thing here billed per image.</summary>
+    public int MaxGalleryPlaces { get; set; } = 10;
+
+    /// <summary>How many Google reviews a place needs before the gallery pass ranks it.
+    /// A five-star average over five reviews is not a distinction, and sorting by rating
+    /// alone puts such a place above one with 4,9 over nine thousand: the floor is what
+    /// makes "best rated" mean "best known and best rated". A section whose places are
+    /// all below it gets no gallery rather than an arbitrary one.</summary>
+    public int GalleryMinReviews { get; set; } = 100;
 }
 
 public class AzureOpenAiConfig

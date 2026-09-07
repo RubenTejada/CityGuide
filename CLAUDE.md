@@ -92,6 +92,14 @@ cd CityGuide.Agent && dotnet run -- --purge-foreign-events
 # (reads the city node and Google; writes nothing).
 cd CityGuide.Agent && dotnet run -- --scrape-events
 
+# Give the best-rated places of a section the photo gallery their detail page
+# rotates (a main photo over three or six tiles). Google names a place's photos
+# for free and bills only the download ($7 per 1.000), so the pass is capped by
+# how many places it covers — "--gallery 2" is the two best rated — and prints
+# the bill before spending it. Plan until --apply.
+cd CityGuide.Agent && dotnet run -- --paid --gallery 2 --section restaurantes
+cd CityGuide.Agent && dotnet run -- --paid --gallery 2 --section restaurantes --apply
+
 # IMDb / Rotten Tomatoes scores on the movie catalog need two free keys, set as
 # user-secrets (leave either empty to run without it — the scores just stay blank):
 #   Cinemas:Ratings:TmdbApiKey  (themoviedb.org, matches the Spanish release title)
@@ -309,6 +317,30 @@ name distinctive enough to stand alone. Without that rule Commons answers "Parqu
 in Santiago with the one in the Zona Colonial. Among what survives, a card-shaped
 landscape beats a portrait and a portrait beats a panorama. The media item is named after
 the place *and* its source, so provenance survives in the backoffice.
+
+**A handful of places carry a gallery, not just a photo.** `gallery` is a second,
+multi-image property on `place` (`EnsurePlaceGallerySchemaAsync`), separate from `photo`
+because `photo` is the single image every listing card, map popup and Open Graph tag uses
+and has to stay one choice. `--gallery [n]` (`PlaceGalleries`, scoped by `--section`,
+needs `--paid`) fills it for the best-rated places that have none: Google names a place's
+photos on the free tier however many there are, and only the download is billed, so what
+the pass costs is exactly the pictures it brings home — ten per place by default
+(`Google:GalleryPhotos`, which is also as many as Google names), over as many places as
+the command line asks (`Google:MaxGalleryPlaces` otherwise). The frontend shows it when
+there are at least four images (`PhotoGallery`): the place keeps the single main photo it
+always had on the left, and the gallery closes the row beside it: a place with
+one reads as three bands — the photo, then what the place says (address, description,
+facilities), then the gallery, each taking half of the column beside the photo. The
+gallery is its own main photo over a strip of three per row, one row or two (three images,
+or six from nine up), flush inside one rounded rectangle. The strip does not move: what
+rotates is the main photo, which raises the strip's photos one after another — the one up
+there is the one the strip shows at full opacity — fading in softly over the one it
+replaces. Any photo opens a modal viewer where they are all seen large, the ones the strip
+does not fit included, with arrows, a thumbnail rail, Escape and a click outside to close.
+Without a gallery the row is the photo and the details, as it always was, and on a narrow
+screen the three bands stack. Fewer photos than the strip holds is not a gallery and the
+column starts at the details, as before; the rotation stops while the pointer is over the
+gallery or the viewer is open, and never starts under `prefers-reduced-motion`.
 
 Every event gets a main image: the one the source declares, else the `og:image` of its
 ticket page, else a Google photo of its venue. `EventSync` runs once per city in `Events:Cities` (each entry a `CityPath`, its own `Sources` and its own `VenueSections`) and fills that city's `eventos` from public event portals (TodoTickets detail pages, Eventbrite listings) via per-source strategies ("jsonld-listing", "jsonld-detail"); the national portals are listed by every city and scraped once for the whole pass (`EventSync.ScrapeCache`, keyed by source URL) — the feed is the same and only the rectangle that filters it differs, so the second city costs no request; events publish immediately, dedupe by ticket URL and name+date, and only agent-created (`source` = `agent:*`) past events are deleted — TuBoleta (JS-loaded dates), Uepa Tickets (Cloudflare) and TicketExpress (a listing frozen in 2020 whose pages state neither venue nor a real date, so the prose parser invented future ones) are deliberately not scraped. Every portal lists the whole country, so an event is only imported when its location is inside the city's `agentArea` rectangle (`EventVenues`): the portals state the venue's coordinates in their JSON-LD and the rectangle decides for free — the locality they file it under does not, since Escenario 360 reads "Los Alcarrizos" and stands on Av. John F. Kennedy — and an event without coordinates is kept only when its venue name resolves, on Google restricted to that same rectangle, to a place carrying every significant word of the name. A failed lookup is never read as "not in the city", and a city with no `agentArea` keeps importing everything. Resolving the venue also yields a full place, so the venue is created in the section its Google types belong to (`Events:VenueSections` — bars and attractions; a hotel or a shop matches none and only gives the event its coordinates, which is what puts it on the events map), like any discovered place and deduped by Google place id. `dotnet run -- --purge-foreign-events [--apply]` applies the same rule to the events already imported and recycles the ones outside the city (seeded and hand-made events are never touched); the "Run agent" workflow exposes it as the `purge_foreign_events` input. Each event's "Categoría" comes from the model (`EventCategories`: one batched call per portal, from the vocabulary the seeded events use), because no portal states one and the title is usually just the artist's name — an event stays uncategorized, never mislabelled, when no model is configured or the call fails. `dotnet run -- --scrape-events` prints what each source yields, and whether the city filter would keep it, without touching the CMS; `dotnet run -- --recategorize-events [--apply]` reclassifies the events the agent already created (only `agent:*` ones — hand-made and seeded events keep their editor's category), and the "Run agent" workflow exposes it as the `recategorize_events` input so it can be run against Azure. `dotnet run -- --purge-event-source <portal> [--apply]` recycles what a retired portal left behind: dropping a source from a city's `Sources` stops new imports but not the old ones, which are neither past nor locatable (TicketExpress's seven events sat there until this removed them). A venue is looked up once per pass, not once per event: a portal lists a season at one

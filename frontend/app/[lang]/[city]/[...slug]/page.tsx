@@ -3,12 +3,15 @@ import Link from "next/link";
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import ArticleBody from "@/components/ArticleBody";
+import BreadcrumbBar, {
+  type Crumb,
+  type CrumbLink,
+} from "@/components/Breadcrumb";
 import DirectionsLink from "@/components/DirectionsLink";
 import JsonLd from "@/components/JsonLd";
 import ArticleCard, { articleDate } from "@/components/ArticleCard";
 import FacilityBadges, { FACILITY_ICONS } from "@/components/FacilityBadges";
 import AttractionCard from "@/components/AttractionCard";
-import { PendingLink } from "@/components/LoadingOverlay";
 import ListingViews, {
   type FilterGroup,
   type ListingEntry,
@@ -16,6 +19,7 @@ import ListingViews, {
 import { type MapMarker } from "@/components/MarkersMap";
 import PaginatedList from "@/components/PaginatedList";
 import PlaceCard from "@/components/PlaceCard";
+import PhotoGallery from "@/components/PhotoGallery";
 import PlaceMap from "@/components/PlaceMap";
 import Rating from "@/components/Rating";
 import Cartelera from "@/components/cine/Cartelera";
@@ -50,6 +54,7 @@ import { canonicalSlug, localizedSectionPath } from "@/lib/sectionSlugs";
 import {
   categoryPath,
   mapPinIcon,
+  navIcon,
   sectionListImage,
   subcategoryIcon,
 } from "@/lib/sections";
@@ -72,6 +77,7 @@ import {
   activeLocale,
   alternateOf,
   getChildren,
+  getCities,
   getDescendantsOfType,
   getItem,
 } from "@/lib/cms";
@@ -80,6 +86,7 @@ import {
   facilities,
   num,
   photoUrl,
+  photoUrls,
   picked,
   slugOf,
   text,
@@ -381,42 +388,78 @@ export async function generateMetadata({
   });
 }
 
+/**
+ * The content types a crumb can be switched for: the pages the portal is
+ * browsed by. A place, a company, a mall, an event or a film is a destination,
+ * not a level — its crumb carries no selector.
+ */
+const NAVIGABLE_TYPES = new Set([
+  "city",
+  "categoryPage",
+  "eventsPage",
+  "thingsToDoPage",
+  "subcategory",
+]);
+
+/**
+ * The pages one crumb can be swapped for. A city's sections are of three
+ * different document types ("Eventos" and "Qué Hacer" are their own), so they
+ * are taken whole; deeper down the siblings are filtered to the crumb's own
+ * type, since a section holds its subcategories beside hundreds of places.
+ */
+async function crumbSiblings(
+  node: UmbracoItem,
+  parent: UmbracoItem | undefined,
+): Promise<UmbracoItem[]> {
+  if (!NAVIGABLE_TYPES.has(node.contentType)) return [];
+  if (!parent) return getCities();
+  return parent.contentType === "city"
+    ? getChildren(parent.route.path)
+    : getChildren(parent.route.path, 100, undefined, node.contentType);
+}
+
+function crumbLink(node: { name: string; route: { path: string } }): CrumbLink {
+  return {
+    name: node.name,
+    path: node.route.path,
+    icon: navIcon(node.route.path),
+  };
+}
+
 async function Breadcrumb({ item }: { item: UmbracoItem }) {
   const segments = item.route.path.split("/").filter(Boolean);
   // "/en" is the language, not an ancestor: it has no page of its own.
   const first = segments[0] === "en" ? 1 : 0;
-  const crumbs = await Promise.all(
+  const ancestors = await Promise.all(
     segments.slice(first, -1).map(async (_, offset) => {
       const index = first + offset;
       const ancestorPath = `/${segments.slice(0, index + 1).join("/")}`;
-      const ancestor = await getItem(ancestorPath);
-      return ancestor
-        ? { name: ancestor.name, path: ancestor.route.path }
-        : null;
+      return getItem(ancestorPath);
     }),
   );
+  const nodes = [...ancestors.filter((node) => node !== null), item];
+  const crumbs = await Promise.all(
+    nodes.map(async (node, index) => ({
+      ...crumbLink(node),
+      siblings: (await crumbSiblings(node, nodes[index - 1])).map(crumbLink),
+    })),
+  );
   const locale = await activeLocale();
-  const words = t(locale).nav;
-  const trail = [
-    { name: words.home, path: localeHref(locale, "/") },
-    ...crumbs.filter((crumb) => crumb !== null),
-    { name: item.name, path: item.route.path },
+  const home = localeHref(locale, "/");
+  const trail: Crumb[] = [
+    {
+      name: t(locale).nav.home,
+      path: home,
+      icon: navIcon(home),
+      siblings: [],
+    },
+    ...crumbs,
   ];
   return (
-    <nav className="text-sm text-neutral-500" aria-label={words.breadcrumb}>
+    <>
       <JsonLd data={breadcrumbJsonLd(trail)} />
-      <ol className="flex flex-wrap items-center gap-1">
-        {trail.slice(0, -1).map((crumb) => (
-          <li key={crumb.path} className="flex items-center gap-1">
-            <Link href={crumb.path} className="hover:text-brand-600">
-              {crumb.name}
-            </Link>
-            <span aria-hidden>›</span>
-          </li>
-        ))}
-        <li className="font-medium text-neutral-800">{item.name}</li>
-      </ol>
-    </nav>
+      <BreadcrumbBar trail={trail} />
+    </>
   );
 }
 
@@ -428,7 +471,7 @@ function PageShell({
   children: React.ReactNode;
 }) {
   return (
-    <main className="mx-auto max-w-6xl px-6 py-8">
+    <main className="mx-auto max-w-6xl px-6 pt-0 pb-8">
       <Breadcrumb item={item} />
       {children}
     </main>
@@ -751,12 +794,6 @@ async function CategoryView({
       : []),
     ...(subFilter ? [subFilter] : []),
   ];
-  // The dropdown narrows this page; the pills open the subcategory's own page,
-  // which nothing linked to before. Both list the subcategories that actually
-  // hold something, which is what the filter already worked out.
-  const pills = subcategories.filter((sub) =>
-    subFilter?.options.includes(sub.name),
-  );
   const markers = await listingMarkers(item.route.path, entries);
   // Attractions use the photo card "Qué Hacer" shows, three across on a wide
   // screen, instead of the two-column place card the other sections list.
@@ -805,18 +842,7 @@ async function CategoryView({
               ? "mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
               : undefined
           }
-        >
-          {pills.map((sub) => (
-            <PendingLink
-              key={sub.id}
-              href={sub.route.path}
-              className="inline-flex items-center gap-1.5 rounded-full border border-neutral-300 bg-white px-3.5 py-1.5 text-sm font-medium hover:border-brand-500 hover:text-brand-600"
-            >
-              <span aria-hidden>{subcategoryIcon(sub.route.path)}</span>
-              {sub.name}
-            </PendingLink>
-          ))}
-        </ListingViews>
+        />
       )}
     </PageShell>
   );
@@ -1363,6 +1389,10 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
   // "Oficina Principal" or "Sucursal Naco" says nothing on its own: a branch is
   // shown under its company's name unless it already carries it.
   const displayName = branchDisplayName(item.name, company?.name);
+  // La galería es el extra de los lugares que encabezan su sección: va al lado de la
+  // foto principal, y con menos de cuatro fotos no hay rejilla que rote.
+  const gallery = photoUrls(item, "gallery");
+  const hasGallery = gallery.length >= 4;
   const ownPhoto = photoUrl(item);
   const inheritedPhoto = ownPhoto ?? (company ? photoUrl(company) : null);
   // No photo and no company logo: fall back to the section's image.
@@ -1396,7 +1426,7 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
       <div className="mt-1">
         <Rating place={item} locale={locale} />
       </div>
-      <div className="mt-6 grid gap-8 lg:grid-cols-[20rem_1fr]">
+      <div className="mt-6 grid gap-8 lg:grid-cols-[14rem_1fr]">
         <div>
           <div
             className={`relative aspect-square overflow-hidden rounded-xl ${
@@ -1409,7 +1439,7 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
               fill
               unoptimized={photo.endsWith(".svg")}
               className={isLogo ? "object-contain p-6" : "object-cover"}
-              sizes="(min-width: 1024px) 20rem, 100vw"
+              sizes="(min-width: 1024px) 14rem, 100vw"
               priority
             />
           </div>
@@ -1423,78 +1453,96 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
           )}
         </div>
 
-        <div>
-          <dl className="space-y-1.5 text-sm">
-            <div className="flex gap-2">
-              <dt className="font-semibold text-brand-700">
-                {t(locale).place.address}
-              </dt>
-              <dd className="text-neutral-700">{text(item, "address")}</dd>
-            </div>
-            <div className="flex gap-2">
-              <dt className="font-semibold text-brand-700">
-                {company ? t(locale).place.company : t(locale).place.category}
-              </dt>
-              <dd className="text-neutral-700">
-                {parent ? (
-                  <Link
-                    href={parent.route.path}
-                    className="hover:text-brand-600 hover:underline"
-                  >
-                    {categoryName}
-                  </Link>
-                ) : (
-                  categoryName
-                )}
-              </dd>
-            </div>
-            {inherited("phone") && (
+        {/* Al lado de la foto: lo que el lugar dice, y la galería a su derecha. */}
+        <div
+          className={
+            hasGallery ? "grid gap-6 lg:grid-cols-2 lg:items-start" : undefined
+          }
+        >
+          <div>
+            <dl className="space-y-1.5 text-sm">
               <div className="flex gap-2">
                 <dt className="font-semibold text-brand-700">
-                  {t(locale).place.phone}
+                  {t(locale).place.address}
                 </dt>
-                <dd className="text-neutral-700">{inherited("phone")}</dd>
+                <dd className="text-neutral-700">{text(item, "address")}</dd>
               </div>
-            )}
-            {website && (
               <div className="flex gap-2">
                 <dt className="font-semibold text-brand-700">
-                  {t(locale).place.website}
+                  {company ? t(locale).place.company : t(locale).place.category}
                 </dt>
-                <dd>
-                  <a
-                    href={website}
-                    className="text-brand-600 hover:underline"
-                    rel="noopener noreferrer"
-                    target="_blank"
-                  >
-                    {website}
-                  </a>
+                <dd className="text-neutral-700">
+                  {parent ? (
+                    <Link
+                      href={parent.route.path}
+                      className="hover:text-brand-600 hover:underline"
+                    >
+                      {categoryName}
+                    </Link>
+                  ) : (
+                    categoryName
+                  )}
                 </dd>
               </div>
+              {inherited("phone") && (
+                <div className="flex gap-2">
+                  <dt className="font-semibold text-brand-700">
+                    {t(locale).place.phone}
+                  </dt>
+                  <dd className="text-neutral-700">{inherited("phone")}</dd>
+                </div>
+              )}
+              {website && (
+                <div className="flex gap-2">
+                  <dt className="font-semibold text-brand-700">
+                    {t(locale).place.website}
+                  </dt>
+                  <dd>
+                    <a
+                      href={website}
+                      className="text-brand-600 hover:underline"
+                      rel="noopener noreferrer"
+                      target="_blank"
+                    >
+                      {website}
+                    </a>
+                  </dd>
+                </div>
+              )}
+            </dl>
+
+            {inherited("description") && (
+              <>
+                <h2 className="mt-6 text-lg font-semibold">
+                  {t(locale).place.about(company ? company.name : item.name)}
+                </h2>
+                <p className="mt-2 whitespace-pre-line text-neutral-700">
+                  {inherited("description")}
+                </p>
+              </>
             )}
-          </dl>
 
-          {inherited("description") && (
-            <>
-              <h2 className="mt-6 text-lg font-semibold">
-                {t(locale).place.about(company ? company.name : item.name)}
-              </h2>
-              <p className="mt-2 whitespace-pre-line text-neutral-700">
-                {inherited("description")}
-              </p>
-            </>
-          )}
+            {facilities(item).length > 0 && (
+              <>
+                <h2 className="mt-6 text-lg font-semibold">
+                  {t(locale).place.facilities}
+                </h2>
+                <div className="mt-3">
+                  <FacilityBadges
+                    facilities={facilities(item)}
+                    locale={locale}
+                  />
+                </div>
+              </>
+            )}
+          </div>
 
-          {facilities(item).length > 0 && (
-            <>
-              <h2 className="mt-6 text-lg font-semibold">
-                {t(locale).place.facilities}
-              </h2>
-              <div className="mt-3">
-                <FacilityBadges facilities={facilities(item)} locale={locale} />
-              </div>
-            </>
+          {hasGallery && (
+            <PhotoGallery
+              photos={gallery}
+              name={displayName}
+              label={t(locale).place.gallery}
+            />
           )}
         </div>
       </div>

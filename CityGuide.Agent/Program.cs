@@ -212,6 +212,31 @@ if (args.Contains("--translate"))
     return 0;
 }
 
+// Maintenance pass: the photo gallery of the places a section leads with. Google names
+// a place's photos for free and bills only the download, so this is the one pass whose
+// cost is exactly the pictures it brings home — it covers the best-rated places of the
+// selected sections, as many as "--gallery <n>" says, and prints the bill before
+// spending it. Nothing is downloaded without --apply.
+if (args.Contains("--gallery"))
+{
+    if (string.IsNullOrEmpty(config.Google.ApiKey))
+    {
+        Console.Error.WriteLine(
+            "--gallery descarga fotos de Google, que se facturan por imagen. "
+            + "Añade --paid para ejecutarlo.");
+        return 1;
+    }
+
+    int galleryPlaces =
+        int.TryParse(args.SkipWhile(a => a != "--gallery").Skip(1).FirstOrDefault(), out int asked)
+            ? asked
+            : config.Google.MaxGalleryPlaces;
+    await new PlaceGalleries(
+            google, umbraco, config.Google.GalleryPhotos, config.Google.GalleryMinReviews)
+        .RunAsync(args.Contains("--apply"), SectionSelected, galleryPlaces);
+    return 0;
+}
+
 // Maintenance pass: the events the agent imported before it asked where they happen.
 // Every ticket portal lists the whole country, so the section filled up with Santiago,
 // Higüey and Punta Cana; each venue is looked up inside the city rectangle and the ones

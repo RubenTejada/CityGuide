@@ -196,3 +196,27 @@ html.dark .theme-icon-dark {
 html.dark .theme-icon-light {
   display: none;
 }
+
+/* ---------------------------------------------------------------------------
+   Galería de fotos de un lugar (PhotoGallery)
+   La foto que entra se funde despacio sobre la que sale, que se queda debajo
+   hasta que termina. La misma entrada usa el visor al cambiar de foto.
+   --------------------------------------------------------------------------- */
+@keyframes gallery-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.gallery-enter {
+  animation: gallery-enter 1200ms ease-in-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gallery-enter {
+    animation: none;
+  }
+}

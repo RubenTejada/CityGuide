@@ -111,6 +111,8 @@ const es = {
     loadingSection: "Cargando sección…",
     loading: "Cargando…",
     breadcrumb: "Ruta de navegación",
+    /** Botón que abre, en una migaja, las páginas hermanas de esa página. */
+    otherOptions: "Otras opciones",
     /** Short label for a section whose CMS name is too long for the nav bar. */
     shortLabels: { "empresas-y-servicios": "Empresas" } as Record<
       string,
@@ -164,6 +166,13 @@ const es = {
   place: {
     about: (name: string): string => `Acerca de ${name}`,
     facilities: "Facilidades del lugar",
+    gallery: "Galería de fotos",
+    galleryOpen: (n: number, total: number): string =>
+      `Ver la foto ${n} de ${total} en grande`,
+    galleryPrevious: "Foto anterior",
+    galleryNext: "Foto siguiente",
+    galleryClose: "Cerrar la galería",
+    galleryCount: (n: number, total: number): string => `${n} de ${total}`,
     location: "Ubicación",
     map: "Mapa",
     date: "Fecha",
@@ -431,6 +440,7 @@ const en: typeof es = {
     loadingSection: "Loading section…",
     loading: "Loading…",
     breadcrumb: "Breadcrumb",
+    otherOptions: "Other options",
     shortLabels: {
       "businesses-services": "Businesses",
       // Nine English tabs overflow the bar by a hair; the section keeps its full
@@ -484,6 +494,13 @@ const en: typeof es = {
   place: {
     about: (name: string): string => `About ${name}`,
     facilities: "Amenities",
+    gallery: "Photo gallery",
+    galleryOpen: (n: number, total: number): string =>
+      `View photo ${n} of ${total} full size`,
+    galleryPrevious: "Previous photo",
+    galleryNext: "Next photo",
+    galleryClose: "Close the gallery",
+    galleryCount: (n: number, total: number): string => `${n} of ${total}`,
     location: "Location",
     map: "Map",
     date: "Date",

@@ -166,6 +166,23 @@ on:
         type: boolean
         required: false
         default: false
+      gallery:
+        description: >-
+          Maintenance pass instead of the ingestion run: gives the best-rated places
+          of "section" the photo gallery their detail page rotates. Google names a
+          place's photos for free and bills only the download, so it needs "paid" and
+          gallery_places caps the bill. "plan" only prints what it would download.
+        type: choice
+        required: false
+        options:
+          - "no"
+          - plan
+          - apply
+        default: "no"
+      gallery_places:
+        description: How many places the gallery pass covers. Empty uses the default (10).
+        required: false
+        default: ""
       paid:
         description: >-
           Let the run use the two services that charge: Google Places (billed per
@@ -240,6 +257,8 @@ jobs:
           EXCLUDE_NOTE: ${{ inputs.exclude_note }}
           EXCLUDE_APPLY: ${{ inputs.exclude_apply }}
           TRANSLATE: ${{ inputs.translate }}
+          GALLERY: ${{ inputs.gallery }}
+          GALLERY_PLACES: ${{ inputs.gallery_places }}
           PUBLISH: ${{ inputs.publish }}
           PAID: ${{ inputs.paid }}
         run: |
@@ -249,7 +268,11 @@ jobs:
           if [ "$PAID" = "true" ]; then paid_flag="--paid"; fi
           section_flag=""
           if [ -n "$SECTION" ]; then section_flag="--section $SECTION"; fi
-          if [ "$TRANSLATE" = "plan" ]; then
+          if [ "$GALLERY" = "plan" ] || [ "$GALLERY" = "apply" ]; then
+            apply_flag=""
+            if [ "$GALLERY" = "apply" ]; then apply_flag="--apply"; fi
+            dotnet run -c Release -- --gallery $GALLERY_PLACES $apply_flag $section_flag $paid_flag
+          elif [ "$TRANSLATE" = "plan" ]; then
             dotnet run -c Release -- --translate $section_flag $paid_flag
           elif [ "$TRANSLATE" = "apply" ]; then
             dotnet run -c Release -- --translate --apply $section_flag $paid_flag

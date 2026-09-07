@@ -140,6 +140,8 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
 
         await EnsureSubcategoryIntroSchemaAsync();
 
+        await EnsurePlaceGallerySchemaAsync();
+
         await EnsureAgentSchemaAsync();
 
         await EnsureCityStatusSchemaAsync();
@@ -976,6 +978,37 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         {
             throw new InvalidOperationException(
                 $"Failed to add 'intro' to 'subcategory': {attempt.Result}");
+        }
+    }
+
+    /// <summary>
+    /// Idempotent, runs every startup: gives "place" the "gallery" property, the several
+    /// photos a detail page shows as one rectangle — a main image with three or six
+    /// beneath it, rotating. It is a separate property from "photo" because "photo" is
+    /// the one image every listing card, map popup and Open Graph tag uses, and it has
+    /// to stay a single choice; the gallery is the extra a handful of the best-rated
+    /// places carry. Invariant like every other image: a photograph says the same thing
+    /// in both languages.
+    /// </summary>
+    private async Task EnsurePlaceGallerySchemaAsync()
+    {
+        IContentType? place = _contentTypeService.Get("place");
+        if (place is null || place.PropertyTypeExists("gallery"))
+        {
+            return;
+        }
+
+        IDataType galleryPicker =
+            (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.MediaPicker3MultipleImagesGuid))!;
+        _logger.LogInformation("CityGuide: adding 'gallery' property to 'place'");
+        AddProperty(place, "gallery", "Galería de fotos", galleryPicker, 12);
+
+        Attempt<ContentTypeOperationStatus> attempt =
+            await _contentTypeService.UpdateAsync(place, Constants.Security.SuperUserKey);
+        if (!attempt.Success)
+        {
+            throw new InvalidOperationException(
+                $"Failed to add 'gallery' to 'place': {attempt.Result}");
         }
     }
 

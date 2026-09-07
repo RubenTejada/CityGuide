@@ -201,11 +201,21 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
     /// 1.000. Null when the place is gone or the request fails — a missing photo
     /// never blocks anything.
     /// </summary>
-    public async Task<string?> GetPhotoByIdAsync(string placeId)
+    public async Task<string?> GetPhotoByIdAsync(string placeId) =>
+        (await GetPhotoNamesByIdAsync(placeId, 1)).FirstOrDefault();
+
+    /// <summary>
+    /// Every photo name Google holds for a place, up to <paramref name="max"/> and in the
+    /// order Google ranks them, on the same free tier as <see cref="GetPhotoByIdAsync"/> —
+    /// naming the photos costs nothing however many come back, and only downloading one
+    /// is billed. This is what fills a gallery. Empty when the place is gone, has no
+    /// photos or the request fails.
+    /// </summary>
+    public async Task<IReadOnlyList<string>> GetPhotoNamesByIdAsync(string placeId, int max)
     {
         if (!Enabled)
         {
-            return null;
+            return [];
         }
 
         var request = new HttpRequestMessage(
@@ -216,11 +226,15 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
         HttpResponseMessage response = await http.SendAsync(request);
         if (!response.IsSuccessStatusCode)
         {
-            return null;
+            return [];
         }
 
         PlaceModel? place = await response.Content.ReadFromJsonAsync<PlaceModel>();
-        return place?.Photos?.FirstOrDefault()?.Name;
+        return [.. (place?.Photos ?? [])
+            .Select(p => p.Name)
+            .Where(n => !string.IsNullOrEmpty(n))
+            .Take(max)
+            .Cast<string>()];
     }
 
     /// <summary>

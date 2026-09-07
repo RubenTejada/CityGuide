@@ -6,13 +6,13 @@ import {
   PendingRegion,
 } from "@/components/LoadingOverlay";
 import SearchAutocomplete from "@/components/SearchAutocomplete";
-import { CityEmblem } from "@/components/CityBadge";
+import CitySwitcher, { type CityOption } from "@/components/CitySwitcher";
 import SectionTabs from "@/components/SectionTabs";
 import SiteLogo from "@/components/SiteLogo";
 import LanguageToggle from "@/components/LanguageToggle";
-import { getChildren, getItem } from "@/lib/cms";
+import { getChildren, getCities, getItem } from "@/lib/cms";
 import { contentSegments, localeHref, t, type Locale } from "@/lib/i18n";
-import { isComingSoon } from "@/lib/umbraco";
+import { isComingSoon, slugOf } from "@/lib/umbraco";
 import ThemeToggle from "@/components/ThemeToggle";
 
 // Etiquetas cortas solo para la barra de navegación (el nombre real en el CMS
@@ -44,6 +44,26 @@ export default async function CityLayout({
       Number(b.contentType === "thingsToDoPage") -
       Number(a.contentType === "thingsToDoPage"),
   );
+
+  // Las demás ciudades viajan con la cabecera: el emblema las despliega ahí
+  // mismo en vez de mandar al portal a empezar de nuevo.
+  const cityOptions: CityOption[] = (await getCities()).map((option) => {
+    const slug = slugOf(option);
+    return {
+      slug,
+      name: option.name,
+      href: localeHref(locale, `/${slug}`),
+      comingSoon: isComingSoon(option),
+    };
+  });
+  const current: CityOption = cityOptions.find(
+    (option) => option.slug === citySlug,
+  ) ?? {
+    slug: citySlug,
+    name: city.name,
+    href: localeHref(locale, `/${citySlug}`),
+    comingSoon,
+  };
 
   return (
     <PendingNavProvider scroll>
@@ -80,21 +100,12 @@ export default async function CityLayout({
               />
             )}
             {/* El emblema de la ciudad es el selector: dice dónde estás y
-                lleva al portal para cambiar de ciudad. */}
-            <Link
-              href={localeHref(locale, "/")}
-              className="flex shrink-0 flex-col items-center rounded-2xl px-2 py-1 transition-colors hover:bg-neutral-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sun-300"
-              title={words.nav.changeCity}
-            >
-              <CityEmblem
-                slug={citySlug}
-                ring={false}
-                className="h-20 w-auto sm:h-32"
-              />
-              <span className="mt-2 text-xs font-light tracking-[0.28em] text-white uppercase">
-                {city.name}
-              </span>
-            </Link>
+                despliega las demás sin pasar por el portal. */}
+            <CitySwitcher
+              current={current}
+              cities={cityOptions}
+              allCitiesHref={localeHref(locale, "/")}
+            />
           </div>
           {!comingSoon && (
             <SectionTabs
