@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useWords } from "@/components/LocaleProvider";
 import {
   APIProvider,
   AdvancedMarker,
@@ -62,6 +63,7 @@ export default function PlaceMap({
   photo = null,
   showNearby = true,
 }: PlaceMapProps) {
+  const words = useWords();
   const [nearby, setNearby] = useState<NearbyPlace[]>([]);
   const [selected, setSelected] = useState<NearbyPlace | null>(null);
   // Row the pointer is on in the nearby list: its pin is highlighted on the map.
@@ -125,11 +127,14 @@ export default function PlaceMap({
       side={
         showNearby && (
           <>
-            <LoadingOverlay show={loadingNearby} label="Buscando cerca…" />
-            <MapPanelHeader title="¿Qué está cerca?">
+            <LoadingOverlay
+              show={loadingNearby}
+              label={words.place.nearbySearching}
+            />
+            <MapPanelHeader title={words.place.nearby}>
               {categoryOptions.length > 1 && (
                 <FilterDropdown
-                  label="Categorías"
+                  label={words.map.categories}
                   options={categoryOptions}
                   selected={categories}
                   onToggle={toggleCategory}
@@ -144,8 +149,8 @@ export default function PlaceMap({
               {shown.length === 0 && (
                 <MapPanelEmpty>
                   {nearby.length === 0
-                    ? "Nada cerca por ahora."
-                    : "Nada cerca en esas categorías."}
+                    ? words.place.nearbyEmpty
+                    : words.place.nearbyEmptyInCategories}
                 </MapPanelEmpty>
               )}
               {shown.slice(0, NEARBY_SHOWN).map((place) => (

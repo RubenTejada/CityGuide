@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
+import { type Locale, localeHref, t } from "@/lib/i18n";
 import { fold, type SearchEntry } from "@/lib/search";
 
 const MAX_SUGGESTIONS = 8;
@@ -18,9 +19,11 @@ interface IndexedEntry extends SearchEntry {
  */
 export default function SearchAutocomplete({
   citySlug,
+  locale,
   className,
 }: {
   citySlug: string;
+  locale: Locale;
   className?: string;
 }) {
   const router = useRouter();
@@ -33,7 +36,7 @@ export default function SearchAutocomplete({
   function loadIndex() {
     if (fetchStarted.current) return;
     fetchStarted.current = true;
-    fetch(`/api/search-index/${citySlug}`)
+    fetch(`/api/search-index/${citySlug}?lang=${locale}`)
       .then((res) => (res.ok ? res.json() : []))
       .then((entries: SearchEntry[]) =>
         setIndex(
@@ -80,7 +83,7 @@ export default function SearchAutocomplete({
 
   return (
     <form
-      action={`/${citySlug}/buscar`}
+      action={localeHref(locale, `/${citySlug}/buscar`)}
       className={`order-last relative flex w-full min-w-0 sm:order-none sm:w-auto sm:flex-1 ${
         className ?? ""
       }`}
@@ -101,7 +104,7 @@ export default function SearchAutocomplete({
         }}
         onBlur={() => setOpen(false)}
         onKeyDown={onKeyDown}
-        placeholder="Busca por nombre, sector, calle o categoría"
+        placeholder={t(locale).nav.search}
         autoComplete="off"
         role="combobox"
         aria-expanded={showList}
@@ -116,7 +119,7 @@ export default function SearchAutocomplete({
         type="submit"
         className="rounded-r-lg bg-sun-400 px-4 py-2 text-sm font-semibold text-neutral-900 transition hover:bg-sun-300"
       >
-        Buscar
+        {t(locale).nav.searchButton}
       </button>
 
       {showList && (

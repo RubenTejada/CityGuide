@@ -9,28 +9,29 @@ import SearchAutocomplete from "@/components/SearchAutocomplete";
 import { CityEmblem } from "@/components/CityBadge";
 import SectionTabs from "@/components/SectionTabs";
 import SiteLogo from "@/components/SiteLogo";
-import { getChildren, getItem, isComingSoon } from "@/lib/umbraco";
+import LanguageToggle from "@/components/LanguageToggle";
+import { getChildren, getItem } from "@/lib/cms";
+import { contentSegments, localeHref, t, type Locale } from "@/lib/i18n";
+import { isComingSoon } from "@/lib/umbraco";
 import ThemeToggle from "@/components/ThemeToggle";
 
 // Etiquetas cortas solo para la barra de navegación (el nombre real en el CMS
-// no cambia); clave = slug de la sección.
-const NAV_LABELS: Record<string, string> = {
-  "empresas-y-servicios": "Empresas",
-};
-
-function navLabel(section: { name: string; route: { path: string } }) {
-  const slug = section.route.path.split("/").filter(Boolean)[1] ?? "";
-  return NAV_LABELS[slug] ?? section.name;
+// no cambia); clave = slug de la sección, en el idioma de la página.
+function navLabel(
+  section: { name: string; route: { path: string } },
+  locale: Locale,
+) {
+  const slug = contentSegments(section.route.path)[1] ?? "";
+  return t(locale).nav.shortLabels[slug] ?? section.name;
 }
 
 export default async function CityLayout({
   children,
   params,
-}: {
-  children: React.ReactNode;
-  params: Promise<{ city: string }>;
-}) {
-  const { city: citySlug } = await params;
+}: LayoutProps<"/[lang]/[city]">) {
+  const { lang, city: citySlug } = await params;
+  const locale = lang as Locale;
+  const words = t(locale);
   const city = await getItem(`/${citySlug}`);
   if (!city || city.contentType !== "city") notFound();
 
@@ -51,22 +52,39 @@ export default async function CityLayout({
         <header className="relative bg-neutral-900 bg-[linear-gradient(to_right,rgba(23,23,23,0),#171717_60%),url(/header-map.svg)] text-white">
           {/* Esquina de la cabecera: no cabe en la fila del logo sin empujar
               el emblema de ciudad a otra línea. */}
-          <ThemeToggle className="absolute top-3 right-3" />
+          {/* La esquina lleva los dos ajustes que no son contenido: idioma y tema. */}
+          <div className="absolute top-3 right-3 flex items-center gap-1">
+            <LanguageToggle locale={locale} />
+            <ThemeToggle />
+          </div>
           {/* En el móvil la cabecera es una columna centrada — logo, emblema y
               buscador a todo el ancho — y a partir de `sm` la fila de siempre. */}
           <div className="mx-auto flex max-w-6xl flex-col items-center gap-5 px-6 pt-9 pb-6 sm:flex-row sm:flex-wrap sm:gap-x-8 sm:gap-y-4">
-            <Link href={`/${citySlug}`} aria-label="QueHacerRD.com" className="sm:mt-3">
-              <SiteLogo className="text-[28px] sm:text-[44px]" tagline glyph={false} />
+            <Link
+              href={localeHref(locale, `/${citySlug}`)}
+              aria-label="QueHacerRD.com"
+              className="sm:mt-3"
+            >
+              <SiteLogo
+                className="text-[28px] sm:text-[44px]"
+                tagline
+                glyph={false}
+                locale={locale}
+              />
             </Link>
             {!comingSoon && (
-              <SearchAutocomplete citySlug={citySlug} className="sm:mt-3" />
+              <SearchAutocomplete
+                citySlug={citySlug}
+                locale={locale}
+                className="sm:mt-3"
+              />
             )}
             {/* El emblema de la ciudad es el selector: dice dónde estás y
                 lleva al portal para cambiar de ciudad. */}
             <Link
-              href="/"
+              href={localeHref(locale, "/")}
               className="flex shrink-0 flex-col items-center rounded-2xl px-2 py-1 transition-colors hover:bg-neutral-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sun-300"
-              title="Cambiar ciudad"
+              title={words.nav.changeCity}
             >
               <CityEmblem
                 slug={citySlug}
@@ -80,22 +98,23 @@ export default async function CityLayout({
           </div>
           {!comingSoon && (
             <SectionTabs
-              home={`/${citySlug}`}
+              home={localeHref(locale, `/${citySlug}`)}
               sections={sections.map((section) => ({
                 id: section.id,
                 href: section.route.path,
-                label: navLabel(section),
+                label: navLabel(section, locale),
               }))}
+              locale={locale}
             />
           )}
         </header>
-        <PendingRegion className="flex-1" label="Cargando sección…">
+        <PendingRegion className="flex-1" label={words.nav.loadingSection}>
           {children}
         </PendingRegion>
 
         <footer className="mt-12 bg-neutral-900 text-neutral-400">
           <div className="mx-auto max-w-6xl px-6 py-10">
-            <SiteLogo className="text-lg" tagline />
+            <SiteLogo className="text-lg" tagline locale={locale} />
             <div className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-sm">
               {sections.map((section) => (
                 <PendingLink
@@ -107,15 +126,14 @@ export default async function CityLayout({
                 </PendingLink>
               ))}
               <PendingLink
-                href={`/${citySlug}/contacto`}
+                href={localeHref(locale, `/${citySlug}/contacto`)}
                 className="hover:text-white"
               >
-                Contacto
+                {words.nav.contact}
               </PendingLink>
             </div>
             <p className="mt-8 text-xs text-neutral-600">
-              © {new Date().getFullYear()} QueHacerRD.com — Todos los derechos
-              reservados.
+              © {new Date().getFullYear()} QueHacerRD.com — {words.site.rights}
             </p>
           </div>
         </footer>

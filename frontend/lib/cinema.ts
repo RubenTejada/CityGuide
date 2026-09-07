@@ -4,7 +4,9 @@
 // requires the site-id/circuit-id/client-type headers the SPA sends.
 
 import { findYoutubeTrailer } from "@/lib/trailers";
-import { getDescendantsOfType, text, type UmbracoItem } from "@/lib/umbraco";
+import { type Locale } from "@/lib/i18n";
+import { localizedSectionPath } from "@/lib/sectionSlugs";
+import { text, type UmbracoItem } from "@/lib/umbraco";
 
 const CC_BASE = "https://rd.caribbeancinemas.com";
 const CIRCUIT_ID = "5"; // Caribbean Cinemas Dominican Republic
@@ -462,14 +464,24 @@ export function bookingUrl(cinema: Cinema, showtimeId: string): string {
  * slug of the seeded place name (EnsureCinemasSeeded): lowercase, no accents,
  * non-alphanumerics collapsed to "-".
  */
-export function cinemaPortalPath(citySlug: string, cinema: Cinema): string {
+export function cinemaPortalPath(
+  citySlug: string,
+  cinema: Cinema,
+  locale: Locale,
+): string {
   const slug = cinema.name
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
-  return `/${citySlug}/cines/caribbean-cinemas/${slug}`;
+  return localizedSectionPath(
+    locale,
+    citySlug,
+    "cines",
+    "caribbean-cinemas",
+    slug,
+  );
 }
 
 // ---- cartelera cards ----
@@ -535,7 +547,9 @@ export function movieReviews(item: UmbracoItem): MovieReviews | null {
 
 /** Where a movie's scores are read and discussed in full. */
 export function imdbUrl(reviews: MovieReviews): string | null {
-  return reviews.imdbId ? `https://www.imdb.com/title/${reviews.imdbId}/` : null;
+  return reviews.imdbId
+    ? `https://www.imdb.com/title/${reviews.imdbId}/`
+    : null;
 }
 
 /**
@@ -558,30 +572,11 @@ export interface CatalogMovie {
   reviews: MovieReviews | null;
 }
 
-/**
- * The CMS `movie` catalog of a city, keyed by lowercased movie name. The
- * Caribbean API names the cartelera rows exactly as the agent named the nodes,
- * so the name is the join key between the live billboard and the catalog.
- */
-export async function getMovieCatalog(
-  citySlug: string,
-): Promise<Record<string, CatalogMovie>> {
-  const movies = await getDescendantsOfType(`/${citySlug}/cines`, "movie");
-  const catalog: Record<string, CatalogMovie> = {};
-  for (const movie of movies) {
-    catalog[movie.name.toLowerCase()] = {
-      path: movie.route.path,
-      trailerYoutubeId: text(movie, "trailerYoutubeId") || null,
-      reviews: movieReviews(movie),
-    };
-  }
-  return catalog;
-}
-
 /** Billboard rows as the props `MovieCard` renders. */
 export function toMovieCards(
   citySlug: string,
   billboard: MovieBillboard[],
+  locale: Locale,
   catalog: Record<string, CatalogMovie> = {},
 ): MovieCardProps[] {
   return billboard.map((movie) => ({
@@ -600,7 +595,7 @@ export function toMovieCards(
       address: cinema.address,
       lat: cinema.lat,
       lng: cinema.lng,
-      portalPath: cinemaPortalPath(citySlug, cinema),
+      portalPath: cinemaPortalPath(citySlug, cinema, locale),
       showtimes: showtimes.map((showtime) => ({
         id: showtime.id,
         time: showtime.time,
@@ -609,20 +604,6 @@ export function toMovieCards(
       })),
     })),
   }));
-}
-
-/** Today's richest movies in a city, ready to render. */
-export async function getTopMoviesToday(
-  citySlug: string,
-  limit: number,
-): Promise<MovieCardProps[]> {
-  if (!CINEMAS_BY_CITY[citySlug]) return [];
-  const catalog = await getMovieCatalog(citySlug);
-  const billboard = await getMovieBillboard(citySlug, todayInDR(), {
-    catalog,
-    limit,
-  });
-  return toMovieCards(citySlug, billboard, catalog);
 }
 
 /**
@@ -634,6 +615,7 @@ export async function getMovieShowings(
   citySlug: string,
   movieName: string,
   date: string,
+  locale: Locale,
 ): Promise<MovieCardCinema[]> {
   if (!CINEMAS_BY_CITY[citySlug]) return [];
   const billboard = await getMovieBillboard(citySlug, date, {
@@ -642,7 +624,9 @@ export async function getMovieShowings(
   const match = billboard.find(
     (movie) => movie.name.toLowerCase() === movieName.toLowerCase(),
   );
-  return match ? (toMovieCards(citySlug, [match])[0]?.cinemas ?? []) : [];
+  return match
+    ? (toMovieCards(citySlug, [match], locale)[0]?.cinemas ?? [])
+    : [];
 }
 
 /** Ids of every Caribbean Cinemas theater in the city. */

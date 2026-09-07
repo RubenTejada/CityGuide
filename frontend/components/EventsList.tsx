@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { useWords } from "@/components/LocaleProvider";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { eventCategoryIcon } from "@/lib/sections";
@@ -53,7 +54,7 @@ function formatDate(value: string): string {
 
 function monthLabel(value: string): string {
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Fecha por confirmar";
+  if (Number.isNaN(date.getTime())) return "";
   const label = monthFormat.format(date);
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
@@ -135,6 +136,7 @@ export function EventCard({
 }
 
 export default function EventsList({ events }: { events: EventEntry[] }) {
+  const words = useWords();
   // Empty = every category, which is what the dropdown shows unticked.
   const [categoryPicks, setCategoryPicks] = useState<string[]>([]);
   const [view, setView] = useState<ListingView>("lista");
@@ -150,7 +152,8 @@ export default function EventsList({ events }: { events: EventEntry[] }) {
   const sorted = useMemo(
     () =>
       [...events].sort(
-        (a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime(),
+        (a, b) =>
+          new Date(a.startDate).getTime() - new Date(b.startDate).getTime(),
       ),
     [events],
   );
@@ -179,7 +182,7 @@ export default function EventsList({ events }: { events: EventEntry[] }) {
         <div className="mt-6 flex flex-wrap items-center gap-2">
           {categories.length > 1 && (
             <FilterDropdown
-              label="Categoría"
+              label={words.map.category}
               options={categories}
               selected={categoryPicks}
               onToggle={(value) =>
@@ -202,9 +205,7 @@ export default function EventsList({ events }: { events: EventEntry[] }) {
       {view === "mapa" && filtered.length > 0 && (
         <div className="mt-8">
           {markers.length === 0 ? (
-            <p className="text-neutral-500">
-              Ninguno de estos eventos tiene ubicación en el mapa.
-            </p>
+            <p className="text-neutral-500">{words.events.noneOnMap}</p>
           ) : (
             <MarkersMap
               markers={markers}
@@ -229,7 +230,9 @@ export default function EventsList({ events }: { events: EventEntry[] }) {
 
       {view === "lista" && past.length > 0 && (
         <section className="mt-10">
-          <h2 className="text-lg font-semibold text-neutral-500">Eventos pasados</h2>
+          <h2 className="text-lg font-semibold text-neutral-500">
+            Eventos pasados
+          </h2>
           <div className="mt-4 grid gap-4 opacity-70 md:grid-cols-2">
             {past.map((event) => (
               <EventCard key={event.id} event={event} />
@@ -239,7 +242,7 @@ export default function EventsList({ events }: { events: EventEntry[] }) {
       )}
 
       {filtered.length === 0 && (
-        <p className="mt-8 text-neutral-500">No hay eventos publicados todavía.</p>
+        <p className="mt-8 text-neutral-500">{words.events.empty}</p>
       )}
     </div>
   );

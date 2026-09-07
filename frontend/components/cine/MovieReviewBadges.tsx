@@ -1,8 +1,5 @@
-import {
-  imdbUrl,
-  rottenTomatoesUrl,
-  type MovieReviews,
-} from "@/lib/cinema";
+import { imdbUrl, rottenTomatoesUrl, type MovieReviews } from "@/lib/cinema";
+import { INTL_LOCALE, type Locale } from "@/lib/i18n";
 
 /**
  * IMDb and Rotten Tomatoes scores, each linking out to the movie there.
@@ -10,10 +7,12 @@ import {
  * agent fills them, so a brand-new title can be on screen before they exist.
  */
 export default function MovieReviewBadges({
+  locale,
   movieName,
   reviews,
   size = "md",
 }: {
+  locale: Locale;
   movieName: string;
   reviews: MovieReviews | null;
   size?: "sm" | "md";
@@ -45,7 +44,7 @@ export default function MovieReviewBadges({
               <span className="text-neutral-400">/10</span>
               {reviews.imdbVotes && (
                 <span className="ml-1 font-normal text-neutral-400">
-                  ({compactVotes(reviews.imdbVotes)})
+                  ({compactVotes(reviews.imdbVotes, locale)})
                 </span>
               )}
             </span>
@@ -80,8 +79,8 @@ export default function MovieReviewBadges({
  * "183,6 k"), which reads as a typo in a row of badges. es-MX is the same
  * Spanish with a consistent lowercase "k".
  */
-function compactVotes(votes: number): string {
-  return new Intl.NumberFormat("es-MX", {
+function compactVotes(votes: number, locale: Locale): string {
+  return new Intl.NumberFormat(INTL_LOCALE[locale], {
     notation: "compact",
     maximumFractionDigits: 1,
   }).format(votes);

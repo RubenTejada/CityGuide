@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { useLocale } from "@/components/LocaleProvider";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { RatingBadge } from "./Rating";
@@ -114,6 +115,7 @@ export function MapPanelRow({
   detail: ReactNode;
   onPoint: () => void;
 }) {
+  const locale = useLocale();
   // Section glyphs (bundled SVGs) carry their own background and fill the
   // plate; company logos are letterboxed on white, as in the map pins.
   const isSectionIcon = thumbnail?.endsWith(".svg") ?? false;
@@ -134,7 +136,9 @@ export function MapPanelRow({
               alt=""
               fill
               unoptimized={isSectionIcon}
-              className={isSectionIcon ? "object-cover" : "object-contain p-0.5"}
+              className={
+                isSectionIcon ? "object-cover" : "object-contain p-0.5"
+              }
               sizes="40px"
             />
           </div>
@@ -150,6 +154,7 @@ export function MapPanelRow({
               value={rating}
               count={ratingCount}
               className="shrink-0 !text-xs"
+              locale={locale}
             />
           </span>
           <span className="mt-0.5 block truncate text-xs text-neutral-500">

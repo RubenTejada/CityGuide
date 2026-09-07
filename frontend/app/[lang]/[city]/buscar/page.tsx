@@ -2,29 +2,28 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import PlaceCard from "@/components/PlaceCard";
+import { localeHref, t, type Locale } from "@/lib/i18n";
 import { fold } from "@/lib/search";
-import {
-  getDescendantsOfType,
-  getItem,
-  text,
-  type UmbracoItem,
-} from "@/lib/umbraco";
+import { activeLocale, getDescendantsOfType, getItem } from "@/lib/cms";
+import { text, type UmbracoItem } from "@/lib/umbraco";
 
 export const revalidate = 600;
 
 export async function generateMetadata({
   params,
-}: {
-  params: Promise<{ city: string }>;
-}): Promise<Metadata> {
-  const { city: citySlug } = await params;
+}: PageProps<"/[lang]/[city]/buscar">): Promise<Metadata> {
+  const { lang, city: citySlug } = await params;
+  const locale = lang as Locale;
+  const words = t(locale).search;
   const city = await getItem(`/${citySlug}`);
+  const name = city?.name ?? words.theCity;
   return {
-    title: `Buscar en ${city?.name ?? "la ciudad"}`,
-    description: `Busca lugares, empresas y eventos en ${city?.name ?? "la ciudad"}.`,
-    // Result pages are thin and unbounded: crawl the links, index nothing.
+    title: words.title(name),
+    description: words.metaDescription(name),
+    // Result pages are thin and unbounded: crawl the links, index nothing. They
+    // declare no hreflang pair either: a page out of the index has nothing to pair.
     robots: { index: false, follow: true },
-    alternates: { canonical: `/${citySlug}/buscar` },
+    alternates: { canonical: localeHref(locale, `/${citySlug}/buscar`) },
   };
 }
 
@@ -47,6 +46,8 @@ export default async function SearchPage({
   params: Promise<{ city: string }>;
   searchParams: Promise<{ q?: string }>;
 }) {
+  const locale = await activeLocale();
+  const words = t(locale);
   const [{ city: citySlug }, { q = "" }] = await Promise.all([
     params,
     searchParams,
@@ -79,24 +80,20 @@ export default async function SearchPage({
     ? await getDescendantsOfType(city.route.path, "company")
     : [];
   const companyOf = (place: UmbracoItem) =>
-    allCompanies.find((c) =>
-      place.route.path.startsWith(c.route.path),
-    ) ?? null;
+    allCompanies.find((c) => place.route.path.startsWith(c.route.path)) ?? null;
 
   return (
     <main className="mx-auto max-w-6xl px-6 py-10">
       {!needle ? (
-        <p className="text-neutral-600">
-          Escribe algo en la barra de búsqueda para encontrar lugares, empresas
-          y eventos en {city.name}.
-        </p>
+        <p className="text-neutral-600">{words.search.prompt}</p>
       ) : (
         <>
           <h1 className="text-2xl font-bold">
-            Resultados para «{q.trim()}»
+            {words.search.heading(q.trim())}
           </h1>
           <p className="mt-1 text-sm text-neutral-500">
-            {total === 1 ? "1 resultado" : `${total} resultados`} en {city.name}
+            {words.search.count(total)}
+            {words.search.inCity(city.name)}
           </p>
 
           {[...companies, ...places].length > 0 && (
@@ -105,7 +102,10 @@ export default async function SearchPage({
                 <PlaceCard
                   key={item.id}
                   place={item}
-                  company={item.contentType === "place" ? companyOf(item) : null}
+                  company={
+                    item.contentType === "place" ? companyOf(item) : null
+                  }
+                  locale={locale}
                 />
               ))}
             </div>
@@ -113,7 +113,7 @@ export default async function SearchPage({
 
           {events.length > 0 && (
             <section className="mt-10">
-              <h2 className="text-xl font-semibold">Eventos</h2>
+              <h2 className="text-xl font-semibold">{words.map.events}</h2>
               <div className="mt-4 grid gap-4 md:grid-cols-3">
                 {events.map((event) => (
                   <Link
@@ -135,10 +135,7 @@ export default async function SearchPage({
           )}
 
           {total === 0 && (
-            <p className="mt-6 text-neutral-600">
-              No encontramos nada con ese término. Prueba con otra palabra o
-              explora las categorías del menú.
-            </p>
+            <p className="mt-6 text-neutral-600">{words.search.empty}</p>
           )}
         </>
       )}

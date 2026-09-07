@@ -7,15 +7,20 @@ import HeroCarousel, { type HeroSlide } from "@/components/HeroCarousel";
 import JsonLd from "@/components/JsonLd";
 import PlaceCard from "@/components/PlaceCard";
 import {
-  byRating,
+  activeLocale,
+  alternateOf,
   getChildren,
   getDescendantsOfType,
   getItem,
+} from "@/lib/cms";
+import {
+  byRating,
   isComingSoon,
   photoUrl,
   text,
   type UmbracoItem,
 } from "@/lib/umbraco";
+import { INTL_LOCALE, localeHref, t, type Locale } from "@/lib/i18n";
 import { sectionListImage } from "@/lib/sections";
 import {
   absoluteImage,
@@ -33,24 +38,26 @@ export const revalidate = 600;
 
 export async function generateMetadata({
   params,
-}: {
-  params: Promise<{ city: string }>;
-}): Promise<Metadata> {
-  const { city: citySlug } = await params;
+}: PageProps<"/[lang]/[city]">): Promise<Metadata> {
+  const { lang, city: citySlug } = await params;
+  const locale = lang as Locale;
+  const words = t(locale).seo;
   const city = await getItem(`/${citySlug}`);
   if (!city) return {};
   return pageMetadata({
     title: seoTitle(
       city,
-      `${city.name}: qué hacer, dónde comer y salir`,
-      `Qué hacer en ${city.name}`,
+      words.cityTitle(city.name),
+      words.cityTitleShort(city.name),
     ),
     description: seoDescription(
       city,
       text(city, "intro"),
-      `Guía de ${city.name}: restaurantes, bares, tiendas, cines, atracciones y eventos, con mapas, horarios y contactos.`,
+      words.cityFallback(city.name),
     ),
     path: city.route.path,
+    locale,
+    alternate: await alternateOf(city, locale),
     image: photoUrl(city),
     noIndex: isNoIndex(city) || isComingSoon(city),
   });
@@ -72,26 +79,30 @@ function sectionImage(section: UmbracoItem, places: UmbracoItem[]): string {
   return sectionListImage(section.route.path);
 }
 
-function formatDate(value: unknown): string {
+function formatDate(value: unknown, locale: Locale): string {
   if (typeof value !== "string") return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat("es-DO", { dateStyle: "long" }).format(date);
+  return new Intl.DateTimeFormat(INTL_LOCALE[locale], {
+    dateStyle: "long",
+  }).format(date);
 }
 
 /** A city announced in the switcher whose guide is not written yet. */
-function ComingSoon({ city }: { city: UmbracoItem }) {
+async function ComingSoon({ city }: { city: UmbracoItem }) {
+  const locale = await activeLocale();
+  const words = t(locale);
   return (
     <main>
       <JsonLd
         data={breadcrumbJsonLd([
-          { name: "Inicio", path: "/" },
+          { name: words.nav.home, path: localeHref(locale, "/") },
           { name: city.name, path: city.route.path },
         ])}
       />
       <section className="mx-auto max-w-2xl px-6 py-20 text-center">
         <p className="text-sm font-semibold uppercase tracking-wide text-brand-600">
-          Próximamente
+          {words.city.comingSoon}
         </p>
         <h1 className="mt-3 text-3xl font-bold sm:text-4xl">
           {city.name} está en construcción
@@ -104,7 +115,7 @@ function ComingSoon({ city }: { city: UmbracoItem }) {
           href="/"
           className="mt-8 inline-block rounded-full bg-sun-400 px-5 py-2.5 text-sm font-semibold text-neutral-900 shadow-sm transition-colors hover:bg-sun-300"
         >
-          Elegir otra ciudad
+          {words.city.otherCity}
         </Link>
       </section>
     </main>
@@ -116,6 +127,8 @@ export default async function CityLandingPage({
 }: {
   params: Promise<{ city: string }>;
 }) {
+  const locale = await activeLocale();
+  const words = t(locale);
   const { city: citySlug } = await params;
   const city = await getItem(`/${citySlug}`);
   if (!city || city.contentType !== "city") notFound();
@@ -131,7 +144,9 @@ export default async function CityLandingPage({
 
   const categories = sections.filter((s) => s.contentType === "categoryPage");
   const eventsSection = sections.find((s) => s.contentType === "eventsPage");
-  const articlesSection = sections.find((s) => s.contentType === "articlesPage");
+  const articlesSection = sections.find(
+    (s) => s.contentType === "articlesPage",
+  );
   const articles = allArticles
     .sort((a, b) => {
       const time = (item: UmbracoItem) => {
@@ -161,7 +176,7 @@ export default async function CityLandingPage({
       <JsonLd
         data={[
           breadcrumbJsonLd([
-            { name: "Inicio", path: "/" },
+            { name: words.nav.home, path: localeHref(locale, "/") },
             { name: city.name, path: city.route.path },
           ]),
           prune({
@@ -191,7 +206,9 @@ export default async function CityLandingPage({
       <section className="bg-white">
         <div className="mx-auto max-w-6xl px-6 pt-8 pb-3">
           <h1 className="text-3xl font-bold sm:text-4xl">{city.name}</h1>
-          <p className="mt-2 max-w-2xl text-neutral-600">{text(city, "intro")}</p>
+          <p className="mt-2 max-w-2xl text-neutral-600">
+            {text(city, "intro")}
+          </p>
         </div>
       </section>
 
@@ -199,7 +216,9 @@ export default async function CityLandingPage({
         <div>
           <HeroCarousel slides={slides} />
 
-          <h2 className="mt-10 text-xl font-semibold">¿Qué buscas?</h2>
+          <h2 className="mt-10 text-xl font-semibold">
+            {words.city.lookingFor}
+          </h2>
           <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3">
             {sections.map((section) => {
               const photo = sectionImage(section, allPlaces);
@@ -230,13 +249,15 @@ export default async function CityLandingPage({
 
         <aside>
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold">Próximos eventos</h2>
+            <h2 className="text-xl font-semibold">
+              {words.city.upcomingEvents}
+            </h2>
             {eventsSection && (
               <Link
                 href={eventsSection.route.path}
                 className="rounded bg-neutral-900 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-neutral-700"
               >
-                Ver todos
+                {words.city.seeAll}
               </Link>
             )}
           </div>
@@ -249,7 +270,7 @@ export default async function CityLandingPage({
               >
                 <h3 className="font-semibold">{event.name}</h3>
                 <p className="mt-0.5 text-xs font-medium uppercase tracking-wide text-brand-600">
-                  {formatDate(event.properties["startDate"])}
+                  {formatDate(event.properties["startDate"], locale)}
                 </p>
                 <p className="mt-0.5 text-sm text-neutral-500">
                   {text(event, "venueName")}
@@ -263,9 +284,7 @@ export default async function CityLandingPage({
               </Link>
             ))}
             {events.length === 0 && (
-              <p className="text-sm text-neutral-500">
-                No hay eventos publicados todavía.
-              </p>
+              <p className="text-sm text-neutral-500">{words.city.noEvents}</p>
             )}
           </div>
         </aside>
@@ -274,19 +293,26 @@ export default async function CityLandingPage({
       {articles.length > 0 && (
         <section className="mx-auto max-w-6xl px-6 pb-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold">Últimos artículos</h2>
+            <h2 className="text-xl font-semibold">
+              {words.city.latestArticles}
+            </h2>
             {articlesSection && (
               <Link
                 href={articlesSection.route.path}
                 className="rounded bg-neutral-900 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-neutral-700"
               >
-                Ver todos
+                {words.city.seeAll}
               </Link>
             )}
           </div>
           <div className="mt-5 space-y-5">
             {articles.map((article) => (
-              <ArticleCard key={article.id} article={article} compact />
+              <ArticleCard
+                key={article.id}
+                article={article}
+                compact
+                locale={locale}
+              />
             ))}
           </div>
         </section>
@@ -294,10 +320,10 @@ export default async function CityLandingPage({
 
       {featured.length > 0 && (
         <section className="mx-auto max-w-6xl px-6 py-12">
-          <h2 className="text-xl font-semibold">Lugares destacados</h2>
+          <h2 className="text-xl font-semibold">{words.city.featured}</h2>
           <div className="mt-5 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {featured.map((place) => (
-              <PlaceCard key={place.id} place={place} />
+              <PlaceCard key={place.id} place={place} locale={locale} />
             ))}
           </div>
         </section>

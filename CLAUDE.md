@@ -321,7 +321,7 @@ Content model (all created in code, not in the backoffice):
 
 Company inheritance: a `place` under a `company` stores only its own data (name, address, coordinates); empty fields (phone, website, hours, description, photo) fall back to the parent company **in the frontend** (`PlaceView` in the catch-all page). Category/subcategory listings show companies as single cards and never flatten their branch places (`listingEntries`); branches appear only inside the company page. Every listing (category, subcategory, mall groups) is ordered best rated first by `listingEntriesByRating`: a company or mall carries no rating of its own, so it ranks by its best-rated nested place, and unrated entries keep their original order at the end.
 
-Frontend routing is a single catch-all (`frontend/app/[city]/[...slug]/page.tsx`) that switches on the item's `contentType` — new document types need a new case there.
+Frontend routing is a single catch-all (`frontend/app/[lang]/[city]/[...slug]/page.tsx`) that switches on the item's `contentType` — new document types need a new case there.
 
 A `movie` has its own page (`MovieView`): the CMS catalog entry (poster, sinopsis, trailer button, IMDb/Rotten Tomatoes badges) over the *live* Caribbean showings — every cinema in the city presenting it on the chosen date (`?fecha=`), its showtimes as booking links, and a map of those cinemas. Cartelera cards link into it whenever the catalog has the movie, matching on name (`getMovieCatalog`, keyed by lowercased name — the same join the trailer override and the badges use); a title the agent has not catalogued yet simply keeps the inline expander and no link. The per-cinema list and its map are `MovieShowtimes`, shared by the card's expanded body and the movie page, and the date pills are `DateTabs`, shared by the movie page and `Cartelera`. `getMovieShowings` asks for the billboard with `trailers: false` — the movie page reads its trailer from the CMS, so the slow YouTube fallback search must not run there.
 
@@ -373,8 +373,8 @@ All of it is derived from the CMS item, so content published later is covered wi
 (60/160-char budgets, with progressively shorter title candidates instead of mid-word truncation),
 and every schema.org builder. `components/JsonLd.tsx` renders it.
 
-- **Per page** (`generateMetadata` in `app/[city]/[...slug]/page.tsx`, plus `app/[city]/page.tsx`,
-  `app/page.tsx` and the root layout): a self-referencing canonical, `og:*`/`twitter:*`, explicit robots
+- **Per page** (`generateMetadata` in `app/[lang]/[city]/[...slug]/page.tsx`, plus `app/[lang]/[city]/page.tsx`,
+  `app/[lang]/page.tsx` and the root layout): a self-referencing canonical, `og:*`/`twitter:*`, explicit robots
   directives, and a document-type-specific title/description. Query strings (`?fecha=`, `?q=`) never
   reach the canonical. The home page states its own metadata through `pageMetadata` too, from the
   `SITE_TITLE`/`SITE_DESCRIPTION` the root layout also uses, so every route's canonical and OG tags come
@@ -389,7 +389,7 @@ and every schema.org builder. `components/JsonLd.tsx` renders it.
   gave it `intro`. The count comes from `listingCount`, which reuses the ISR-cached queries the view
   itself runs, so the metadata pass costs no extra request.
 - **`og:image`**: a page with a photo sends it; a page without one falls back to
-  `app/opengraph-image.tsx`. That fallback only applies when the metadata declares no images at all, so
+  `app/[lang]/opengraph-image.tsx`. That fallback only applies when the metadata declares no images at all, so
   `pageMetadata` omits the key entirely instead of setting it to `undefined` — with the key present
   every page went out without a preview image, home and section pages included.
 - **Structured data**: `BreadcrumbList` on every content page (from the existing breadcrumb),
@@ -399,7 +399,7 @@ and every schema.org builder. `components/JsonLd.tsx` renders it.
   is parsed into `openingHoursSpecification`; unparseable lines are dropped.
 - **`app/sitemap.ts`** enumerates every published node (`getDescendants`, `updateDate` as `<lastmod>`),
   **`app/robots.ts`** points at it and disallows `/api/` and `/*/buscar`; the search page is also
-  `noindex, follow`. **`app/opengraph-image.tsx`** is the branded fallback card for pages without a photo.
+  `noindex, follow`. **`app/[lang]/opengraph-image.tsx`** is the branded fallback card for pages without a photo.
 - **`NEXT_PUBLIC_SITE_URL`** must be set per environment — it is the origin of every canonical, OG URL
   and sitemap entry. It defaults to `https://quehacerrd.com`.
 - **Editor overrides**: the "SEO" tab (`metaTitle`, `metaDescription`, `noIndex`) exists on every
@@ -479,6 +479,47 @@ URL segment (`/santo-domingo/restaurantes` and `/en/santo-domingo/restaurants`).
   in, `DefaultAzureCredential` cannot buy another (`AADSTS700024`). Nothing is lost — the pass
   writes node by node and the next one resumes where it stopped — so a first full translation
   simply takes two runs.
+- **The frontend serves both from one tree.** Every route lives under `app/[lang]`, whose
+  layout is the root layout (`<html lang>` comes from the segment), but only English shows
+  the segment: `proxy.ts` — Next 16 renamed middleware to Proxy — rewrites "/santo-domingo/…"
+  to "/es/santo-domingo/…" without the visitor seeing it, and redirects a request that spells
+  "/es" out to the URL without it, so no page is reachable at two addresses. Spanish keeps
+  the URLs the portal has always had; they are indexed and linked.
+- **The language is read from the route, not passed around.** `next/root-params` gives any
+  Server Component the segment without prop drilling (`activeLocale` in `lib/cms.ts`), and
+  Client Components read it from a context (`LocaleProvider`, `useWords`). That API exists
+  only in Server Components, which is why the modules that fetch are split from the ones the
+  browser gets: `lib/cms.ts` (fetching) against `lib/umbraco.ts` (types and property
+  helpers), `lib/searchIndex.ts` against `lib/search.ts`, `lib/movieCatalog.ts` against
+  `lib/cinema.ts`. Importing a fetching module from a card or a map breaks the build with
+  "'next/root-params' cannot be imported from a Client Component module" — keep the two
+  sides apart. The Route Handler and the sitemap, which have no route segment to read, pass
+  the language explicitly (every fetch takes it as an optional last argument).
+- **`lib/i18n.ts` holds every word the frontend writes itself** — chrome, empty states, the
+  derived SEO sentences — as one dictionary per language. Content never passes through it:
+  Umbraco already served the page's language. Two closed vocabularies do get translated on
+  render, because they are keys rather than prose: a place's `facilities` and an event's
+  category. Dates and numbers are formatted with `INTL_LOCALE`, and the free-text "Horario"
+  parses in either language (`DAY_TOKENS` in `lib/seo.ts`, `DAY_INDEX` in the catch-all).
+- **Section configuration is keyed by the Spanish slug.** Section images, map glyphs,
+  schema.org business types and the "subcategory is the category" rule are all looked up by
+  slug, and English URLs carry translated ones — `lib/sectionSlugs.ts` maps them back
+  (`canonicalPath`, and `localizedSectionPath` for the paths the app builds itself, like a
+  cinema's branch page). It also drops the "/en" prefix, which would otherwise shift every
+  path index by one; `contentSegments` does the same where a page reads segments directly.
+- **The language switch is a route, not a link.** A page's path differs by more than its
+  prefix, so `LanguageToggle` links to `/api/language`, which looks the page up by id in the
+  language asked for and redirects. Pages the CMS does not own (contact, search) fall back to
+  the same path under the other prefix; content nobody has translated falls back to the
+  city's front page rather than to a 404.
+- **What the pages declare**: a self-referencing canonical, an `hreflang` pair plus
+  `x-default` (only when the counterpart really exists — `alternateOf` reads it by id, and an
+  alternate pointing at a 404 makes Google drop both sides), `og:locale` with
+  `og:locale:alternate`, `inLanguage` on the site, article, event and movie JSON-LD, and a
+  sitemap listing both languages with `<xhtml:link rel="alternate">` per entry. The search
+  page stays `noindex` and declares no pair. `/{ciudad}/contacto` and `/{ciudad}/buscar` keep
+  their Spanish segments in both languages: they are code routes, one is out of the index and
+  the other is a footer link, and a translated segment there would buy nothing.
 - **The migration is irreversible and rewrites content data.** Back the database up before
   deploying it. Production runs on **Azure SQL** (`quehacerrd-sql/cityguide`), not on the SQLite
   file the local install uses and not on the leftover `.db` files still sitting in the app's
@@ -543,4 +584,4 @@ validation are what actually guard the inbox.
 - Umbraco runtime state (SQLite DB, logs, media) is gitignored under `CityGuideWeb/umbraco/Data/` and `wwwroot/media/`. Deleting them is the supported "factory reset".
 - Agent config: one `Runs` entry in `CityGuide.Agent/appsettings.json` per Google query + target CMS content path (e.g. `/santo-domingo/restaurantes/china`).
 - Delivery API is public read; before exposing the CMS publicly set an `ApiKey` under `Umbraco:CMS:DeliveryApi`.
-- Deliberate v1 omissions (do not build unasked): user accounts/comments/favorites, multi-language variants, agent photo upload, webhook-driven revalidation.
+- Deliberate v1 omissions (do not build unasked): user accounts/comments/favorites, agent photo upload, webhook-driven revalidation.

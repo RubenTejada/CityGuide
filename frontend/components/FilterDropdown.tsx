@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useWords } from "@/components/LocaleProvider";
 
 /**
  * Multi-select dropdown used by the listing filters and by the
@@ -29,6 +30,7 @@ export default function FilterDropdown({
   icons?: Record<string, string>;
   className?: string;
 }) {
+  const words = useWords();
   const [open, setOpen] = useState(false);
 
   return (
@@ -54,7 +56,7 @@ export default function FilterDropdown({
         <>
           <button
             type="button"
-            aria-label="Cerrar filtro"
+            aria-label={words.listing.closeFilter}
             onClick={() => setOpen(false)}
             className="fixed inset-0 z-10 cursor-default"
           />

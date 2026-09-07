@@ -1,6 +1,7 @@
 "use client";
 
 import { Children, useRef, useState, type ReactNode } from "react";
+import { useWords } from "@/components/LocaleProvider";
 
 const PAGE_SIZE = 12;
 
@@ -18,6 +19,7 @@ export default function PaginatedList({
   children: ReactNode;
   className?: string;
 }) {
+  const words = useWords();
   const items = Children.toArray(children);
   const [page, setPage] = useState(1);
   const top = useRef<HTMLDivElement>(null);
@@ -36,13 +38,13 @@ export default function PaginatedList({
       <div className={className}>{visible}</div>
       {pageCount > 1 && (
         <nav
-          aria-label="Paginación"
+          aria-label={words.listing.pagination}
           className="mt-8 flex flex-wrap items-center justify-center gap-1.5"
         >
           <PageButton
             disabled={current === 1}
             onClick={() => goTo(current - 1)}
-            label="Página anterior"
+            label={words.listing.previousPage}
           >
             Anterior
           </PageButton>
@@ -65,7 +67,7 @@ export default function PaginatedList({
           <PageButton
             disabled={current === pageCount}
             onClick={() => goTo(current + 1)}
-            label="Página siguiente"
+            label={words.listing.nextPage}
           >
             Siguiente
           </PageButton>

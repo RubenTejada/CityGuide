@@ -78,10 +78,18 @@ function AlcazarScene() {
         <path d="M60 100 H140" strokeWidth="3" />
         <path d="M68 84 h8 v8 h-8 z M124 84 h8 v8 h-8 z" strokeWidth="2.5" />
         {[80, 94, 108].map((x) => (
-          <path key={x} d={`M${x} 100 v-8 a6 6 0 0 1 12 0 v8`} strokeWidth="2.5" />
+          <path
+            key={x}
+            d={`M${x} 100 v-8 a6 6 0 0 1 12 0 v8`}
+            strokeWidth="2.5"
+          />
         ))}
         {[74, 90, 106, 122].map((x) => (
-          <path key={x} d={`M${x} 128 v-16 a5 5 0 0 1 10 0 v16`} strokeWidth="2.5" />
+          <path
+            key={x}
+            d={`M${x} 128 v-16 a5 5 0 0 1 10 0 v16`}
+            strokeWidth="2.5"
+          />
         ))}
       </g>
       <g transform="translate(150 128) scale(-1.3 1.3)">
@@ -109,10 +117,18 @@ function MonumentScene() {
         <path d="M72 100 H120" strokeWidth="3" />
         <path d="M74 78 H118" strokeWidth="3" />
         {[81, 93, 105].map((x) => (
-          <path key={x} d={`M${x} 128 v-13 a5 5 0 0 1 10 0 v13`} strokeWidth="2.5" />
+          <path
+            key={x}
+            d={`M${x} 128 v-13 a5 5 0 0 1 10 0 v13`}
+            strokeWidth="2.5"
+          />
         ))}
         {[82, 94, 106].map((x) => (
-          <path key={x} d={`M${x} 100 v-6 a4 4 0 0 1 8 0 v6`} strokeWidth="2.5" />
+          <path
+            key={x}
+            d={`M${x} 100 v-6 a4 4 0 0 1 8 0 v6`}
+            strokeWidth="2.5"
+          />
         ))}
         {/* Torre */}
         <path d="M89 78 V50 H103 V78" strokeWidth="3.5" />
@@ -155,7 +171,10 @@ function BeachScene() {
  * así que cada recorte se ajusta al suyo y todos comparten la misma proporción
  * (13:10) para que los logos del encabezado se vean del mismo tamaño.
  */
-const CITY_SCENES: Record<string, { Scene: () => React.ReactElement; crop: string }> = {
+const CITY_SCENES: Record<
+  string,
+  { Scene: () => React.ReactElement; crop: string }
+> = {
   "santo-domingo": { Scene: AlcazarScene, crop: "30 44 146 112" },
   santiago: { Scene: MonumentScene, crop: "28 30 153 118" },
   "punta-cana": { Scene: BeachScene, crop: "30 44 140 108" },
@@ -190,7 +209,14 @@ export function CityEmblem({
       {ring && (
         <>
           <circle cx="100" cy="100" r="96" stroke="#fff" strokeWidth="2.5" />
-          <circle cx="100" cy="100" r="88" stroke="#fff" strokeWidth="1" opacity="0.3" />
+          <circle
+            cx="100"
+            cy="100"
+            r="88"
+            stroke="#fff"
+            strokeWidth="1"
+            opacity="0.3"
+          />
         </>
       )}
       <Scene />

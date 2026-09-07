@@ -1,8 +1,9 @@
-// Typed client for the Umbraco Content Delivery API v2.
-// All fetches are server-side and cached with ISR (revalidate below).
-
-const BASE_URL = process.env.UMBRACO_BASE_URL ?? "http://localhost:54509";
-export const REVALIDATE_SECONDS = 600;
+// Shape of a Umbraco Content Delivery API v2 item, and the helpers that read one.
+//
+// Pure and client-safe on purpose: cards, maps and badges read items in the browser,
+// and pulling the fetch layer in with them would drag `next/root-params` — which only
+// exists in Server Components — into the client bundle. The fetching lives in
+// lib/cms.ts.
 
 export interface MediaItem {
   url: string;
@@ -20,103 +21,6 @@ export interface UmbracoItem {
   properties: Record<string, unknown>;
 }
 
-interface UmbracoList {
-  total: number;
-  items: UmbracoItem[];
-}
-
-async function api(path: string): Promise<Response> {
-  return fetch(`${BASE_URL}/umbraco/delivery/api/v2${path}`, {
-    // Tagged so /api/revalidate (called by an Umbraco webhook on publish/
-    // unpublish/delete) can drop every CMS response at once; the time-based
-    // revalidate stays as a fallback.
-    next: { revalidate: REVALIDATE_SECONDS, tags: ["umbraco"] },
-  });
-}
-
-/**
- * Fetch a single content item by its route path (e.g. "/santo-domingo/restaurantes").
- * `expand` asks the Delivery API to fill in the properties of the content a picker
- * references ("properties[establishments]"); without it those come back as bare
- * name-and-route stubs.
- */
-export async function getItem(
-  path: string,
-  expand?: string,
-): Promise<UmbracoItem | null> {
-  const res = await api(
-    `/content/item${path.startsWith("/") ? path : `/${path}`}` +
-      (expand ? `?expand=${encodeURIComponent(expand)}` : ""),
-  );
-  if (!res.ok) return null;
-  return res.json();
-}
-
-/**
- * The content a multi-node picker on this item references, as full items. Empty
- * when the property is unset or the item was fetched without expanding it.
- */
-export function picked(item: UmbracoItem, alias: string): UmbracoItem[] {
-  const value = prop<UmbracoItem[]>(item, alias);
-  return Array.isArray(value) ? value.filter((entry) => entry?.route?.path) : [];
-}
-
-/** Fetch direct children of a content item, ordered by sortOrder. */
-export async function getChildren(path: string, take = 100): Promise<UmbracoItem[]> {
-  const res = await api(
-    `/content?fetch=${encodeURIComponent(`children:${path}`)}&sort=sortOrder:asc&take=${take}`,
-  );
-  if (!res.ok) return [];
-  const data: UmbracoList = await res.json();
-  return data.items;
-}
-
-/** Fetch all descendants of a content item filtered to one content type. */
-export async function getDescendantsOfType(
-  path: string,
-  contentType: string,
-  take = 500,
-): Promise<UmbracoItem[]> {
-  const res = await api(
-    `/content?fetch=${encodeURIComponent(`descendants:${path}`)}&filter=${encodeURIComponent(
-      `contentType:${contentType}`,
-    )}&take=${take}`,
-  );
-  if (!res.ok) return [];
-  const data: UmbracoList = await res.json();
-  return data.items;
-}
-
-/**
- * Every descendant of a content item, whatever its type, paged through the
- * Delivery API. Used by the sitemap, which must cover content types nobody
- * enumerated explicitly.
- */
-export async function getDescendants(path: string, max = 5000): Promise<UmbracoItem[]> {
-  const pageSize = 100;
-  const items: UmbracoItem[] = [];
-  for (let skip = 0; skip < max; skip += pageSize) {
-    const res = await api(
-      `/content?fetch=${encodeURIComponent(`descendants:${path}`)}&skip=${skip}&take=${pageSize}`,
-    );
-    if (!res.ok) break;
-    const data: UmbracoList = await res.json();
-    items.push(...data.items);
-    if (items.length >= data.total || data.items.length === 0) break;
-  }
-  return items;
-}
-
-/** All cities in the portal (children of the site root). */
-export async function getCities(): Promise<UmbracoItem[]> {
-  const res = await api(
-    `/content?filter=${encodeURIComponent("contentType:city")}&take=50`,
-  );
-  if (!res.ok) return [];
-  const data: UmbracoList = await res.json();
-  return data.items;
-}
-
 // ---- property helpers ----
 
 export function prop<T>(item: UmbracoItem, alias: string): T | undefined {
@@ -130,6 +34,17 @@ export function text(item: UmbracoItem, alias: string): string {
 export function num(item: UmbracoItem, alias: string): number {
   const value = item.properties[alias];
   return typeof value === "number" ? value : 0;
+}
+
+/**
+ * The content a multi-node picker on this item references, as full items. Empty
+ * when the property is unset or the item was fetched without expanding it.
+ */
+export function picked(item: UmbracoItem, alias: string): UmbracoItem[] {
+  const value = prop<UmbracoItem[]>(item, alias);
+  return Array.isArray(value)
+    ? value.filter((entry) => entry?.route?.path)
+    : [];
 }
 
 export function facilities(item: UmbracoItem): string[] {

@@ -5,6 +5,8 @@
 // - map icon: a small branded glyph used inside map pins, stored separately
 //   in /public/sections/icons/ so lists and maps can differ.
 
+import { canonicalPath } from "./sectionSlugs";
+
 /** Curated real photos (Wikimedia Commons) representing each section. */
 export const SECTION_LIST_IMAGES: Record<string, string> = {
   restaurantes:
@@ -88,8 +90,7 @@ const SUBCATEGORY_ICONS: Record<string, string> = {
  * back to a bare dot.
  */
 export function subcategoryIcon(routePath: string): string {
-  const slug =
-    routePath.replace(/\/+$/, "").split("/").filter(Boolean).pop() ?? "";
+  const slug = keySegments(routePath).pop() ?? "";
   return SUBCATEGORY_ICONS[slug] ?? sectionIcon(sectionSlug(routePath));
 }
 
@@ -134,15 +135,26 @@ export function sectionIconByName(name: string): string {
  */
 const EVENT_CATEGORY_ICONS: Record<string, string> = {
   Conciertos: "🎤",
-  "Música": "🎵",
+  Música: "🎵",
   "Teatro y Danza": "🎭",
   "Arte y Cultura": "🎨",
-  "Gastronomía": "🍽",
+  Gastronomía: "🍽",
   Deportes: "⚽",
   "Ferias y Exposiciones": "🎪",
-  "Espectáculos": "✨",
+  Espectáculos: "✨",
   Familia: "👨‍👩‍👧",
   Fiestas: "🥳",
+  // The English labels the translation pass writes (TranslatedVocabulary in the
+  // agent) are a closed set too, and share their glyph.
+  Concerts: "🎤",
+  Music: "🎵",
+  "Theater & Dance": "🎭",
+  "Arts & Culture": "🎨",
+  "Food & Drink": "🍽",
+  Sports: "⚽",
+  "Fairs & Expos": "🎪",
+  Shows: "✨",
+  Family: "👨‍👩‍👧",
 };
 
 /** Glyph of an event category; a ticket for anything unlisted. */
@@ -161,9 +173,18 @@ const SECTION_MAP_ICON_SLUGS = new Set([
   "eventos",
 ]);
 
+/**
+ * The segments every map below is keyed by: the language prefix dropped and the
+ * section slugs back in Spanish, so an English path ("/en/santo-domingo/restaurants")
+ * reads the same configuration as the Spanish one it translates.
+ */
+function keySegments(routePath: string): string[] {
+  return canonicalPath(routePath).split("/").filter(Boolean);
+}
+
 /** The section a content path belongs to: /<ciudad>/<seccion>/... */
 function sectionSlug(routePath: string): string {
-  return routePath.split("/").filter(Boolean)[1] ?? "";
+  return keySegments(routePath)[1] ?? "";
 }
 
 /**
@@ -172,7 +193,10 @@ function sectionSlug(routePath: string): string {
  * "Supermercados"), while a restaurant's subcategory is only its cuisine and
  * "Restaurantes" is the category a visitor groups by.
  */
-const SUBCATEGORY_IS_THE_CATEGORY = new Set(["tiendas", "empresas-y-servicios"]);
+const SUBCATEGORY_IS_THE_CATEGORY = new Set([
+  "tiendas",
+  "empresas-y-servicios",
+]);
 
 /**
  * The category an establishment is grouped under on a plaza's page: the section
@@ -181,13 +205,15 @@ const SUBCATEGORY_IS_THE_CATEGORY = new Set(["tiendas", "empresas-y-servicios"])
  */
 export function categoryPath(routePath: string): string {
   const segments = routePath.replace(/\/+$/, "").split("/").filter(Boolean);
+  // The English tree carries a language segment the Spanish one does not, so the
+  // depth is counted on the canonical path and applied past the prefix.
+  const prefix = segments[0] === "en" ? 1 : 0;
+  const key = keySegments(routePath);
   // [ciudad, sección, subcategoría, …]: only a subcategory with something below
   // it is a category — otherwise the third segment is the place itself.
   const depth =
-    SUBCATEGORY_IS_THE_CATEGORY.has(segments[1] ?? "") && segments.length > 3
-      ? 3
-      : 2;
-  return `/${segments.slice(0, depth).join("/")}`;
+    SUBCATEGORY_IS_THE_CATEGORY.has(key[1] ?? "") && key.length > 3 ? 3 : 2;
+  return `/${segments.slice(0, prefix + depth).join("/")}`;
 }
 
 /**
@@ -209,7 +235,7 @@ const CITY_SECTION_LIST_IMAGES: Record<string, string> = {
 
 /** Representative photo of the section a content path belongs to. */
 export function sectionListImage(routePath: string): string {
-  const segments = routePath.split("/").filter(Boolean);
+  const segments = keySegments(routePath);
   return (
     CITY_SECTION_LIST_IMAGES[`${segments[0] ?? ""}/${segments[1] ?? ""}`] ??
     SECTION_LIST_IMAGES[sectionSlug(routePath)] ??

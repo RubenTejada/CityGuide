@@ -1,14 +1,17 @@
 import Image from "next/image";
 import Link from "next/link";
 import { text, type UmbracoItem } from "@/lib/umbraco";
+import { INTL_LOCALE, t, type Locale } from "@/lib/i18n";
 import { sectionListImage } from "@/lib/sections";
 
-export function articleDate(article: UmbracoItem): string {
+export function articleDate(article: UmbracoItem, locale: Locale): string {
   const value = article.properties["publishDate"];
   if (typeof value !== "string") return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat("es-DO", { dateStyle: "long" }).format(date);
+  return new Intl.DateTimeFormat(INTL_LOCALE[locale], {
+    dateStyle: "long",
+  }).format(date);
 }
 
 /**
@@ -17,9 +20,11 @@ export function articleDate(article: UmbracoItem): string {
  * el contenido principal — la portada de la ciudad.
  */
 export default function ArticleCard({
+  locale,
   article,
   compact = false,
 }: {
+  locale: Locale;
   article: UmbracoItem;
   compact?: boolean;
 }) {
@@ -56,7 +61,7 @@ export default function ArticleCard({
       </div>
       <div className="flex min-w-0 flex-1 flex-col p-4 sm:p-5">
         <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">
-          {articleDate(article)}
+          {articleDate(article, locale)}
         </p>
         <h3 className="mt-1 text-lg font-semibold leading-snug group-hover:text-brand-600">
           {article.name}
@@ -65,7 +70,7 @@ export default function ArticleCard({
           {text(article, "summary")}
         </p>
         <p className="mt-auto pt-3 text-sm font-medium text-brand-600">
-          Leer artículo…
+          {t(locale).article.read}
         </p>
       </div>
     </Link>

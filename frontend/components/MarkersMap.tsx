@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useWords } from "@/components/LocaleProvider";
 import {
   APIProvider,
   AdvancedMarker,
@@ -111,6 +112,7 @@ export default function MarkersMap({
   locate?: boolean;
   heightClass?: string;
 }) {
+  const words = useWords();
   const [position, setPosition] = useState<google.maps.LatLngLiteral | null>(
     null,
   );
@@ -121,7 +123,7 @@ export default function MarkersMap({
 
   const askForLocation = () => {
     if (!navigator.geolocation) {
-      setLocateError("Tu navegador no comparte la ubicación.");
+      setLocateError(words.map.locateUnsupported);
       return;
     }
     setLocating(true);
@@ -135,7 +137,7 @@ export default function MarkersMap({
         setLocating(false);
       },
       () => {
-        setLocateError("No pudimos obtener tu ubicación.");
+        setLocateError(words.map.locateFailed);
         setLocating(false);
       },
       { enableHighAccuracy: true, timeout: 10_000, maximumAge: 60_000 },
@@ -168,10 +170,10 @@ export default function MarkersMap({
       side={
         position && (
           <>
-            <MapPanelHeader title="Cerca de ti" />
+            <MapPanelHeader title={words.map.nearYou} />
             <MapPanelList>
               {nearby.length === 0 && (
-                <MapPanelEmpty>Nada cerca por ahora.</MapPanelEmpty>
+                <MapPanelEmpty>{words.map.empty}</MapPanelEmpty>
               )}
               {nearby.map(({ marker, meters }) => (
                 <MapPanelRow
@@ -206,7 +208,7 @@ export default function MarkersMap({
           {position && (
             <AdvancedMarker
               position={position}
-              title="Tu ubicación"
+              title={words.map.yourLocation}
               zIndex={2000}
             >
               <VisitorPin />
@@ -237,10 +239,10 @@ export default function MarkersMap({
               <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
             </svg>
             {locating
-              ? "Buscando tu ubicación…"
+              ? words.map.locateSearching
               : position
-                ? "Actualizar mi ubicación"
-                : "Usar mi ubicación"}
+                ? words.map.locateUpdate
+                : words.map.locateUse}
           </button>
           {locateError && (
             <p className="mt-2 rounded-lg bg-white px-3 py-2 text-xs font-medium text-neutral-800 shadow-lg ring-1 ring-neutral-300">
@@ -260,12 +262,13 @@ export default function MarkersMap({
  * coordinates — custom marker content is anchored bottom-centre.
  */
 function VisitorPin() {
+  const words = useWords();
   return (
     <svg
       viewBox="84 8 344 500"
       className="h-12 w-9 drop-shadow-lg"
       role="img"
-      aria-label="Tu ubicación"
+      aria-label={words.map.yourLocation}
     >
       <path
         fill="#e8112d"

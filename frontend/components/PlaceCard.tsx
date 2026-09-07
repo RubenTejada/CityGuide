@@ -1,17 +1,20 @@
 import Image from "next/image";
 import Link from "next/link";
 import { facilities, photoUrl, text, type UmbracoItem } from "@/lib/umbraco";
+import { type Locale } from "@/lib/i18n";
 import { branchDisplayName } from "@/lib/branches";
 import { sectionListImage } from "@/lib/sections";
 import FacilityBadges from "./FacilityBadges";
 import Rating from "./Rating";
 
 export default function PlaceCard({
+  locale,
   place,
   fallbackPhoto,
   company,
   compact = false,
 }: {
+  locale: Locale;
   place: UmbracoItem;
   fallbackPhoto?: string | null;
   /** Company this place is a branch of: its name qualifies the branch's own. */
@@ -27,7 +30,8 @@ export default function PlaceCard({
   // Company logos (company cards, or branches inheriting the parent logo) are
   // arbitrary aspect ratios: letterbox them instead of cropping to the square.
   const isLogo =
-    inherited !== null && (place.contentType === "company" || ownPhoto === null);
+    inherited !== null &&
+    (place.contentType === "company" || ownPhoto === null);
   return (
     <Link
       href={place.route.path}
@@ -39,7 +43,9 @@ export default function PlaceCard({
         className={`relative flex-none overflow-hidden rounded-lg ${
           compact ? "h-20 w-20" : "h-28 w-28 sm:h-36 sm:w-36"
         } ${
-          isLogo ? "logo-plate border border-neutral-200 bg-white" : "bg-neutral-200"
+          isLogo
+            ? "logo-plate border border-neutral-200 bg-white"
+            : "bg-neutral-200"
         }`}
       >
         <Image
@@ -59,7 +65,7 @@ export default function PlaceCard({
         >
           {name}
         </h3>
-        <Rating place={place} />
+        <Rating place={place} locale={locale} />
         <p
           className={`mt-0.5 truncate text-neutral-500 ${
             compact ? "text-xs" : "text-sm"
@@ -75,7 +81,10 @@ export default function PlaceCard({
           {text(place, "description")}
         </p>
         <div className={compact ? "mt-1.5" : "mt-2"}>
-          <FacilityBadges facilities={facilities(place).slice(0, 3)} />
+          <FacilityBadges
+            facilities={facilities(place).slice(0, 3)}
+            locale={locale}
+          />
         </div>
       </div>
     </Link>

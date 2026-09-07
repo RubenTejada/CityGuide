@@ -7,16 +7,35 @@
 
 import type { Metadata } from "next";
 import { branchDisplayName } from "./branches";
+import {
+  DEFAULT_LOCALE,
+  HREFLANG,
+  HTML_LANG,
+  OG_LOCALE,
+  t,
+  type Locale,
+} from "./i18n";
+import { canonicalPath } from "./sectionSlugs";
 import { num, photoUrl, text, type UmbracoItem } from "./umbraco";
 
 export const SITE_NAME = "QueHacerRD";
-export const SITE_LOCALE = "es_DO";
 
 /** Title and description of the portal itself: the home page's own metadata and
  * the default every page below inherits from the root layout. */
-export const SITE_TITLE = "QueHacerRD.com — Planes, lugares y experiencias en RD";
-export const SITE_DESCRIPTION =
-  "Planes, lugares y experiencias en República Dominicana. Bares, restaurantes, tiendas, cines, eventos y un poco más. Ubícate con un clic.";
+/** Where the portal is, for an address the CMS left without a country. */
+const DEFAULT_COUNTRY = "República Dominicana";
+
+export function siteTitle(locale: Locale): string {
+  return t(locale).site.title;
+}
+
+export function siteDescription(locale: Locale): string {
+  return t(locale).site.description;
+}
+
+export function siteKeywords(locale: Locale): string[] {
+  return t(locale).site.keywords;
+}
 
 /**
  * Public origin of the portal, used for canonicals, Open Graph URLs, the
@@ -39,9 +58,13 @@ export function absoluteUrl(path: string): string {
 }
 
 /** Absolute URL for an image that may be a CMS-relative /media path. */
-export function absoluteImage(url: string | null | undefined): string | undefined {
+export function absoluteImage(
+  url: string | null | undefined,
+): string | undefined {
   if (!url) return undefined;
-  return /^https?:\/\//i.test(url) ? url : `${SITE_URL}${url.startsWith("/") ? "" : "/"}${url}`;
+  return /^https?:\/\//i.test(url)
+    ? url
+    : `${SITE_URL}${url.startsWith("/") ? "" : "/"}${url}`;
 }
 
 // ---- title / description shaping ----
@@ -67,7 +90,9 @@ function truncate(value: string, max: number): string {
 }
 
 /** First non-empty candidate, flattened. */
-export function firstText(...candidates: (string | null | undefined)[]): string {
+export function firstText(
+  ...candidates: (string | null | undefined)[]
+): string {
   for (const candidate of candidates) {
     const flat = flatten(candidate ?? "");
     if (flat) return flat;
@@ -80,12 +105,20 @@ export function firstText(...candidates: (string | null | undefined)[]): string 
  * If none fit, the last (shortest) one is returned whole — a title Google
  * truncates itself beats one we cut mid-name.
  */
-export function clampTitle(...candidates: (string | null | undefined)[]): string {
+export function clampTitle(
+  ...candidates: (string | null | undefined)[]
+): string {
   const usable = candidates.map((c) => flatten(c ?? "")).filter(Boolean);
-  return usable.find((c) => c.length <= TITLE_BUDGET) ?? usable[usable.length - 1] ?? "";
+  return (
+    usable.find((c) => c.length <= TITLE_BUDGET) ??
+    usable[usable.length - 1] ??
+    ""
+  );
 }
 
-export function clampDescription(...candidates: (string | null | undefined)[]): string {
+export function clampDescription(
+  ...candidates: (string | null | undefined)[]
+): string {
   return truncate(firstText(...candidates), MAX_DESCRIPTION);
 }
 
@@ -117,6 +150,14 @@ export interface PageMetadataInput {
   description: string;
   /** CMS route path or app route; canonical and og:url are derived from it. */
   path: string;
+  /** The language this page is written in. */
+  locale: Locale;
+  /**
+   * The same page in the other language, when it has one. Both are then declared
+   * as alternates of each other — a page only claims an hreflang pair when the
+   * counterpart really exists, or the pair points at a 404 and Google drops both.
+   */
+  alternate?: { locale: Locale; path: string } | null;
   image?: string | null;
   type?: "website" | "article";
   publishedTime?: string;
@@ -134,6 +175,8 @@ export function pageMetadata({
   title,
   description,
   path,
+  locale,
+  alternate,
   image,
   type = "website",
   publishedTime,
@@ -149,18 +192,40 @@ export function pageMetadata({
   const images = absoluteImage(image)
     ? { images: [{ url: absoluteImage(image)! }] }
     : {};
+  // Each language points at itself and at the other, and x-default at Spanish —
+  // the portal's own language and the one a visitor with no preference gets.
+  const languages = alternate
+    ? {
+        [HREFLANG[locale]]: url,
+        [HREFLANG[alternate.locale]]: absoluteUrl(alternate.path),
+        "x-default": absoluteUrl(
+          locale === DEFAULT_LOCALE ? path : alternate.path,
+        ),
+      }
+    : undefined;
   return {
     title: absoluteTitle ? { absolute: title } : title,
     description: description || undefined,
-    alternates: { canonical: url },
+    alternates: { canonical: url, ...(languages ? { languages } : {}) },
     robots: noIndex
       ? { index: false, follow: true }
-      : { index: true, follow: true, googleBot: { index: true, follow: true, "max-image-preview": "large", "max-snippet": -1, "max-video-preview": -1 } },
+      : {
+          index: true,
+          follow: true,
+          googleBot: {
+            index: true,
+            follow: true,
+            "max-image-preview": "large",
+            "max-snippet": -1,
+            "max-video-preview": -1,
+          },
+        },
     openGraph: {
       type,
       url,
       siteName: SITE_NAME,
-      locale: SITE_LOCALE,
+      locale: OG_LOCALE[locale],
+      ...(alternate ? { alternateLocale: OG_LOCALE[alternate.locale] } : {}),
       title,
       description: description || undefined,
       ...images,
@@ -192,7 +257,9 @@ export function prune(data: JsonLd): JsonLd {
   );
 }
 
-export function breadcrumbJsonLd(crumbs: { name: string; path: string }[]): JsonLd {
+export function breadcrumbJsonLd(
+  crumbs: { name: string; path: string }[],
+): JsonLd {
   return {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
@@ -236,26 +303,28 @@ export function listingLead({
   parentName,
   cityName,
   count,
+  locale,
   named = true,
 }: {
   name: string;
   parentName?: string;
   cityName?: string;
   count: number;
+  locale: Locale;
   /** False on the page itself, where the heading already names the section. */
   named?: boolean;
 }): string {
   if (count <= 0) return "";
+  const words = t(locale).listing;
   // Avoid "Restaurantes de Santo Domingo en Santo Domingo".
   const where =
     cityName && !name.toLowerCase().includes(cityName.toLowerCase())
-      ? ` en ${cityName}`
+      ? words.inCity(cityName)
       : "";
-  const places = count === 1 ? "1 lugar" : `${count} lugares`;
-  const held = `${places}${where} con dirección, teléfono, horario, valoración de Google y mapa.`;
-  if (!named) return held;
+  const places = words.places(count);
+  if (!named) return `${places}${where} ${words.what}`;
   const what = parentName ? `${name} — ${parentName}` : name;
-  return `${what}${where}: ${places} con dirección, teléfono, horario, valoración de Google y mapa.`;
+  return `${what}${where}: ${places} ${words.what}`;
 }
 
 /**
@@ -281,7 +350,7 @@ const SECTION_BUSINESS_TYPES: Record<string, string> = {
 };
 
 export function businessType(routePath: string): string {
-  const section = routePath.split("/").filter(Boolean)[1] ?? "";
+  const section = canonicalPath(routePath).split("/").filter(Boolean)[1] ?? "";
   return SECTION_BUSINESS_TYPES[section] ?? "LocalBusiness";
 }
 
@@ -289,14 +358,64 @@ export function businessType(routePath: string): string {
 
 /** Spanish day abbreviations used in the free-text "Horario" property. */
 const DAY_NAMES = [
-  "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
 ];
+/**
+ * "Horario" is free text and arrives in either language: Google's own
+ * "lunes: 11:00–23:00" and the English the translation pass writes from it, plus
+ * the abbreviations an editor types by hand ("Lun - Sáb", "Mon - Sun").
+ */
 const DAY_TOKENS: Record<string, number> = {
-  dom: 0, lun: 1, mar: 2, mie: 3, mié: 3, jue: 4, juev: 4,
-  vie: 5, vier: 5, sab: 6, sáb: 6,
+  dom: 0,
+  domingo: 0,
+  sun: 0,
+  sunday: 0,
+  lun: 1,
+  lunes: 1,
+  mon: 1,
+  monday: 1,
+  mar: 2,
+  martes: 2,
+  tue: 2,
+  tues: 2,
+  tuesday: 2,
+  mie: 3,
+  mié: 3,
+  miercoles: 3,
+  miércoles: 3,
+  wed: 3,
+  wednesday: 3,
+  jue: 4,
+  juev: 4,
+  jueves: 4,
+  thu: 4,
+  thur: 4,
+  thurs: 4,
+  thursday: 4,
+  vie: 5,
+  vier: 5,
+  viernes: 5,
+  fri: 5,
+  friday: 5,
+  sab: 6,
+  sáb: 6,
+  sabado: 6,
+  sábado: 6,
+  sat: 6,
+  saturday: 6,
 };
 
-function parseTime(hour: string, minute: string | undefined, meridiem: string | undefined): string {
+function parseTime(
+  hour: string,
+  minute: string | undefined,
+  meridiem: string | undefined,
+): string {
   let h = Number(hour);
   const suffix = meridiem?.toLowerCase();
   if (suffix === "pm" && h < 12) h += 12;
@@ -304,8 +423,10 @@ function parseTime(hour: string, minute: string | undefined, meridiem: string | 
   return `${String(h % 24).padStart(2, "0")}:${minute ?? "00"}`;
 }
 
+// One day or a range of them, then the two times. The day may be abbreviated or
+// written out, and may be followed by a colon — which is how Google writes it.
 const HOURS_LINE =
-  /^\s*([a-záé]{3,4})\.?\s*(?:[-–—]|\ba\b)?\s*([a-záé]{3,4})?\.?\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*[-–—]\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i;
+  /^\s*([a-záéí]{3,9})\.?\s*(?:[-–—]|\ba\b|\bto\b)?\s*([a-záéí]{3,9})?\.?\s*:?\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*[-–—]\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i;
 
 /**
  * schema.org openingHoursSpecification from the free-text "Horario" property
@@ -314,13 +435,15 @@ const HOURS_LINE =
  */
 export function openingHoursJsonLd(hours: string): JsonLd[] {
   if (!hours.trim()) return [];
-  if (/24\s*horas|24\/7/i.test(hours)) {
-    return [{
-      "@type": "OpeningHoursSpecification",
-      dayOfWeek: DAY_NAMES,
-      opens: "00:00",
-      closes: "23:59",
-    }];
+  if (/24\s*(?:horas|hours)|24\/7/i.test(hours)) {
+    return [
+      {
+        "@type": "OpeningHoursSpecification",
+        dayOfWeek: DAY_NAMES,
+        opens: "00:00",
+        closes: "23:59",
+      },
+    ];
   }
 
   const specs: JsonLd[] = [];
@@ -350,13 +473,17 @@ export function openingHoursJsonLd(hours: string): JsonLd[] {
 
 // ---- entity builders ----
 
-function postalAddress(address: string, cityName: string, country: string): JsonLd | undefined {
+function postalAddress(
+  address: string,
+  cityName: string,
+  country: string,
+): JsonLd | undefined {
   if (!address && !cityName) return undefined;
   return prune({
     "@type": "PostalAddress",
     streetAddress: address || undefined,
     addressLocality: cityName || undefined,
-    addressCountry: country || "República Dominicana",
+    addressCountry: country || DEFAULT_COUNTRY,
   });
 }
 
@@ -416,7 +543,8 @@ export function placeJsonLd({
     "@id": url,
     name: name ?? item.name,
     url,
-    description: firstText(description ?? text(item, "description")) || undefined,
+    description:
+      firstText(description ?? text(item, "description")) || undefined,
     image: absoluteImage(image ?? photoUrl(item)),
     telephone: firstText(phone ?? text(item, "phone")) || undefined,
     sameAs: firstText(website ?? text(item, "website")) || undefined,
@@ -424,7 +552,9 @@ export function placeJsonLd({
     geo: geo(item),
     openingHoursSpecification: openingHoursJsonLd(hours ?? text(item, "hours")),
     aggregateRating: aggregateRating(item),
-    amenityFeature: (item.properties["facilities"] as string[] | undefined)?.map((name) => ({
+    amenityFeature: (
+      item.properties["facilities"] as string[] | undefined
+    )?.map((name) => ({
       "@type": "LocationFeatureSpecification",
       name,
       value: true,
@@ -463,15 +593,27 @@ export function organizationJsonLd(
   });
 }
 
-export function eventJsonLd(item: UmbracoItem, cityName: string, country: string): JsonLd {
+export function eventJsonLd(
+  item: UmbracoItem,
+  cityName: string,
+  country: string,
+  locale: Locale,
+): JsonLd {
   const url = absoluteUrl(item.route.path);
-  const startDate = typeof item.properties["startDate"] === "string" ? item.properties["startDate"] : "";
-  const endDate = typeof item.properties["endDate"] === "string" ? item.properties["endDate"] : "";
+  const startDate =
+    typeof item.properties["startDate"] === "string"
+      ? item.properties["startDate"]
+      : "";
+  const endDate =
+    typeof item.properties["endDate"] === "string"
+      ? item.properties["endDate"]
+      : "";
   const venue = text(item, "venueName");
   return prune({
     "@context": "https://schema.org",
     "@type": "Event",
     "@id": url,
+    inLanguage: HTML_LANG[locale],
     name: item.name,
     url,
     description: firstText(text(item, "description")) || undefined,
@@ -487,21 +629,31 @@ export function eventJsonLd(item: UmbracoItem, cityName: string, country: string
       geo: geo(item),
     }),
     offers: text(item, "website")
-      ? { "@type": "Offer", url: text(item, "website"), availability: "https://schema.org/InStock" }
+      ? {
+          "@type": "Offer",
+          url: text(item, "website"),
+          availability: "https://schema.org/InStock",
+        }
       : undefined,
   });
 }
 
-export function articleJsonLd(item: UmbracoItem, summary: string): JsonLd {
+export function articleJsonLd(
+  item: UmbracoItem,
+  summary: string,
+  locale: Locale,
+): JsonLd {
   const url = absoluteUrl(item.route.path);
-  const published = typeof item.properties["publishDate"] === "string"
-    ? item.properties["publishDate"]
-    : item.createDate;
+  const published =
+    typeof item.properties["publishDate"] === "string"
+      ? item.properties["publishDate"]
+      : item.createDate;
   return prune({
     "@context": "https://schema.org",
     "@type": "Article",
     "@id": url,
     mainEntityOfPage: url,
+    inLanguage: HTML_LANG[locale],
     headline: truncate(item.name, 110),
     description: summary || undefined,
     image: absoluteImage(text(item, "heroImageUrl")),
@@ -515,7 +667,7 @@ export function articleJsonLd(item: UmbracoItem, summary: string): JsonLd {
   });
 }
 
-export function movieJsonLd(item: UmbracoItem): JsonLd {
+export function movieJsonLd(item: UmbracoItem, locale: Locale): JsonLd {
   const url = absoluteUrl(item.route.path);
   const minutes = Number(text(item, "duration"));
   const trailerId = text(item, "trailerYoutubeId");
@@ -526,13 +678,15 @@ export function movieJsonLd(item: UmbracoItem): JsonLd {
     "@context": "https://schema.org",
     "@type": "Movie",
     "@id": url,
+    inLanguage: HTML_LANG[locale],
     name: item.name,
     url,
     description: firstText(text(item, "synopsis")) || undefined,
     image: absoluteImage(text(item, "posterUrl")),
     genre: firstText(text(item, "genre")) || undefined,
     contentRating: firstText(text(item, "rating")) || undefined,
-    duration: Number.isFinite(minutes) && minutes > 0 ? `PT${minutes}M` : undefined,
+    duration:
+      Number.isFinite(minutes) && minutes > 0 ? `PT${minutes}M` : undefined,
     trailer: trailerId
       ? {
           "@type": "VideoObject",
@@ -551,7 +705,9 @@ export function movieJsonLd(item: UmbracoItem): JsonLd {
             bestRating: 10,
             worstRating: 1,
             ratingCount:
-              Number.isFinite(imdbVotes) && imdbVotes > 0 ? imdbVotes : undefined,
+              Number.isFinite(imdbVotes) && imdbVotes > 0
+                ? imdbVotes
+                : undefined,
           }
         : undefined,
   });
@@ -569,13 +725,12 @@ export function publisherJsonLd(): JsonLd {
 }
 
 /** Site-wide identity, emitted once on the home page. */
-export function siteJsonLd(): JsonLd[] {
+export function siteJsonLd(locale: Locale): JsonLd[] {
   return [
     {
       "@context": "https://schema.org",
       ...publisherJsonLd(),
-      description:
-        "Guía de ciudades de República Dominicana: restaurantes, bares, tiendas, cines, atracciones y eventos.",
+      description: t(locale).site.organizationDescription,
     },
     {
       "@context": "https://schema.org",
@@ -583,7 +738,7 @@ export function siteJsonLd(): JsonLd[] {
       "@id": `${SITE_URL}/#website`,
       name: `${SITE_NAME}.com`,
       url: SITE_URL,
-      inLanguage: "es-DO",
+      inLanguage: HTML_LANG[locale],
       publisher: { "@id": `${SITE_URL}/#organization` },
     },
   ];

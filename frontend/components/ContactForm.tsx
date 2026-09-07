@@ -1,8 +1,9 @@
 "use client";
 
 import { useActionState } from "react";
-import { sendContactMessage } from "@/app/[city]/contacto/actions";
+import { sendContactMessage } from "@/app/[lang]/[city]/contacto/actions";
 import { REQUEST_TYPES, type ContactState } from "@/lib/contact";
+import { t, type Locale } from "@/lib/i18n";
 
 const INITIAL: ContactState = { status: "idle" };
 
@@ -14,7 +15,8 @@ const FIELD =
  * The public contact form. Submits through a Server Action, so it also works
  * before hydration; the CMS files the message for an editor to read.
  */
-export default function ContactForm() {
+export default function ContactForm({ locale }: { locale: Locale }) {
+  const words = t(locale).contact;
   const [state, formAction, pending] = useActionState(
     sendContactMessage,
     INITIAL,
@@ -26,13 +28,8 @@ export default function ContactForm() {
         role="status"
         className="rounded-xl border border-palm-500/40 bg-white p-6 shadow-sm"
       >
-        <h2 className="text-lg font-semibold text-neutral-900">
-          ¡Mensaje enviado!
-        </h2>
-        <p className="mt-2 text-sm text-neutral-600">
-          Gracias por escribirnos. Revisamos cada solicitud y te respondemos al
-          correo que nos dejaste.
-        </p>
+        <h2 className="text-lg font-semibold text-neutral-900">{words.sent}</h2>
+        <p className="mt-2 text-sm text-neutral-600">{words.sentBody}</p>
       </div>
     );
   }
@@ -43,16 +40,22 @@ export default function ContactForm() {
       className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm"
     >
       {/* Trampa para bots: fuera de pantalla, nunca enfocable ni leída. */}
-      <div className="absolute -left-[9999px] h-0 w-0 overflow-hidden" aria-hidden>
+      <div
+        className="absolute -left-[9999px] h-0 w-0 overflow-hidden"
+        aria-hidden
+      >
         <label>
-          No llenar
+          {words.honeypot}
           <input name="website" tabIndex={-1} autoComplete="off" />
         </label>
       </div>
+      {/* A Server Action cannot read the route it was submitted from, and its
+          validation messages have to come back in the visitor's language. */}
+      <input type="hidden" name="locale" value={locale} />
 
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="sm:col-span-2 block text-sm font-medium text-neutral-700">
-          Tipo de solicitud
+          {words.requestType}
           <select
             name="requestType"
             required
@@ -61,14 +64,14 @@ export default function ContactForm() {
           >
             {REQUEST_TYPES.map((type) => (
               <option key={type} value={type}>
-                {type}
+                {words.typeLabels[type] ?? type}
               </option>
             ))}
           </select>
         </label>
 
         <label className="block text-sm font-medium text-neutral-700">
-          Nombre
+          {words.fields.name}
           <input
             name="name"
             required
@@ -80,7 +83,7 @@ export default function ContactForm() {
         </label>
 
         <label className="block text-sm font-medium text-neutral-700">
-          Correo
+          {words.fields.email}
           <input
             type="email"
             name="email"
@@ -92,7 +95,8 @@ export default function ContactForm() {
         </label>
 
         <label className="block text-sm font-medium text-neutral-700">
-          Teléfono <span className="font-normal text-neutral-400">(opcional)</span>
+          {words.fields.phone}{" "}
+          <span className="font-normal text-neutral-400">{words.optional}</span>
           <input
             type="tel"
             name="phone"
@@ -103,20 +107,23 @@ export default function ContactForm() {
         </label>
 
         <label className="block text-sm font-medium text-neutral-700">
-          Negocio <span className="font-normal text-neutral-400">(si aplica)</span>
+          {words.fields.business}{" "}
+          <span className="font-normal text-neutral-400">
+            {words.ifApplicable}
+          </span>
           <input name="businessName" maxLength={200} className={FIELD} />
         </label>
 
         <label className="sm:col-span-2 block text-sm font-medium text-neutral-700">
-          Enlace del negocio{" "}
+          {words.fields.businessUrl}{" "}
           <span className="font-normal text-neutral-400">
-            (web, redes o su página en el portal)
+            {words.businessHint}
           </span>
           <input name="businessUrl" maxLength={500} className={FIELD} />
         </label>
 
         <label className="sm:col-span-2 block text-sm font-medium text-neutral-700">
-          Mensaje
+          {words.fields.message}
           <textarea
             name="message"
             required
@@ -139,11 +146,9 @@ export default function ContactForm() {
         disabled={pending}
         className="mt-6 rounded-lg bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:opacity-60"
       >
-        {pending ? "Enviando…" : "Enviar mensaje"}
+        {pending ? words.sending : words.send}
       </button>
-      <p className="mt-3 text-xs text-neutral-500">
-        Usamos tus datos solo para responderte esta solicitud.
-      </p>
+      <p className="mt-3 text-xs text-neutral-500">{words.privacy}</p>
     </form>
   );
 }

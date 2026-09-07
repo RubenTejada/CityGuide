@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { useWords } from "@/components/LocaleProvider";
 import FilterDropdown from "./FilterDropdown";
 import MarkersMap, { type MapMarker } from "./MarkersMap";
 import PaginatedList from "./PaginatedList";
@@ -45,7 +46,7 @@ export interface ListingEntry {
 export default function ListingViews({
   entries,
   filters = [],
-  emptyLabel = "No hay lugares publicados todavía.",
+  emptyLabel,
   gridClassName = "mt-8 grid gap-4 md:grid-cols-2",
   children,
 }: {
@@ -55,11 +56,14 @@ export default function ListingViews({
   gridClassName?: string;
   children?: ReactNode;
 }) {
+  const words = useWords();
   const [selected, setSelected] = useState<Record<string, string[]>>({});
   const [view, setView] = useState<ListingView>("lista");
 
   const groups = filters.filter((group) => group.options.length > 0);
-  const active = groups.filter((group) => (selected[group.key] ?? []).length > 0);
+  const active = groups.filter(
+    (group) => (selected[group.key] ?? []).length > 0,
+  );
 
   const filtered = active.length
     ? entries.filter((entry) =>
@@ -109,7 +113,7 @@ export default function ListingViews({
               onClick={() => setSelected({})}
               className="text-sm text-neutral-500 underline-offset-2 hover:text-brand-700 hover:underline"
             >
-              Limpiar filtros
+              {words.listing.clearFilters}
             </button>
           )}
 
@@ -119,16 +123,12 @@ export default function ListingViews({
 
       {filtered.length === 0 ? (
         <p className="mt-8 text-neutral-500">
-          {entries.length === 0
-            ? emptyLabel
-            : "No hay lugares que coincidan con los filtros seleccionados."}
+          {entries.length === 0 ? emptyLabel : words.listing.noMatches}
         </p>
       ) : view === "mapa" ? (
         <div className="mt-8">
           {markers.length === 0 ? (
-            <p className="text-neutral-500">
-              Ninguno de estos resultados tiene ubicación en el mapa.
-            </p>
+            <p className="text-neutral-500">{words.listing.noneOnMap}</p>
           ) : (
             <MarkersMap
               markers={markers}

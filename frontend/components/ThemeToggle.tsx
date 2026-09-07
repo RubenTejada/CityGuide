@@ -1,6 +1,7 @@
 "use client";
 
 import { useLayoutEffect } from "react";
+import { useWords } from "@/components/LocaleProvider";
 
 const STORAGE_KEY = "theme";
 
@@ -30,7 +31,12 @@ function preferredTheme(): "dark" | "light" {
  * `html.dark`: the server cannot know the theme, so deciding here in React
  * would either mismatch on hydration or blink after it.
  */
-export default function ThemeToggle({ className = "" }: { className?: string }) {
+export default function ThemeToggle({
+  className = "",
+}: {
+  className?: string;
+}) {
+  const words = useWords();
   useLayoutEffect(() => {
     // En desarrollo, el remontaje de Strict Mode devuelve <html> a los
     // atributos que React maneja y borra la clase que puso el script inline.
@@ -55,8 +61,8 @@ export default function ThemeToggle({ className = "" }: { className?: string }) 
     <button
       type="button"
       onClick={toggle}
-      aria-label="Cambiar entre modo claro y oscuro"
-      title="Cambiar tema"
+      aria-label={words.nav.themeHint}
+      title={words.nav.changeTheme}
       className={`inline-flex h-9 w-9 items-center justify-center rounded-full text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sun-300 ${className}`}
     >
       <svg

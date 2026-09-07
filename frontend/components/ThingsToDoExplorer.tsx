@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useWords } from "@/components/LocaleProvider";
 import { useState } from "react";
+import { useLocale } from "@/components/LocaleProvider";
 import { type MovieCardProps } from "@/lib/cinema";
 import { sectionIcon } from "@/lib/sections";
 import { type UmbracoItem } from "@/lib/umbraco";
@@ -44,6 +46,8 @@ export default function ThingsToDoExplorer({
   moviesHref: string | null;
   sections: GuideSection[];
 }) {
+  const words = useWords();
+  const locale = useLocale();
   // Empty = everything; otherwise "eventos", "atracciones", "cines" and/or
   // section slugs, as many as the visitor ticks.
   const [activities, setActivities] = useState<string[]>([]);
@@ -62,9 +66,9 @@ export default function ThingsToDoExplorer({
   // when there is one, and every section that has entries. The dropdown ticks
   // by label, so each option carries the slug the filters are keyed by.
   const activityOptions: { slug: string; label: string }[] = [
-    { slug: "atracciones", label: "Atracciones" },
-    { slug: "eventos", label: "Eventos" },
-    ...(movies.length > 0 ? [{ slug: "cines", label: "Cines" }] : []),
+    { slug: "atracciones", label: words.map.attractions },
+    { slug: "eventos", label: words.map.events },
+    ...(movies.length > 0 ? [{ slug: "cines", label: words.map.cinemas }] : []),
     ...sections
       .filter((s) => s.entries.length > 0)
       .map((s) => ({ slug: s.slug, label: s.name })),
@@ -114,7 +118,7 @@ export default function ThingsToDoExplorer({
     <div>
       <div className="mt-6 flex flex-wrap items-center gap-2">
         <FilterDropdown
-          label="Actividad"
+          label={words.map.activity}
           options={activityOptions.map((o) => o.label)}
           selected={activityOptions
             .filter((o) => activities.includes(o.slug))
@@ -139,9 +143,7 @@ export default function ThingsToDoExplorer({
       {view === "mapa" && (
         <div className="mt-6">
           {markers.length === 0 ? (
-            <p className="text-neutral-500">
-              Ninguna de estas actividades tiene ubicación en el mapa.
-            </p>
+            <p className="text-neutral-500">{words.thingsToDo.noneOnMap}</p>
           ) : (
             <MarkersMap
               markers={markers}
@@ -154,29 +156,33 @@ export default function ThingsToDoExplorer({
 
       {view === "lista" && (
         <>
-
           {showAttractions && (
             <section className="mt-8">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold">
-                  Parques y atracciones abiertos hoy
+                  {words.thingsToDo.openToday}
                 </h2>
                 {attractionsHref && (
                   <Link
                     href={attractionsHref}
                     className="text-sm font-medium text-brand-600 hover:underline"
                   >
-                    Ver todas
+                    {words.thingsToDo.seeAllFeminine}
                   </Link>
                 )}
               </div>
               <div className={CARD_GRID}>
                 {attractions.map((entry) => (
-                  <AttractionCard key={entry.id} place={entry} compact />
+                  <AttractionCard
+                    key={entry.id}
+                    place={entry}
+                    compact
+                    locale={locale}
+                  />
                 ))}
                 {attractions.length === 0 && (
                   <p className="text-neutral-500">
-                    No hay atracciones abiertas hoy.
+                    {words.thingsToDo.noneOpenToday}
                   </p>
                 )}
               </div>
@@ -193,7 +199,7 @@ export default function ThingsToDoExplorer({
               </div>
               {events.length === 0 && (
                 <p className="mt-4 text-neutral-500">
-                  No hay eventos próximos publicados todavía.
+                  {words.thingsToDo.noUpcomingEvents}
                 </p>
               )}
             </section>
@@ -202,15 +208,13 @@ export default function ThingsToDoExplorer({
           {showMovies && (
             <section className="mt-8">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold">
-                  En cartelera hoy
-                </h2>
+                <h2 className="text-lg font-semibold">En cartelera hoy</h2>
                 {moviesHref && (
                   <Link
                     href={moviesHref}
                     className="text-sm font-medium text-brand-600 hover:underline"
                   >
-                    Ver cartelera completa
+                    {words.thingsToDo.fullListings}
                   </Link>
                 )}
               </div>
@@ -235,12 +239,17 @@ export default function ThingsToDoExplorer({
                   href={section.href}
                   className="text-sm font-medium text-brand-600 hover:underline"
                 >
-                  Ver todos
+                  {words.thingsToDo.seeAll}
                 </Link>
               </div>
               <div className={CARD_GRID}>
                 {section.entries.map((entry) => (
-                  <PlaceCard key={entry.id} place={entry} compact />
+                  <PlaceCard
+                    key={entry.id}
+                    place={entry}
+                    compact
+                    locale={locale}
+                  />
                 ))}
               </div>
             </section>

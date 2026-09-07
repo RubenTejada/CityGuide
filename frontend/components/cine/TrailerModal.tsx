@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useWords } from "@/components/LocaleProvider";
 
 /** "Ver trailer" button that opens the YouTube trailer in a modal. */
 export default function TrailerModal({
@@ -10,6 +11,7 @@ export default function TrailerModal({
   youtubeId: string;
   movieName: string;
 }) {
+  const words = useWords();
   const [open, setOpen] = useState(false);
 
   const close = useCallback(() => setOpen(false), []);
@@ -34,7 +36,7 @@ export default function TrailerModal({
         onClick={() => setOpen(true)}
         className="inline-flex items-center gap-1.5 rounded-full border border-neutral-300 bg-white px-3 py-1 text-xs font-medium text-neutral-700 hover:border-brand-500 hover:text-brand-600"
       >
-        <span aria-hidden>▶</span> Ver trailer
+        <span aria-hidden>▶</span> {words.movies.trailer}
       </button>
 
       {open && (
@@ -55,7 +57,7 @@ export default function TrailerModal({
               <button
                 type="button"
                 onClick={close}
-                aria-label="Cerrar"
+                aria-label={words.map.close}
                 className="rounded-full px-2 py-0.5 text-2xl leading-none hover:bg-white/20"
               >
                 ×

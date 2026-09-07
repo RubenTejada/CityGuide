@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { useLocale } from "@/components/LocaleProvider";
 import Link from "next/link";
 import DirectionsLink from "./DirectionsLink";
 import { RatingBadge } from "./Rating";
@@ -34,6 +35,7 @@ export default function MapPopupCard({
   latitude?: number | null;
   longitude?: number | null;
 }) {
+  const locale = useLocale();
   const isIcon = photo?.endsWith(".svg") ?? false;
   const directions = directionsUrl({ name, address, latitude, longitude });
   return (
@@ -55,8 +57,15 @@ export default function MapPopupCard({
           </div>
         )}
         <div className="min-w-0">
-          <RatingBadge value={rating} count={ratingCount} className="!text-xs" />
-          {address && <p className="mt-0.5 text-xs text-neutral-600">{address}</p>}
+          <RatingBadge
+            value={rating}
+            count={ratingCount}
+            className="!text-xs"
+            locale={locale}
+          />
+          {address && (
+            <p className="mt-0.5 text-xs text-neutral-600">{address}</p>
+          )}
         </div>
       </Link>
       {directions && (
@@ -64,6 +73,7 @@ export default function MapPopupCard({
           href={directions}
           variant="link"
           className="mt-1 pl-1 !text-xs"
+          locale={locale}
         />
       )}
     </div>

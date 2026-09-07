@@ -34,10 +34,18 @@ import {
   cinemaSiteIds,
   getAvailableDates,
   getMovieShowings,
-  getTopMoviesToday,
   movieReviews,
   todayInDR,
 } from "@/lib/cinema";
+import {
+  INTL_LOCALE,
+  contentSegments,
+  type Locale,
+  localeHref,
+  t,
+} from "@/lib/i18n";
+import { getTopMoviesToday } from "@/lib/movieCatalog";
+import { canonicalSlug } from "@/lib/sectionSlugs";
 import {
   categoryPath,
   mapPinIcon,
@@ -60,11 +68,15 @@ import {
   seoTitle,
 } from "@/lib/seo";
 import {
-  byRating,
-  facilities,
+  activeLocale,
+  alternateOf,
   getChildren,
   getDescendantsOfType,
   getItem,
+} from "@/lib/cms";
+import {
+  byRating,
+  facilities,
   num,
   photoUrl,
   picked,
@@ -79,10 +91,11 @@ export default async function ContentPage({
   params,
   searchParams,
 }: {
-  params: Promise<{ city: string; slug: string[] }>;
+  params: Promise<{ lang: string; city: string; slug: string[] }>;
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
-  const { city, slug } = await params;
+  const { lang, city, slug } = await params;
+  const locale = lang as Locale;
   const path = `/${city}/${slug.join("/")}`;
   const item = await getItem(path);
   if (!item) notFound();
@@ -120,6 +133,7 @@ export default async function ContentPage({
                 basePath={item.route.path}
                 selectedDate={typeof fecha === "string" ? fecha : undefined}
                 cinema={cinema}
+                locale={locale}
               />
             </div>
           </>
@@ -154,7 +168,7 @@ export default async function ContentPage({
 
 /** The city node a content path belongs to (its first path segment). */
 async function cityOf(item: UmbracoItem): Promise<UmbracoItem | null> {
-  const citySlug = item.route.path.split("/").filter(Boolean)[0] ?? "";
+  const citySlug = contentSegments(item.route.path)[0] ?? "";
   return citySlug ? getItem(`/${citySlug}`) : null;
 }
 
@@ -173,22 +187,26 @@ async function parentOf(item: UmbracoItem): Promise<UmbracoItem | null> {
 export async function generateMetadata({
   params,
 }: {
-  params: Promise<{ city: string; slug: string[] }>;
+  params: Promise<{ lang: string; city: string; slug: string[] }>;
 }): Promise<Metadata> {
-  const { city: citySlug, slug } = await params;
+  const { lang, city: citySlug, slug } = await params;
+  const locale = lang as Locale;
   const item = await getItem(`/${citySlug}/${slug.join("/")}`);
   if (!item) return {};
 
   const [cityItem, parent] = await Promise.all([cityOf(item), parentOf(item)]);
   const cityName = cityItem?.name ?? "";
   // Avoid "Malecón de Santo Domingo en Santo Domingo".
+  const words = t(locale).seo;
   const inCity =
     cityName && !item.name.toLowerCase().includes(cityName.toLowerCase())
-      ? ` en ${cityName}`
+      ? words.inCity(cityName)
       : "";
   // The company/subcategory/category a place hangs from, used to qualify titles.
   const parentName = parent && parent.contentType !== "city" ? parent.name : "";
-  const qualified = parentName ? `${item.name} — ${parentName}${inCity}` : `${item.name}${inCity}`;
+  const qualified = parentName
+    ? `${item.name} — ${parentName}${inCity}`
+    : `${item.name}${inCity}`;
 
   let title = `${item.name}${inCity}`;
   let description = "";
@@ -210,9 +228,10 @@ export async function generateMetadata({
             name: item.name,
             cityName,
             count: await listingCount(item.route.path),
+            locale,
           }),
         ),
-        `${item.name}${inCity}: direcciones, teléfonos, horarios, valoraciones y mapa.`,
+        words.categoryFallback(item.name, inCity),
       );
       image = image ?? sectionListImage(item.route.path);
       break;
@@ -227,9 +246,10 @@ export async function generateMetadata({
             parentName,
             cityName,
             count: await listingCount(item.route.path),
+            locale,
           }),
         ),
-        `${item.name} ${parentName ? `— ${parentName} ` : ""}${inCity}: los lugares recomendados con dirección, horario, teléfono y mapa.`,
+        words.subcategoryFallback(item.name, parentName, inCity),
       );
       image = image ?? sectionListImage(item.route.path);
       break;
@@ -248,50 +268,53 @@ export async function generateMetadata({
       description = seoDescription(
         item,
         inherited("description"),
-        `${displayName}${text(item, "address") ? `, ${text(item, "address")}` : ""}${inCity}. Horario, teléfono, ubicación y cómo llegar.`,
+        words.placeFallback(displayName, text(item, "address"), inCity),
       );
-      image = image ?? (company ? photoUrl(company) : null) ?? sectionListImage(item.route.path);
+      image =
+        image ??
+        (company ? photoUrl(company) : null) ??
+        sectionListImage(item.route.path);
       break;
     }
     case "company":
       title = seoTitle(
         item,
-        `${item.name} — sucursales${inCity}`,
+        words.companyTitle(item.name, inCity),
         `${item.name}${inCity}`,
         item.name,
       );
       description = seoDescription(
         item,
         text(item, "description"),
-        `Sucursales de ${item.name}${inCity}: direcciones, teléfonos, horarios y mapa.`,
+        words.companyFallback(item.name, inCity),
       );
       image = image ?? sectionListImage(item.route.path);
       break;
     case "movie":
       title = seoTitle(
         item,
-        `${item.name} — cartelera${inCity}`,
-        `${item.name} — cartelera`,
+        words.movieTitle(item.name, inCity),
+        words.movieTitle(item.name, ""),
         item.name,
       );
       description = seoDescription(
         item,
         text(item, "synopsis"),
-        `Horarios, sinopsis y trailer de ${item.name} en los cines${inCity}.`,
+        words.movieFallback(item.name, inCity),
       );
       image = text(item, "posterUrl") || image;
       break;
     case "eventsPage":
-      title = seoTitle(item, `Eventos${inCity}`);
+      title = seoTitle(item, words.eventsTitle(inCity));
       description = seoDescription(
         item,
         text(item, "intro"),
-        `Agenda de eventos${inCity}: conciertos, festivales, ferias y actividades con fecha, lugar y entradas.`,
+        words.eventsFallback(inCity),
       );
       image = image ?? sectionListImage(item.route.path);
       break;
     case "eventItem": {
-      const dates = formatDate(item.properties["startDate"]);
+      const dates = formatDate(item.properties["startDate"], locale);
       title = seoTitle(
         item,
         dates ? `${item.name} — ${dates}${inCity}` : `${item.name}${inCity}`,
@@ -301,16 +324,16 @@ export async function generateMetadata({
       description = seoDescription(
         item,
         text(item, "description"),
-        `${item.name}${dates ? `, ${dates}` : ""}${text(item, "venueName") ? ` en ${text(item, "venueName")}` : inCity}. Fecha, lugar y entradas.`,
+        words.eventFallback(item.name, dates, text(item, "venueName"), inCity),
       );
       break;
     }
     case "thingsToDoPage":
-      title = seoTitle(item, `Qué hacer${inCity}`);
+      title = seoTitle(item, words.thingsToDoTitle(inCity));
       description = seoDescription(
         item,
         text(item, "intro"),
-        `Ideas de planes${inCity}: eventos de los próximos días, atracciones abiertas hoy y lugares para comer y salir.`,
+        words.thingsToDoFallback(inCity),
       );
       image = image ?? sectionListImage(item.route.path);
       break;
@@ -319,13 +342,17 @@ export async function generateMetadata({
       description = seoDescription(
         item,
         text(item, "intro"),
-        `Artículos, guías y recomendaciones${inCity}.`,
+        words.articlesFallback(inCity),
       );
       image = image ?? sectionListImage(item.route.path);
       break;
     case "article":
       title = seoTitle(item, item.name);
-      description = seoDescription(item, text(item, "summary"), text(item, "body"));
+      description = seoDescription(
+        item,
+        text(item, "summary"),
+        text(item, "body"),
+      );
       image = text(item, "heroImageUrl") || image;
       type = "article";
       publishedTime =
@@ -343,6 +370,8 @@ export async function generateMetadata({
     title,
     description,
     path: item.route.path,
+    locale,
+    alternate: await alternateOf(item, locale),
     image,
     type,
     publishedTime,
@@ -353,20 +382,27 @@ export async function generateMetadata({
 
 async function Breadcrumb({ item }: { item: UmbracoItem }) {
   const segments = item.route.path.split("/").filter(Boolean);
+  // "/en" is the language, not an ancestor: it has no page of its own.
+  const first = segments[0] === "en" ? 1 : 0;
   const crumbs = await Promise.all(
-    segments.slice(0, -1).map(async (_, index) => {
+    segments.slice(first, -1).map(async (_, offset) => {
+      const index = first + offset;
       const ancestorPath = `/${segments.slice(0, index + 1).join("/")}`;
       const ancestor = await getItem(ancestorPath);
-      return ancestor ? { name: ancestor.name, path: ancestor.route.path } : null;
+      return ancestor
+        ? { name: ancestor.name, path: ancestor.route.path }
+        : null;
     }),
   );
+  const locale = await activeLocale();
+  const words = t(locale).nav;
   const trail = [
-    { name: "Inicio", path: "/" },
+    { name: words.home, path: localeHref(locale, "/") },
     ...crumbs.filter((crumb) => crumb !== null),
     { name: item.name, path: item.route.path },
   ];
   return (
-    <nav className="text-sm text-neutral-500" aria-label="Ruta de navegación">
+    <nav className="text-sm text-neutral-500" aria-label={words.breadcrumb}>
       <JsonLd data={breadcrumbJsonLd(trail)} />
       <ol className="flex flex-wrap items-center gap-1">
         {crumbs.filter(Boolean).map((crumb) => (
@@ -435,11 +471,14 @@ async function listingCount(path: string): Promise<number> {
  * with the most shops in it, not the single best-rated shop; elsewhere the
  * rating leads.
  */
-const ESTABLISHMENT_COUNT_SECTIONS = new Set(["tiendas", "empresas-y-servicios"]);
+const ESTABLISHMENT_COUNT_SECTIONS = new Set([
+  "tiendas",
+  "empresas-y-servicios",
+]);
 
 /** The city section a route path belongs to (`/santo-domingo/tiendas/...`). */
 function sectionSlug(path: string): string {
-  return path.split("/").filter(Boolean)[1] ?? "";
+  return contentSegments(path)[1] ?? "";
 }
 
 /**
@@ -472,7 +511,10 @@ async function listingEntriesOrdered(path: string): Promise<UmbracoItem[]> {
   const ratedBy = new Map(
     entries.map(
       (entry) =>
-        [entry.id, [entry, ...nested.get(entry.id)!].sort(byRating)[0]] as const,
+        [
+          entry.id,
+          [entry, ...nested.get(entry.id)!].sort(byRating)[0],
+        ] as const,
     ),
   );
   // The picker comes back unexpanded here (name and route only), which is all a
@@ -483,10 +525,15 @@ async function listingEntriesOrdered(path: string): Promise<UmbracoItem[]> {
       const referenced = picked(entry, "establishments").filter(
         (e) => !e.route.path.startsWith(prefix),
       );
-      return [entry.id, nested.get(entry.id)!.length + referenced.length] as const;
+      return [
+        entry.id,
+        nested.get(entry.id)!.length + referenced.length,
+      ] as const;
     }),
   );
-  const byEstablishmentCount = ESTABLISHMENT_COUNT_SECTIONS.has(sectionSlug(path));
+  const byEstablishmentCount = ESTABLISHMENT_COUNT_SECTIONS.has(
+    sectionSlug(path),
+  );
   return [...entries].sort((a, b) => {
     if (byEstablishmentCount) {
       const diff = held.get(b.id)! - held.get(a.id)!;
@@ -532,6 +579,7 @@ async function facilityFilter(
   path: string,
   entries: UmbracoItem[],
 ): Promise<FilterGroup> {
+  const locale = await activeLocale();
   const valuesByEntry = await listingFacilities(path, entries);
   const present = new Set(Object.values(valuesByEntry).flat());
   const known = Object.keys(FACILITY_ICONS).filter((f) => present.has(f));
@@ -540,7 +588,7 @@ async function facilityFilter(
     .sort((a, b) => a.localeCompare(b, "es"));
   return {
     key: "facilidades",
-    label: "Filtrar por facilidades",
+    label: t(locale).place.filterByFacilities,
     options: [...known, ...extra],
     valuesByEntry,
     // A place must offer every facility that is ticked.
@@ -555,15 +603,29 @@ async function facilityFilter(
  * subcategory is listed with.
  */
 /**
- * What the subcategory dropdown is called per section. Every section with
- * subcategories gets the dropdown; only its label changes.
+ * What the subcategory dropdown is called per section — a cuisine under
+ * "Restaurantes", a kind of venue under "Bares y Clubes". Every section with
+ * subcategories gets the dropdown; only its label changes. Keyed by the Spanish
+ * slug, like the rest of the section configuration.
  */
-const SUBCATEGORY_FILTER_LABELS: Record<string, string> = {
-  restaurantes: "Tipo de comida",
-  "bares-y-clubes": "Tipo de local",
-  tiendas: "Tipo de tienda",
-  "empresas-y-servicios": "Servicio",
+const SUBCATEGORY_FILTER_LABELS: Record<
+  string,
+  "cuisine" | "venueType" | "shopType" | "serviceType"
+> = {
+  restaurantes: "cuisine",
+  "bares-y-clubes": "venueType",
+  tiendas: "shopType",
+  "empresas-y-servicios": "serviceType",
 };
+
+function subcategoryFilterLabel(
+  slug: string | undefined,
+  locale: Locale,
+): string {
+  const words = t(locale).listing;
+  const key = SUBCATEGORY_FILTER_LABELS[canonicalSlug(slug ?? "")];
+  return key ? words[key] : t(locale).place.category;
+}
 
 /**
  * The subcategory dropdown (cuisine type on "Restaurantes", venue kind on
@@ -662,6 +724,7 @@ async function CategoryView({
   citySlug?: string;
   fecha?: string;
 }) {
+  const locale = await activeLocale();
   const [children, entries, city] = await Promise.all([
     getChildren(item.route.path),
     listingEntriesOrdered(item.route.path),
@@ -678,7 +741,7 @@ async function CategoryView({
     ...(subcategories.length > 0
       ? [
           subcategoryFilter(
-            SUBCATEGORY_FILTER_LABELS[categorySlug ?? ""] ?? "Categoría",
+            subcategoryFilterLabel(categorySlug, locale),
             entries,
             subcategories,
           ),
@@ -697,14 +760,15 @@ async function CategoryView({
       name: item.name,
       cityName: city?.name,
       count: entries.length,
+      locale,
       named: false,
     });
   const listing: ListingEntry[] = entries.map((entry) => ({
     id: entry.id,
     card: showsAttractions ? (
-      <AttractionCard key={entry.id} place={entry} compact />
+      <AttractionCard key={entry.id} place={entry} compact locale={locale} />
     ) : (
-      <PlaceCard key={entry.id} place={entry} />
+      <PlaceCard key={entry.id} place={entry} locale={locale} />
     ),
     markers: markers.get(entry.id) ?? [],
   }));
@@ -719,6 +783,7 @@ async function CategoryView({
           citySlug={citySlug!}
           basePath={item.route.path}
           selectedDate={fecha}
+          locale={locale}
         />
       )}
       {/* The cartelera stands on its own when the section has no places yet. */}
@@ -761,15 +826,16 @@ async function MovieView({
     text(item, "genre"),
   ].filter(Boolean);
 
+  const locale = await activeLocale();
   const today = todayInDR();
   const dates = await getAvailableDates(cinemaSiteIds(citySlug));
   const date = fecha && dates.includes(fecha) ? fecha : (dates[0] ?? today);
-  const cinemas = await getMovieShowings(citySlug, item.name, date);
+  const cinemas = await getMovieShowings(citySlug, item.name, date, locale);
   const showtimes = cinemas.reduce((sum, c) => sum + c.showtimes.length, 0);
 
   return (
     <PageShell item={item}>
-      <JsonLd data={movieJsonLd(item)} />
+      <JsonLd data={movieJsonLd(item, locale)} />
       <div className="mt-6 flex flex-col gap-6 sm:flex-row sm:items-start">
         {poster && (
           // eslint-disable-next-line @next/next/no-img-element
@@ -790,7 +856,11 @@ async function MovieView({
             <p className="mt-2 text-sm text-neutral-500">{meta.join(" · ")}</p>
           )}
           <div className="mt-3">
-            <MovieReviewBadges movieName={item.name} reviews={reviews} />
+            <MovieReviewBadges
+              movieName={item.name}
+              reviews={reviews}
+              locale={locale}
+            />
           </div>
           {text(item, "synopsis") && (
             <p className="mt-4 max-w-2xl text-neutral-700">
@@ -801,14 +871,16 @@ async function MovieView({
             href={`/${citySlug}/cines`}
             className="mt-6 inline-block rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium hover:border-brand-500 hover:text-brand-600"
           >
-            Ver la cartelera completa
+            {t(locale).movies.fullListings}
           </Link>
         </div>
       </div>
 
       <section className="mt-10">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="text-2xl font-bold">¿Dónde verla?</h2>
+          <h2 className="text-2xl font-bold">
+            {t(locale).movies.whereToWatch}
+          </h2>
           {cinemas.length > 0 && (
             <p className="text-sm text-neutral-500">
               {cinemas.length} {cinemas.length === 1 ? "cine" : "cines"} ·{" "}
@@ -821,10 +893,11 @@ async function MovieView({
           selected={date}
           today={today}
           basePath={item.route.path}
+          locale={locale}
         />
         {cinemas.length === 0 ? (
           <p className="mt-6 text-neutral-500">
-            No hay funciones de {item.name} para esta fecha.
+            {t(locale).movies.noShowtimes(item.name)}
           </p>
         ) : (
           <div className="mt-2 rounded-xl border border-neutral-200 bg-white shadow-sm">
@@ -837,6 +910,7 @@ async function MovieView({
 }
 
 async function SubcategoryView({ item }: { item: UmbracoItem }) {
+  const locale = await activeLocale();
   const [entries, city, parent] = await Promise.all([
     listingEntriesOrdered(item.route.path),
     cityOf(item),
@@ -845,7 +919,7 @@ async function SubcategoryView({ item }: { item: UmbracoItem }) {
   const markers = await listingMarkers(item.route.path, entries);
   const listing: ListingEntry[] = entries.map((entry) => ({
     id: entry.id,
-    card: <PlaceCard key={entry.id} place={entry} />,
+    card: <PlaceCard key={entry.id} place={entry} locale={locale} />,
     markers: markers.get(entry.id) ?? [],
   }));
   const lead =
@@ -855,6 +929,7 @@ async function SubcategoryView({ item }: { item: UmbracoItem }) {
       parentName: parent?.name,
       cityName: city?.name,
       count: entries.length,
+      locale,
       named: false,
     });
   return (
@@ -902,9 +977,12 @@ async function mallEstablishmentGroups(
   referenced: UmbracoItem[],
   city: UmbracoItem | null,
 ): Promise<MallGroup[]> {
+  const locale = await activeLocale();
   const sections = city ? await getChildren(city.route.path) : [];
   const sectionOrder = new Map(
-    sections.map((section, index) => [lastSegment(section.route.path), index] as const),
+    sections.map(
+      (section, index) => [lastSegment(section.route.path), index] as const,
+    ),
   );
   const own = children.filter((c) => c.contentType === "subcategory");
   const [ownEntries, referencedInfo] = await Promise.all([
@@ -935,7 +1013,12 @@ async function mallEstablishmentGroups(
   ]);
 
   const groups = new Map<string, MallGroup>();
-  const groupFor = (key: string, label: string, path: string, order: number) => {
+  const groupFor = (
+    key: string,
+    label: string,
+    path: string,
+    order: number,
+  ) => {
     const existing = groups.get(key);
     if (existing) return existing;
     const created: MallGroup = { key, label, path, order, entries: [] };
@@ -944,14 +1027,24 @@ async function mallEstablishmentGroups(
   };
 
   own.forEach((group, index) => {
-    groupFor(lastSegment(group.route.path), group.name, group.route.path, index).entries
-      .push(...ownEntries[index].map((entry) => ({ item: entry, company: null })));
+    groupFor(
+      lastSegment(group.route.path),
+      group.name,
+      group.route.path,
+      index,
+    ).entries.push(
+      ...ownEntries[index].map((entry) => ({ item: entry, company: null })),
+    );
   });
 
   for (const { entry, path, label, company } of referencedInfo) {
     const order =
-      own.length + (sectionOrder.get(path.split("/").filter(Boolean)[1] ?? "") ?? sections.length);
-    groupFor(lastSegment(path), label, path, order).entries.push({ item: entry, company });
+      own.length +
+      (sectionOrder.get(contentSegments(path)[1] ?? "") ?? sections.length);
+    groupFor(lastSegment(path), label, path, order).entries.push({
+      item: entry,
+      company,
+    });
   }
 
   const loose = children.filter(
@@ -960,7 +1053,7 @@ async function mallEstablishmentGroups(
   if (loose.length > 0) {
     groupFor(
       "otros",
-      "Otros establecimientos",
+      t(locale).place.establishments,
       mall.route.path,
       own.length + sections.length + 1,
     ).entries.push(...loose.map((entry) => ({ item: entry, company: null })));
@@ -972,6 +1065,7 @@ async function mallEstablishmentGroups(
 }
 
 async function MallView({ item }: { item: UmbracoItem }) {
+  const locale = await activeLocale();
   // A bank branch belongs under its company and a restaurant under its cuisine, so
   // the plaza points at them instead of holding them; expanding the picker brings
   // their photo and rating along, which the cards need.
@@ -984,7 +1078,12 @@ async function MallView({ item }: { item: UmbracoItem }) {
   const referenced = picked(expanded ?? item, "establishments")
     .filter((entry) => !entry.route.path.startsWith(`${mallPath}/`))
     .sort(byRating);
-  const groups = await mallEstablishmentGroups(item, children, referenced, cityItem);
+  const groups = await mallEstablishmentGroups(
+    item,
+    children,
+    referenced,
+    cityItem,
+  );
   const photo = photoUrl(item);
   const website = text(item, "website");
   const directions = itemDirectionsUrl(item);
@@ -1015,24 +1114,30 @@ async function MallView({ item }: { item: UmbracoItem }) {
         <div className="min-w-0">
           <div className="flex items-center gap-3">
             <h1 className="text-3xl font-bold">{item.name}</h1>
-            {directions && <DirectionsLink href={directions} />}
+            {directions && <DirectionsLink href={directions} locale={locale} />}
           </div>
           <dl className="mt-3 space-y-1.5 text-sm">
             {text(item, "address") && (
               <div className="flex gap-2">
-                <dt className="font-semibold text-brand-700">Dirección</dt>
+                <dt className="font-semibold text-brand-700">
+                  {t(locale).place.address}
+                </dt>
                 <dd className="text-neutral-700">{text(item, "address")}</dd>
               </div>
             )}
             {text(item, "phone") && (
               <div className="flex gap-2">
-                <dt className="font-semibold text-brand-700">Teléfono</dt>
+                <dt className="font-semibold text-brand-700">
+                  {t(locale).place.phone}
+                </dt>
                 <dd className="text-neutral-700">{text(item, "phone")}</dd>
               </div>
             )}
             {website && (
               <div className="flex gap-2">
-                <dt className="font-semibold text-brand-700">Sitio Web</dt>
+                <dt className="font-semibold text-brand-700">
+                  {t(locale).place.website}
+                </dt>
                 <dd>
                   <a
                     href={website}
@@ -1047,8 +1152,12 @@ async function MallView({ item }: { item: UmbracoItem }) {
             )}
             {text(item, "hours") && (
               <div className="flex gap-2">
-                <dt className="font-semibold text-brand-700">Horario</dt>
-                <dd className="whitespace-pre-line text-neutral-700">{text(item, "hours")}</dd>
+                <dt className="font-semibold text-brand-700">
+                  {t(locale).place.hours}
+                </dt>
+                <dd className="whitespace-pre-line text-neutral-700">
+                  {text(item, "hours")}
+                </dd>
               </div>
             )}
           </dl>
@@ -1075,6 +1184,7 @@ async function MallView({ item }: { item: UmbracoItem }) {
                 place={entry}
                 company={company}
                 fallbackPhoto={company ? photoUrl(company) : null}
+                locale={locale}
               />
             ))}
           </div>
@@ -1083,15 +1193,23 @@ async function MallView({ item }: { item: UmbracoItem }) {
 
       {groups.length === 0 && (
         <p className="mt-10 text-neutral-500">
-          No hay establecimientos publicados todavía.
+          {t(locale).place.establishmentsEmpty}
         </p>
       )}
 
       {latitude !== 0 && longitude !== 0 && (
         <section className="mt-10">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold">Ubicación</h2>
-            {directions && <DirectionsLink href={directions} variant="link" />}
+            <h2 className="text-lg font-semibold">
+              {t(locale).place.location}
+            </h2>
+            {directions && (
+              <DirectionsLink
+                href={directions}
+                variant="link"
+                locale={locale}
+              />
+            )}
           </div>
           <div className="mt-4">
             <PlaceMap
@@ -1109,6 +1227,7 @@ async function MallView({ item }: { item: UmbracoItem }) {
 }
 
 async function CompanyView({ item }: { item: UmbracoItem }) {
+  const locale = await activeLocale();
   const children = await getChildren(item.route.path);
   const logo = photoUrl(item);
   const branches = children.filter((c) => c.contentType === "place");
@@ -1121,6 +1240,7 @@ async function CompanyView({ item }: { item: UmbracoItem }) {
         place={branch}
         fallbackPhoto={logo}
         company={item}
+        locale={locale}
       />
     ),
     markers: [
@@ -1154,13 +1274,17 @@ async function CompanyView({ item }: { item: UmbracoItem }) {
           <dl className="mt-3 space-y-1.5 text-sm">
             {text(item, "phone") && (
               <div className="flex gap-2">
-                <dt className="font-semibold text-brand-700">Teléfono</dt>
+                <dt className="font-semibold text-brand-700">
+                  {t(locale).place.phone}
+                </dt>
                 <dd className="text-neutral-700">{text(item, "phone")}</dd>
               </div>
             )}
             {website && (
               <div className="flex gap-2">
-                <dt className="font-semibold text-brand-700">Sitio Web</dt>
+                <dt className="font-semibold text-brand-700">
+                  {t(locale).place.website}
+                </dt>
                 <dd>
                   <a
                     href={website}
@@ -1175,8 +1299,12 @@ async function CompanyView({ item }: { item: UmbracoItem }) {
             )}
             {text(item, "hours") && (
               <div className="flex gap-2">
-                <dt className="font-semibold text-brand-700">Horario</dt>
-                <dd className="whitespace-pre-line text-neutral-700">{text(item, "hours")}</dd>
+                <dt className="font-semibold text-brand-700">
+                  {t(locale).place.hours}
+                </dt>
+                <dd className="whitespace-pre-line text-neutral-700">
+                  {text(item, "hours")}
+                </dd>
               </div>
             )}
           </dl>
@@ -1193,13 +1321,14 @@ async function CompanyView({ item }: { item: UmbracoItem }) {
       </h2>
       <ListingViews
         entries={branchEntries}
-        emptyLabel="No hay sucursales publicadas todavía."
+        emptyLabel={t(locale).place.branchesEmpty}
       />
     </PageShell>
   );
 }
 
 async function PlaceView({ item }: { item: UmbracoItem }) {
+  const locale = await activeLocale();
   const latitude = num(item, "latitude");
   const longitude = num(item, "longitude");
   const parentPath = `/${item.route.path.split("/").filter(Boolean).slice(0, -1).join("/")}`;
@@ -1242,10 +1371,10 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
       />
       <div className="mt-4 flex items-center gap-3">
         <h1 className="text-3xl font-bold">{displayName}</h1>
-        {directions && <DirectionsLink href={directions} />}
+        {directions && <DirectionsLink href={directions} locale={locale} />}
       </div>
       <div className="mt-1">
-        <Rating place={item} />
+        <Rating place={item} locale={locale} />
       </div>
       <div className="mt-6 grid gap-8 lg:grid-cols-[20rem_1fr]">
         <div>
@@ -1266,7 +1395,7 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
           </div>
           {inherited("hours") && (
             <div className="mt-4 rounded-xl border border-neutral-200 bg-white p-4">
-              <h2 className="font-semibold">Horario</h2>
+              <h2 className="font-semibold">{t(locale).place.hours}</h2>
               <p className="mt-1 whitespace-pre-line text-sm text-neutral-600">
                 {inherited("hours")}
               </p>
@@ -1277,24 +1406,30 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
         <div>
           <dl className="space-y-1.5 text-sm">
             <div className="flex gap-2">
-              <dt className="font-semibold text-brand-700">Dirección</dt>
+              <dt className="font-semibold text-brand-700">
+                {t(locale).place.address}
+              </dt>
               <dd className="text-neutral-700">{text(item, "address")}</dd>
             </div>
             <div className="flex gap-2">
               <dt className="font-semibold text-brand-700">
-                {company ? "Empresa" : "Categoría"}
+                {company ? t(locale).place.company : t(locale).place.category}
               </dt>
               <dd className="text-neutral-700">{categoryName}</dd>
             </div>
             {inherited("phone") && (
               <div className="flex gap-2">
-                <dt className="font-semibold text-brand-700">Teléfono</dt>
+                <dt className="font-semibold text-brand-700">
+                  {t(locale).place.phone}
+                </dt>
                 <dd className="text-neutral-700">{inherited("phone")}</dd>
               </div>
             )}
             {website && (
               <div className="flex gap-2">
-                <dt className="font-semibold text-brand-700">Sitio Web</dt>
+                <dt className="font-semibold text-brand-700">
+                  {t(locale).place.website}
+                </dt>
                 <dd>
                   <a
                     href={website}
@@ -1312,7 +1447,7 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
           {inherited("description") && (
             <>
               <h2 className="mt-6 text-lg font-semibold">
-                Acerca de {company ? company.name : item.name}
+                {t(locale).place.about(company ? company.name : item.name)}
               </h2>
               <p className="mt-2 whitespace-pre-line text-neutral-700">
                 {inherited("description")}
@@ -1322,9 +1457,11 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
 
           {facilities(item).length > 0 && (
             <>
-              <h2 className="mt-6 text-lg font-semibold">Facilidades del lugar</h2>
+              <h2 className="mt-6 text-lg font-semibold">
+                {t(locale).place.facilities}
+              </h2>
               <div className="mt-3">
-                <FacilityBadges facilities={facilities(item)} />
+                <FacilityBadges facilities={facilities(item)} locale={locale} />
               </div>
             </>
           )}
@@ -1334,8 +1471,14 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
       {latitude !== 0 && longitude !== 0 && (
         <section className="mt-10">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold">Mapa</h2>
-            {directions && <DirectionsLink href={directions} variant="link" />}
+            <h2 className="text-lg font-semibold">{t(locale).place.map}</h2>
+            {directions && (
+              <DirectionsLink
+                href={directions}
+                variant="link"
+                locale={locale}
+              />
+            )}
           </div>
           <div className="mt-4">
             <PlaceMap
@@ -1343,7 +1486,10 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
               name={displayName}
               latitude={latitude}
               longitude={longitude}
-              photo={mapPinIcon(item.route.path, company ? photoUrl(company) : null)}
+              photo={mapPinIcon(
+                item.route.path,
+                company ? photoUrl(company) : null,
+              )}
             />
           </div>
         </section>
@@ -1352,22 +1498,31 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
   );
 }
 
-function formatDate(value: unknown): string {
+function formatDate(value: unknown, locale: Locale): string {
   if (typeof value !== "string") return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat("es-DO", { dateStyle: "long" }).format(date);
+  return new Intl.DateTimeFormat(INTL_LOCALE[locale], {
+    dateStyle: "long",
+  }).format(date);
 }
 
 async function EventsView({ item }: { item: UmbracoItem }) {
+  const locale = await activeLocale();
   const events = await getChildren(item.route.path);
   const entries: EventEntry[] = events.map((event) => ({
     id: event.id,
     href: event.route.path,
     name: event.name,
     category: text(event, "category"),
-    startDate: typeof event.properties["startDate"] === "string" ? event.properties["startDate"] : "",
-    endDate: typeof event.properties["endDate"] === "string" ? event.properties["endDate"] : "",
+    startDate:
+      typeof event.properties["startDate"] === "string"
+        ? event.properties["startDate"]
+        : "",
+    endDate:
+      typeof event.properties["endDate"] === "string"
+        ? event.properties["endDate"]
+        : "",
     venueName: text(event, "venueName"),
     description: text(event, "description"),
     photo: photoUrl(event),
@@ -1377,33 +1532,44 @@ async function EventsView({ item }: { item: UmbracoItem }) {
   return (
     <PageShell item={item}>
       <JsonLd data={itemListJsonLd(item.name, events)} />
-      <h1 className="mt-4 text-3xl font-bold">Eventos</h1>
+      <h1 className="mt-4 text-3xl font-bold">{t(locale).map.events}</h1>
       <EventsList events={entries} />
     </PageShell>
   );
 }
 
 async function EventView({ item }: { item: UmbracoItem }) {
+  const locale = await activeLocale();
   const latitude = num(item, "latitude");
   const longitude = num(item, "longitude");
   const photo = photoUrl(item);
   const website = text(item, "website");
   const phone = text(item, "phone");
   // The route is to the venue, which is what the event's address describes.
-  const directions = itemDirectionsUrl(item, text(item, "venueName") || item.name);
-  const dates = `${formatDate(item.properties["startDate"])}${
-    item.properties["endDate"] ? ` — ${formatDate(item.properties["endDate"])}` : ""
+  const directions = itemDirectionsUrl(
+    item,
+    text(item, "venueName") || item.name,
+  );
+  const dates = `${formatDate(item.properties["startDate"], locale)}${
+    item.properties["endDate"]
+      ? ` — ${formatDate(item.properties["endDate"], locale)}`
+      : ""
   }`;
   const cityItem = await cityOf(item);
 
   return (
     <PageShell item={item}>
       <JsonLd
-        data={eventJsonLd(item, cityItem?.name ?? "", text(cityItem ?? item, "country"))}
+        data={eventJsonLd(
+          item,
+          cityItem?.name ?? "",
+          text(cityItem ?? item, "country"),
+          locale,
+        )}
       />
       <div className="mt-4 flex items-center gap-3">
         <h1 className="text-3xl font-bold">{item.name}</h1>
-        {directions && <DirectionsLink href={directions} />}
+        {directions && <DirectionsLink href={directions} locale={locale} />}
       </div>
       {text(item, "category") && (
         <span className="mt-3 inline-block rounded-full bg-brand-100 px-3 py-1 text-sm font-medium text-brand-800">
@@ -1424,13 +1590,16 @@ async function EventView({ item }: { item: UmbracoItem }) {
                 priority
               />
             ) : (
-              <div className="flex h-full items-center justify-center text-6xl" aria-hidden>
+              <div
+                className="flex h-full items-center justify-center text-6xl"
+                aria-hidden
+              >
                 🎟️
               </div>
             )}
           </div>
           <div className="mt-4 rounded-xl border border-neutral-200 bg-white p-4">
-            <h2 className="font-semibold">Fecha</h2>
+            <h2 className="font-semibold">{t(locale).place.date}</h2>
             <p className="mt-1 text-sm text-neutral-600">{dates}</p>
           </div>
         </div>
@@ -1439,25 +1608,33 @@ async function EventView({ item }: { item: UmbracoItem }) {
           <dl className="space-y-1.5 text-sm">
             {text(item, "venueName") && (
               <div className="flex gap-2">
-                <dt className="font-semibold text-brand-700">Lugar</dt>
+                <dt className="font-semibold text-brand-700">
+                  {t(locale).place.venue}
+                </dt>
                 <dd className="text-neutral-700">{text(item, "venueName")}</dd>
               </div>
             )}
             {text(item, "address") && (
               <div className="flex gap-2">
-                <dt className="font-semibold text-brand-700">Dirección</dt>
+                <dt className="font-semibold text-brand-700">
+                  {t(locale).place.address}
+                </dt>
                 <dd className="text-neutral-700">{text(item, "address")}</dd>
               </div>
             )}
             {phone && (
               <div className="flex gap-2">
-                <dt className="font-semibold text-brand-700">Teléfono</dt>
+                <dt className="font-semibold text-brand-700">
+                  {t(locale).place.phone}
+                </dt>
                 <dd className="text-neutral-700">{phone}</dd>
               </div>
             )}
             {website && (
               <div className="flex gap-2">
-                <dt className="font-semibold text-brand-700">Entradas</dt>
+                <dt className="font-semibold text-brand-700">
+                  {t(locale).events.tickets}
+                </dt>
                 <dd>
                   <a
                     href={website}
@@ -1474,7 +1651,9 @@ async function EventView({ item }: { item: UmbracoItem }) {
 
           {text(item, "description") && (
             <>
-              <h2 className="mt-6 text-lg font-semibold">Acerca del evento</h2>
+              <h2 className="mt-6 text-lg font-semibold">
+                {t(locale).events.about}
+              </h2>
               <p className="mt-2 whitespace-pre-line text-neutral-700">
                 {text(item, "description")}
               </p>
@@ -1486,8 +1665,14 @@ async function EventView({ item }: { item: UmbracoItem }) {
       {latitude !== 0 && longitude !== 0 && (
         <section className="mt-10">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold">Mapa</h2>
-            {directions && <DirectionsLink href={directions} variant="link" />}
+            <h2 className="text-lg font-semibold">{t(locale).place.map}</h2>
+            {directions && (
+              <DirectionsLink
+                href={directions}
+                variant="link"
+                locale={locale}
+              />
+            )}
           </div>
           <div className="mt-4">
             <PlaceMap
@@ -1517,6 +1702,7 @@ function byPublishDateDesc(a: UmbracoItem, b: UmbracoItem): number {
 }
 
 async function ArticlesView({ item }: { item: UmbracoItem }) {
+  const locale = await activeLocale();
   const articles = (await getChildren(item.route.path))
     .filter((c) => c.contentType === "article")
     .sort(byPublishDateDesc);
@@ -1528,13 +1714,11 @@ async function ArticlesView({ item }: { item: UmbracoItem }) {
         <p className="mt-2 max-w-2xl text-neutral-600">{text(item, "intro")}</p>
       )}
       {articles.length === 0 ? (
-        <p className="mt-8 text-neutral-500">
-          No hay artículos publicados todavía.
-        </p>
+        <p className="mt-8 text-neutral-500">{t(locale).article.empty}</p>
       ) : (
         <PaginatedList className="mt-8 space-y-5">
           {articles.map((article) => (
-            <ArticleCard key={article.id} article={article} />
+            <ArticleCard key={article.id} article={article} locale={locale} />
           ))}
         </PaginatedList>
       )}
@@ -1543,10 +1727,11 @@ async function ArticlesView({ item }: { item: UmbracoItem }) {
 }
 
 async function ArticleView({ item }: { item: UmbracoItem }) {
+  const locale = await activeLocale();
   const hero = text(item, "heroImageUrl");
   const category = text(item, "category");
   const author = text(item, "author");
-  const date = articleDate(item);
+  const date = articleDate(item, locale);
   const parentPath = `/${item.route.path.split("/").filter(Boolean).slice(0, -1).join("/")}`;
   const others = (await getChildren(parentPath))
     .filter((c) => c.contentType === "article" && c.id !== item.id)
@@ -1555,7 +1740,7 @@ async function ArticleView({ item }: { item: UmbracoItem }) {
 
   return (
     <PageShell item={item}>
-      <JsonLd data={articleJsonLd(item, text(item, "summary"))} />
+      <JsonLd data={articleJsonLd(item, text(item, "summary"), locale)} />
       <article className="mt-4">
         {category && (
           <span className="inline-block rounded-full bg-brand-100 px-3 py-1 text-sm font-medium text-brand-800">
@@ -1604,10 +1789,10 @@ async function ArticleView({ item }: { item: UmbracoItem }) {
 
       {others.length > 0 && (
         <section className="mt-12 border-t border-neutral-200 pt-8">
-          <h2 className="text-xl font-semibold">Más artículos</h2>
+          <h2 className="text-xl font-semibold">{t(locale).article.more}</h2>
           <div className="mt-5 space-y-5">
             {others.map((article) => (
-              <ArticleCard key={article.id} article={article} />
+              <ArticleCard key={article.id} article={article} locale={locale} />
             ))}
           </div>
         </section>
@@ -1618,9 +1803,29 @@ async function ArticleView({ item }: { item: UmbracoItem }) {
 
 // ---- "Qué Hacer" guide ----
 
-/** JS getDay() index for each abbreviated Spanish day name used in "hours" texts. */
+/**
+ * JS getDay() index for each day name a "hours" text may carry. "Horario" is free
+ * text and arrives in either language — Google writes it out in Spanish, the
+ * translation pass rewrites it in English, and an editor may type either — so the
+ * three-letter prefix of every form is listed.
+ */
 const DAY_INDEX: Record<string, number> = {
-  dom: 0, lun: 1, mar: 2, mie: 3, mié: 3, jue: 4, vie: 5, sab: 6, sáb: 6,
+  dom: 0,
+  sun: 0,
+  lun: 1,
+  mon: 1,
+  mar: 2,
+  tue: 2,
+  mie: 3,
+  mié: 3,
+  wed: 3,
+  jue: 4,
+  thu: 4,
+  vie: 5,
+  fri: 5,
+  sab: 6,
+  sáb: 6,
+  sat: 6,
 };
 
 /**
@@ -1631,13 +1836,16 @@ const DAY_INDEX: Record<string, number> = {
 function openToday(hours: string): boolean {
   if (!hours.trim()) return true;
   const normalized = hours.toLowerCase();
-  if (normalized.includes("24 horas")) return true;
+  if (/24\s*(?:horas|hours)/.test(normalized)) return true;
   const today = new Date().getDay();
   let sawDays = false;
   for (const line of normalized.split("\n")) {
-    const days = [...line.matchAll(/\b(dom|lun|mar|mie|mié|jue|vie|sab|sáb)\b/g)].map(
-      (m) => DAY_INDEX[m[1]],
-    );
+    // The prefix, so "lunes", "lun" and "Monday" all read the same.
+    const days = [
+      ...line.matchAll(
+        /\b(dom|sun|lun|mon|mar|tue|mie|mié|wed|jue|thu|vie|fri|sab|sáb|sat)[a-záéíó]*/g,
+      ),
+    ].map((m) => DAY_INDEX[m[1]]);
     if (days.length === 0) continue;
     sawDays = true;
     if (days.includes(today)) return true;
@@ -1673,12 +1881,13 @@ async function ThingsToDoView({
   item: UmbracoItem;
   citySlug: string;
 }) {
+  const locale = await activeLocale();
   const cityPath = `/${citySlug}`;
   const [cityItem, sections, events, movies] = await Promise.all([
     getItem(cityPath),
     getChildren(cityPath),
     getDescendantsOfType(cityPath, "eventItem", 100),
-    getTopMoviesToday(citySlug, GUIDE_MOVIES),
+    getTopMoviesToday(citySlug, GUIDE_MOVIES, locale),
   ]);
 
   const now = new Date();
@@ -1707,8 +1916,14 @@ async function ThingsToDoView({
     href: event.route.path,
     name: event.name,
     category: text(event, "category"),
-    startDate: typeof event.properties["startDate"] === "string" ? event.properties["startDate"] : "",
-    endDate: typeof event.properties["endDate"] === "string" ? event.properties["endDate"] : "",
+    startDate:
+      typeof event.properties["startDate"] === "string"
+        ? event.properties["startDate"]
+        : "",
+    endDate:
+      typeof event.properties["endDate"] === "string"
+        ? event.properties["endDate"]
+        : "",
     venueName: text(event, "venueName"),
     description: text(event, "description"),
     photo: photoUrl(event),
@@ -1737,11 +1952,15 @@ async function ThingsToDoView({
   );
 
   const ideaSections = sections.filter(
-    (s) => s.contentType === "categoryPage" && !IDEAS_EXCLUDED_SLUGS.has(slugOf(s)),
+    (s) =>
+      s.contentType === "categoryPage" && !IDEAS_EXCLUDED_SLUGS.has(slugOf(s)),
   );
   const ideas: GuideSection[] = await Promise.all(
     ideaSections.map(async (section) => {
-      const entries = (await listingEntriesOrdered(section.route.path)).slice(0, 6);
+      const entries = (await listingEntriesOrdered(section.route.path)).slice(
+        0,
+        6,
+      );
       return {
         id: section.id,
         name: section.name,

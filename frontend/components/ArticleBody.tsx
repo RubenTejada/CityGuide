@@ -20,7 +20,11 @@ function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
       const href = match[2];
       nodes.push(
         href.startsWith("/") ? (
-          <Link key={key} href={href} className="font-medium text-brand-600 hover:underline">
+          <Link
+            key={key}
+            href={href}
+            className="font-medium text-brand-600 hover:underline"
+          >
             {match[1]}
           </Link>
         ) : (
@@ -78,7 +82,10 @@ export default function ArticleBody({ markdown }: { markdown: string }) {
         }
         if (block.startsWith("## ")) {
           return (
-            <h2 key={key} className="pt-2 text-xl font-semibold text-neutral-900">
+            <h2
+              key={key}
+              className="pt-2 text-xl font-semibold text-neutral-900"
+            >
               {renderInline(block.slice(3), key)}
             </h2>
           );

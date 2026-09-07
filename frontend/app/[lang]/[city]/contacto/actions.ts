@@ -1,7 +1,12 @@
 "use server";
 
 import { headers } from "next/headers";
-import { REQUEST_TYPES, type ContactState, type RequestType } from "@/lib/contact";
+import {
+  REQUEST_TYPES,
+  type ContactState,
+  type RequestType,
+} from "@/lib/contact";
+import { DEFAULT_LOCALE, isLocale, t } from "@/lib/i18n";
 
 const BASE_URL = process.env.UMBRACO_BASE_URL ?? "http://localhost:54509";
 
@@ -21,20 +26,25 @@ export async function sendContactMessage(
   _prev: ContactState,
   data: FormData,
 ): Promise<ContactState> {
+  // A Server Action has no route to read the language from; the form states it.
+  const submitted = field(data, "locale");
+  const words = t(isLocale(submitted) ? submitted : DEFAULT_LOCALE).contact
+    .errors;
+
   const requestType = field(data, "requestType");
   const name = field(data, "name");
   const email = field(data, "email");
   const message = field(data, "message");
 
   if (!REQUEST_TYPES.includes(requestType as RequestType)) {
-    return { status: "error", error: "Elige el tipo de solicitud." };
+    return { status: "error", error: words.requestType };
   }
-  if (name.length < 2) return { status: "error", error: "Escribe tu nombre." };
+  if (name.length < 2) return { status: "error", error: words.name };
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-    return { status: "error", error: "Escribe un correo válido." };
+    return { status: "error", error: words.email };
   }
   if (message.length < 10) {
-    return { status: "error", error: "Cuéntanos un poco más en el mensaje." };
+    return { status: "error", error: words.message };
   }
 
   const forwarded = (await headers()).get("x-forwarded-for");
@@ -60,22 +70,13 @@ export async function sendContactMessage(
     });
 
     if (response.status === 429) {
-      return {
-        status: "error",
-        error: "Recibimos varios mensajes tuyos. Intenta de nuevo en un rato.",
-      };
+      return { status: "error", error: words.tooMany };
     }
     if (!response.ok) {
-      return {
-        status: "error",
-        error: "No pudimos enviar tu mensaje. Inténtalo más tarde.",
-      };
+      return { status: "error", error: words.failed };
     }
   } catch {
-    return {
-      status: "error",
-      error: "No pudimos enviar tu mensaje. Inténtalo más tarde.",
-    };
+    return { status: "error", error: words.failed };
   }
 
   return { status: "sent" };

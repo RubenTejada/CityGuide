@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useLocale, useWords } from "@/components/LocaleProvider";
 import { useState } from "react";
 import MovieReviewBadges from "@/components/cine/MovieReviewBadges";
 import MovieShowtimes from "@/components/cine/MovieShowtimes";
@@ -24,6 +25,8 @@ export default function MovieCard({
   showMap?: boolean;
   compact?: boolean;
 }) {
+  const words = useWords();
+  const locale = useLocale();
   const [open, setOpen] = useState(false);
   const totalShowtimes = movie.cinemas.reduce(
     (sum, c) => sum + c.showtimes.length,
@@ -86,6 +89,7 @@ export default function MovieCard({
               movieName={movie.name}
               reviews={movie.reviews}
               size="sm"
+              locale={locale}
             />
           </div>
           <p className="mt-1 text-sm font-medium text-brand-700">
@@ -113,7 +117,7 @@ export default function MovieCard({
                 compact ? "px-3 py-1.5 text-xs" : "px-4 py-1.5 text-sm"
               }`}
             >
-              {open ? "Ocultar horarios" : "Ver horarios y cines"}
+              {open ? words.movies.hideShowtimes : words.movies.showtimes}
               <span aria-hidden className="text-xs">
                 {open ? "▲" : "▼"}
               </span>

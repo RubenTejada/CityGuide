@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { t, type Locale } from "@/lib/i18n";
 import { useEffect, useRef } from "react";
 import { PendingLink } from "@/components/LoadingOverlay";
 
@@ -13,10 +14,12 @@ export type SectionTab = { id: string; href: string; label: string };
  */
 export default function SectionTabs({
   home,
+  locale,
   sections,
 }: {
   /** "Inicio": selected only on the city page itself. */
   home: string;
+  locale: Locale;
   sections: SectionTab[];
 }) {
   // The CMS gives section paths with a trailing slash; `usePathname` never has
@@ -50,7 +53,7 @@ export default function SectionTabs({
         className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-6 [scrollbar-width:none] sm:flex-wrap sm:overflow-x-visible [&::-webkit-scrollbar]:hidden"
       >
         <Tab href={home} active={pathname === trim(home)}>
-          Inicio
+          {t(locale).nav.home}
         </Tab>
         {sections.map((section) => (
           <Tab

@@ -1,5 +1,7 @@
 "use client";
 
+import { useWords } from "@/components/LocaleProvider";
+
 export type ListingView = "lista" | "mapa";
 
 /**
@@ -13,6 +15,7 @@ export default function ViewToggle({
   value: ListingView;
   onChange: (view: ListingView) => void;
 }) {
+  const words = useWords();
   const button = (view: ListingView, label: string) => (
     <button
       type="button"
@@ -30,8 +33,8 @@ export default function ViewToggle({
 
   return (
     <div className="ml-auto inline-flex rounded-full border border-neutral-300 bg-white p-0.5">
-      {button("lista", "Lista")}
-      {button("mapa", "Mapa")}
+      {button("lista", words.listing.grid)}
+      {button("mapa", words.listing.map)}
     </div>
   );
 }

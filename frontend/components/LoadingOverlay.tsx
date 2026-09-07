@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useWords } from "@/components/LocaleProvider";
 import { useRouter } from "next/navigation";
 import {
   createContext,
@@ -18,11 +19,12 @@ import {
  */
 export default function LoadingOverlay({
   show,
-  label = "Cargando…",
+  label,
 }: {
   show: boolean;
   label?: string;
 }) {
+  const words = useWords();
   if (!show) return null;
   return (
     <div
@@ -33,7 +35,7 @@ export default function LoadingOverlay({
       <div className="sticky top-[40vh] flex h-fit flex-col items-center gap-2 py-6">
         <span className="h-9 w-9 animate-spin rounded-full border-4 border-white/30 border-t-white" />
         <span className="text-sm font-medium text-white drop-shadow">
-          {label}
+          {label ?? words.nav.loading}
         </span>
       </div>
     </div>

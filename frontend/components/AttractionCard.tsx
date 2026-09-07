@@ -1,6 +1,13 @@
 import Image from "next/image";
 import Link from "next/link";
-import { facilities, photoUrl, slugOf, text, type UmbracoItem } from "@/lib/umbraco";
+import { contentSegments, type Locale } from "@/lib/i18n";
+import {
+  facilities,
+  photoUrl,
+  slugOf,
+  text,
+  type UmbracoItem,
+} from "@/lib/umbraco";
 import { sectionListImage } from "@/lib/sections";
 import FacilityBadges from "./FacilityBadges";
 import Rating from "./Rating";
@@ -51,13 +58,15 @@ const FALLBACK_PHOTOS: Record<string, string> = {
  * `compact` shrinks the photo and the copy so three fit across a wide screen.
  */
 export default function AttractionCard({
+  locale,
   place,
   compact = false,
 }: {
+  locale: Locale;
   place: UmbracoItem;
   compact?: boolean;
 }) {
-  const citySlug = place.route.path.split("/").filter(Boolean)[0] ?? "";
+  const citySlug = contentSegments(place.route.path)[0] ?? "";
   const photo =
     photoUrl(place) ??
     FALLBACK_PHOTOS[`${citySlug}/${slugOf(place)}`] ??
@@ -94,7 +103,7 @@ export default function AttractionCard({
         >
           {place.name}
         </h3>
-        <Rating place={place} />
+        <Rating place={place} locale={locale} />
         <p
           className={`truncate text-neutral-500 ${
             compact ? "mt-0.5 text-xs" : "mt-1 text-sm"
@@ -110,7 +119,10 @@ export default function AttractionCard({
           {text(place, "description")}
         </p>
         <div className={compact ? "mt-2" : "mt-3"}>
-          <FacilityBadges facilities={facilities(place).slice(0, 3)} />
+          <FacilityBadges
+            facilities={facilities(place).slice(0, 3)}
+            locale={locale}
+          />
         </div>
       </div>
     </Link>

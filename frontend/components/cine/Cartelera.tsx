@@ -4,12 +4,13 @@ import MovieCard from "@/components/cine/MovieCard";
 import {
   CINEMAS_BY_CITY,
   getAvailableDates,
-  getMovieCatalog,
   getMovieBillboard,
   todayInDR,
   toMovieCards,
   type Cinema,
 } from "@/lib/cinema";
+import { type Locale } from "@/lib/i18n";
+import { getMovieCatalog } from "@/lib/movieCatalog";
 
 /**
  * Live cartelera from Caribbean Cinemas, grouped by movie (most cinemas and
@@ -24,11 +25,13 @@ export default async function Cartelera({
   basePath,
   selectedDate,
   cinema,
+  locale,
 }: {
   citySlug: string;
   basePath: string;
   selectedDate?: string;
   cinema?: Cinema;
+  locale: Locale;
 }) {
   const today = todayInDR();
   const siteIds = cinema
@@ -38,7 +41,7 @@ export default async function Cartelera({
     getAvailableDates(siteIds),
     // Agent-maintained movie catalog: the detail page, the stable trailer pick
     // and the IMDb / Rotten Tomatoes scores all live in the CMS.
-    getMovieCatalog(citySlug),
+    getMovieCatalog(citySlug, locale),
   ]);
   const date =
     selectedDate && dates.includes(selectedDate)
@@ -60,7 +63,7 @@ export default async function Cartelera({
       );
   }
 
-  const cards = toMovieCards(citySlug, billboard, catalog);
+  const cards = toMovieCards(citySlug, billboard, locale, catalog);
 
   return (
     <PendingArea className="mt-10" label="Actualizando cartelera…">
@@ -84,6 +87,7 @@ export default async function Cartelera({
         selected={date}
         today={today}
         basePath={basePath}
+        locale={locale}
       />
 
       {cards.length === 0 ? (
