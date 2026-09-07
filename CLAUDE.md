@@ -457,6 +457,22 @@ URL segment (`/santo-domingo/restaurantes` and `/en/santo-domingo/restaurants`).
   belongs to no culture and would otherwise be wiped by whichever pass wrote last, taking the
   address, phone, coordinates, rating and photo with it. Publishing is per culture and additive
   (`PublishAsync(id, culture)`).
+- **A place the agent discovers is created in both languages at once.** The enrichment
+  call that describes it answers with the English description, title and snippet as well
+  (`Enrichment`, `EnrichmentPrompt`), which costs no extra call and no extra Google
+  request — they are three more fields on the answer the place already pays for — so a
+  place found today has an English page today instead of waiting for the next translation
+  pass. Its opening hours are translated by the table, and its name is not translated at
+  all: a place is called what it is called. A branch stores no prose in either language,
+  so it gets its English variant with nothing but a name and reads its company's; and a
+  place whose English prose did not come back (the content filter trips on nightlife) is
+  left for the translation pass rather than published as an English page written in
+  Spanish. The structure a run creates on the way — a subcategory, a brand node, a plaza
+  rebuilt by `--regroup-malls` — takes its English variant too (`alsoInEnglish`), because
+  a culture only routes when every ancestor is published in it; what it does not take is
+  prose, which the translation pass fills. Films and events stay Spanish until that pass:
+  their text comes from the cartelera and the ticket portals, not from a model call this
+  side could piggyback on.
 - **`--translate` fills the English side** (`TranslateSync`), writing only what is missing: the
   first pass covers the site and every pass after it picks up what a discovery run has since
   created. It touches Google not at all — the words are already in the CMS. Most of the text

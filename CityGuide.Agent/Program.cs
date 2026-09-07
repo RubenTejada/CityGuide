@@ -1156,7 +1156,11 @@ if (args.Contains("--regroup-companies"))
                             [
                                 new { alias = "description", value = (object?)text.GetValueOrDefault("description") },
                                 new { alias = "website", value = (object?)text.GetValueOrDefault("website") },
-                            ]);
+                            ],
+                            // The brand's page has to exist in English too, or every
+                            // branch under it is unreachable there. Its description
+                            // comes with the next translation pass.
+                            alsoInEnglish: true);
                         companies[chain] = companyId;
                         createdHere[companyId] = chain;
                         companiesCreated++;
@@ -1502,7 +1506,7 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelec
                 if (!subcategories!.TryGetValue(cuisine, out Guid subcategoryId))
                 {
                     subcategoryId = await umbraco.CreateDocumentAsync(
-                        parent.Value.Id, subcategoryTypeId, cuisine, []);
+                        parent.Value.Id, subcategoryTypeId, cuisine, [], alsoInEnglish: true);
                     subcategories[cuisine] = subcategoryId;
                     Console.WriteLine($"  + subcategoría '{cuisine}'");
                 }
@@ -1523,6 +1527,10 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelec
                     [
                         new { alias = "description", value = (object?)enrichment?.Description },
                         new { alias = "website", value = (object?)place.Website },
+                    ],
+                    englishValues:
+                    [
+                        new { alias = "description", value = (object?)enrichment?.DescriptionEn },
                     ]);
                 companies[run.CompanyName] = companyId.Value;
                 targetParentId = companyId.Value;

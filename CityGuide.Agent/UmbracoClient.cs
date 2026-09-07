@@ -564,9 +564,29 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         return (values, variants);
     }
 
-    /// <summary>Creates a document and publishes it. Returns the new document id.</summary>
+    /// <summary>
+    /// The English name of a node the agent creates. A section is a label the portal
+    /// chose and the table knows it ("Cines" is "Movie Theaters"); everything else is a
+    /// name out in the world — a chain, a plaza, a cinema — and reads the same in both
+    /// languages. A label nobody has mapped keeps its Spanish name rather than blocking
+    /// the English page, which is the same call the translation pass makes.
+    /// </summary>
+    public static string EnglishNameOf(string spanishName) =>
+        TranslatedVocabulary.SectionName(spanishName) ?? spanishName;
+
+    /// <summary>
+    /// Creates a document and publishes it. Returns the new document id.
+    /// <paramref name="alsoInEnglish"/> gives it its English variant too: structure —
+    /// a section, a chain, a plaza — carries no prose the agent writes, but a culture
+    /// only routes when every ancestor is published in it, so a section left in Spanish
+    /// alone would leave every English page under it unreachable. Content that does
+    /// carry prose (a film, an event) stays Spanish until the translation pass, rather
+    /// than going out as an English page written in Spanish. <paramref name="englishValues"/>
+    /// is for the prose the agent writes itself, which it can write in both.
+    /// </summary>
     public async Task<Guid> CreateDocumentAsync(
-        Guid parentId, Guid docTypeId, string name, IEnumerable<object> values, bool publish = true)
+        Guid parentId, Guid docTypeId, string name, IEnumerable<object> values, bool publish = true,
+        bool alsoInEnglish = false, IEnumerable<object>? englishValues = null)
     {
         var documentId = Guid.NewGuid();
         HttpRequestMessage request = await AuthorizedRequestAsync(HttpMethod.Post, "/umbraco/management/api/v1/document");
@@ -590,6 +610,16 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         if (publish)
         {
             await PublishAsync(documentId);
+        }
+
+        if (alsoInEnglish || englishValues is not null)
+        {
+            await PutDocumentAsync(
+                documentId, EnglishNameOf(name), englishValues ?? [], ContentCultures.English);
+            if (publish)
+            {
+                await PublishAsync(documentId, ContentCultures.English);
+            }
         }
 
         return documentId;
@@ -1065,7 +1095,11 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
             parentId, await GetMallDocumentTypeIdAsync(), name,
             values.Where(v => MallAliases.Contains(v.Key))
                 .Select(v => (object)new { alias = v.Key, value = v.Value }),
-            published);
+            published,
+            // The plaza has to exist in English or the establishments filed under it
+            // are unreachable there; its English description comes with the next
+            // translation pass, like any node the agent rebuilds.
+            alsoInEnglish: true);
 
         foreach (ChildDocument child in await GetChildrenAsync(placeId))
         {
@@ -1401,6 +1435,52 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
             await PublishAsync(documentId);
         }
 
+        await WriteEnglishPlaceAsync(documentId, name, place, enrichment, branchOfCompany);
         return documentId;
+    }
+
+    /// <summary>
+    /// The English side of a place the discovery run just created, from the same
+    /// enrichment call — so a place found today has an English page today instead of
+    /// waiting for the next translation pass.
+    ///
+    /// The name is not translated: a place is called what it is called. Opening hours
+    /// are, by the table rather than the model. A branch stores no prose in either
+    /// language (it reads its company's), so it gets its English variant with nothing
+    /// but a name — and a place whose English prose did not come back is left for the
+    /// translation pass rather than published as an English page carrying Spanish text.
+    /// </summary>
+    private async Task WriteEnglishPlaceAsync(
+        Guid documentId, string name, DiscoveredPlace place, Enrichment? enrichment, bool branchOfCompany)
+    {
+        object[] values;
+        if (branchOfCompany)
+        {
+            values = [];
+        }
+        else if (string.IsNullOrWhiteSpace(enrichment?.DescriptionEn))
+        {
+            return;
+        }
+        else
+        {
+            values =
+            [
+                new { alias = "description", value = enrichment.DescriptionEn },
+                new { alias = "metaTitle", value = enrichment.MetaTitleEn },
+                new { alias = "metaDescription", value = enrichment.MetaDescriptionEn },
+                new
+                {
+                    alias = "hours",
+                    value = TranslatedVocabulary.Hours(string.Join("\n", place.Hours)) ?? "",
+                },
+            ];
+        }
+
+        await PutDocumentAsync(documentId, name, values, ContentCultures.English);
+        if (config.PublishImmediately)
+        {
+            await PublishAsync(documentId, ContentCultures.English);
+        }
     }
 }

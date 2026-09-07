@@ -2,11 +2,20 @@ using System.Text.Json;
 
 namespace CityGuide.Agent;
 
+/// <summary>
+/// What the model writes about a discovered place, in both languages. The English
+/// side costs no extra call and no extra Google request — it is three more fields on
+/// the answer the place already pays for — which is what keeps a place created today
+/// from waiting for the next translation pass to have an English page.
+/// </summary>
 public record Enrichment(
     string Description,
     string[] Facilities,
     string MetaTitle,
-    string MetaDescription);
+    string MetaDescription,
+    string DescriptionEn,
+    string MetaTitleEn,
+    string MetaDescriptionEn);
 
 /// <summary>
 /// The agent's model-backed steps: a Spanish description + facility mapping for a
@@ -61,6 +70,13 @@ public static class EnrichmentPrompt
                 description = "Descripción atractiva del lugar en español, 2-3 frases, tono de guía de ciudad. "
                     + "Sin inventar datos específicos (premios, años, platos exactos) que no estén en la información dada.",
             },
+            descriptionEn = new
+            {
+                type = "string",
+                description = "La misma descripción en inglés de Estados Unidos. No es una traducción "
+                    + "literal: que suene escrita en inglés, con los mismos datos y ninguno más. Los "
+                    + "nombres propios (el lugar, la calle, el sector, la plaza) se quedan como están.",
+            },
             facilities = new
             {
                 type = "array",
@@ -81,8 +97,24 @@ public static class EnrichmentPrompt
                     + "una sola frase en español que nombre el lugar, qué ofrece y en qué zona o ciudad está. "
                     + "Sin comillas, sin emoji y sin repetir el título palabra por palabra.",
             },
+            metaTitleEn = new
+            {
+                type = "string",
+                description = $"El título para Google en inglés, máximo {MaxMetaTitle} caracteres, "
+                    + "con las mismas reglas que el español.",
+            },
+            metaDescriptionEn = new
+            {
+                type = "string",
+                description = $"La descripción para Google en inglés, entre 120 y {MaxMetaDescription} "
+                    + "caracteres, con las mismas reglas que la española.",
+            },
         },
-        required = new[] { "description", "facilities", "metaTitle", "metaDescription" },
+        required = new[]
+        {
+            "description", "descriptionEn", "facilities",
+            "metaTitle", "metaDescription", "metaTitleEn", "metaDescriptionEn",
+        },
     };
 
     public static string UserMessage(DiscoveredPlace place, string? categoryPrompt) =>
@@ -94,8 +126,9 @@ public static class EnrichmentPrompt
         Horario: {string.Join(" | ", place.Hours)}
         Sitio web: {place.Website ?? "n/a"}
         {(string.IsNullOrWhiteSpace(categoryPrompt) ? "" : $"\nInstrucciones del editor para esta categoría: {categoryPrompt}\n")}
-        Escribe la descripción, selecciona las facilidades y redacta el título y la
-        descripción para Google.
+        Escribe la descripción en español y en inglés, selecciona las facilidades y
+        redacta el título y la descripción para Google en los dos idiomas. El portal
+        publica cada página en ambos, así que las dos versiones dicen lo mismo.
         """;
 
     /// <summary>Parses the tool-call arguments into an Enrichment.</summary>
@@ -106,18 +139,21 @@ public static class EnrichmentPrompt
             && facilitiesElement.ValueKind == JsonValueKind.Array
             ? [.. facilitiesElement.EnumerateArray().Select(f => f.GetString()!).Where(FacilityOptions.Contains)]
             : [];
-        return new Enrichment(description, facilities, MetaTitle(input), MetaDescription(input));
+        return new Enrichment(
+            description,
+            facilities,
+            MetaTitle(input, "metaTitle"),
+            Text(input, "metaDescription"),
+            Text(input, "descriptionEn"),
+            MetaTitle(input, "metaTitleEn"),
+            Text(input, "metaDescriptionEn"));
     }
 
     /// <summary>The SEO title, or "" when the model went over budget: an over-long
     /// title is stored verbatim by the frontend, so it is better to leave the field
     /// empty and let the page derive its own.</summary>
-    private static string MetaTitle(JsonElement input) =>
-        Text(input, "metaTitle") is { Length: > 0 and <= MaxMetaTitle } title ? title : "";
-
-    /// <summary>The SEO description. A long one is kept: the frontend truncates every
-    /// description to the snippet budget on a word boundary.</summary>
-    private static string MetaDescription(JsonElement input) => Text(input, "metaDescription");
+    private static string MetaTitle(JsonElement input, string name) =>
+        Text(input, name) is { Length: > 0 and <= MaxMetaTitle } title ? title : "";
 
     private static string Text(JsonElement input, string name) =>
         input.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.String

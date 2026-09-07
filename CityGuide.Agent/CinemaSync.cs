@@ -36,7 +36,8 @@ public class CinemaSync(
 
             Guid categoryTypeId = await umbraco.GetDocumentTypeIdAsync("Category Page");
             Guid newId = await umbraco.CreateDocumentAsync(cityNode.Value.Id, categoryTypeId, "Cines",
-                [new { alias = "intro", value = "Carteleras y salas de cine." }]);
+                [new { alias = "intro", value = "Carteleras y salas de cine." }],
+                englishValues: [new { alias = "intro", value = "Movie listings and theaters." }]);
             cines = (newId, "Cines");
             Console.WriteLine("  + created 'Cines' category");
         }
@@ -62,6 +63,11 @@ public class CinemaSync(
             new { alias = "description", value = (object)("La cadena de cines líder del Caribe: salas CXC, 4DX y VIP "
                 + "con la cartelera más completa de estrenos.") },
             new { alias = "website", value = (object)"https://rd.caribbeancinemas.com" },
+        ],
+        englishValues:
+        [
+            new { alias = "description", value = (object)("The Caribbean's leading cinema chain: CXC, 4DX and VIP "
+                + "theaters with the most complete lineup of new releases.") },
         ]);
         Console.WriteLine($"  + company '{config.CompanyName}'");
         return id;
@@ -100,7 +106,8 @@ public class CinemaSync(
                     c.Name.Equals(site.Name, StringComparison.OrdinalIgnoreCase));
                 if (match is null)
                 {
-                    await umbraco.CreateDocumentAsync(companyId, placeTypeId, site.Name, values);
+                    await umbraco.CreateDocumentAsync(
+                        companyId, placeTypeId, site.Name, values, alsoInEnglish: true);
                     Console.WriteLine($"  + branch {site.Name}");
                 }
                 else
