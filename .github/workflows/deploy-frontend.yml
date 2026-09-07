@@ -58,3 +58,9 @@ jobs:
         with:
           app-name: quehacerrd-web
           package: frontend/.next/standalone
+
+      # The zip deploy lands the new files but leaves the running node process
+      # alone, so the site keeps serving the previous build — a deploy that
+      # reports success and changes nothing. Restarting is what publishes it.
+      - name: Restart app
+        run: az webapp restart -g cityguide-rg -n quehacerrd-web
