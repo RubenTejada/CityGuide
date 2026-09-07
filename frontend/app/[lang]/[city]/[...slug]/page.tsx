@@ -8,6 +8,7 @@ import JsonLd from "@/components/JsonLd";
 import ArticleCard, { articleDate } from "@/components/ArticleCard";
 import FacilityBadges, { FACILITY_ICONS } from "@/components/FacilityBadges";
 import AttractionCard from "@/components/AttractionCard";
+import { PendingLink } from "@/components/LoadingOverlay";
 import ListingViews, {
   type FilterGroup,
   type ListingEntry,
@@ -45,7 +46,7 @@ import {
   t,
 } from "@/lib/i18n";
 import { getTopMoviesToday } from "@/lib/movieCatalog";
-import { canonicalSlug } from "@/lib/sectionSlugs";
+import { canonicalSlug, localizedSectionPath } from "@/lib/sectionSlugs";
 import {
   categoryPath,
   mapPinIcon,
@@ -119,7 +120,7 @@ export default async function ContentPage({
       return <MallView item={item} />;
     case "place": {
       // A cinema branch page ("Cines" section) also shows its own cartelera.
-      const cinema = slug.includes("cines")
+      const cinema = slug.map(canonicalSlug).includes("cines")
         ? cinemaByName(city, item.name)
         : null;
       if (cinema) {
@@ -405,10 +406,10 @@ async function Breadcrumb({ item }: { item: UmbracoItem }) {
     <nav className="text-sm text-neutral-500" aria-label={words.breadcrumb}>
       <JsonLd data={breadcrumbJsonLd(trail)} />
       <ol className="flex flex-wrap items-center gap-1">
-        {crumbs.filter(Boolean).map((crumb) => (
-          <li key={crumb!.path} className="flex items-center gap-1">
-            <Link href={crumb!.path} className="hover:text-brand-600">
-              {crumb!.name}
+        {trail.slice(0, -1).map((crumb) => (
+          <li key={crumb.path} className="flex items-center gap-1">
+            <Link href={crumb.path} className="hover:text-brand-600">
+              {crumb.name}
             </Link>
             <span aria-hidden>›</span>
           </li>
@@ -478,7 +479,7 @@ const ESTABLISHMENT_COUNT_SECTIONS = new Set([
 
 /** The city section a route path belongs to (`/santo-domingo/tiendas/...`). */
 function sectionSlug(path: string): string {
-  return contentSegments(path)[1] ?? "";
+  return canonicalSlug(contentSegments(path)[1] ?? "");
 }
 
 /**
@@ -731,23 +732,31 @@ async function CategoryView({
     cityOf(item),
   ]);
   const subcategories = children.filter((c) => c.contentType === "subcategory");
-  const categorySlug = item.route.path.split("/").filter(Boolean).pop();
+  const categorySlug = canonicalSlug(
+    item.route.path.split("/").filter(Boolean).pop() ?? "",
+  );
   const showCartelera =
     categorySlug === "cines" && !!citySlug && citySlug in CINEMAS_BY_CITY;
+  const subFilter =
+    subcategories.length > 0
+      ? subcategoryFilter(
+          subcategoryFilterLabel(categorySlug, locale),
+          entries,
+          subcategories,
+        )
+      : null;
   const filters: FilterGroup[] = [
-    ...(FACILITY_FILTER_SLUGS.has(categorySlug ?? "")
+    ...(FACILITY_FILTER_SLUGS.has(categorySlug)
       ? [await facilityFilter(item.route.path, entries)]
       : []),
-    ...(subcategories.length > 0
-      ? [
-          subcategoryFilter(
-            subcategoryFilterLabel(categorySlug, locale),
-            entries,
-            subcategories,
-          ),
-        ]
-      : []),
+    ...(subFilter ? [subFilter] : []),
   ];
+  // The dropdown narrows this page; the pills open the subcategory's own page,
+  // which nothing linked to before. Both list the subcategories that actually
+  // hold something, which is what the filter already worked out.
+  const pills = subcategories.filter((sub) =>
+    subFilter?.options.includes(sub.name),
+  );
   const markers = await listingMarkers(item.route.path, entries);
   // Attractions use the photo card "Qué Hacer" shows, three across on a wide
   // screen, instead of the two-column place card the other sections list.
@@ -796,7 +805,18 @@ async function CategoryView({
               ? "mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
               : undefined
           }
-        />
+        >
+          {pills.map((sub) => (
+            <PendingLink
+              key={sub.id}
+              href={sub.route.path}
+              className="inline-flex items-center gap-1.5 rounded-full border border-neutral-300 bg-white px-3.5 py-1.5 text-sm font-medium hover:border-brand-500 hover:text-brand-600"
+            >
+              <span aria-hidden>{subcategoryIcon(sub.route.path)}</span>
+              {sub.name}
+            </PendingLink>
+          ))}
+        </ListingViews>
       )}
     </PageShell>
   );
@@ -868,7 +888,7 @@ async function MovieView({
             </p>
           )}
           <Link
-            href={`/${citySlug}/cines`}
+            href={localizedSectionPath(locale, citySlug, "cines")}
             className="mt-6 inline-block rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium hover:border-brand-500 hover:text-brand-600"
           >
             {t(locale).movies.fullListings}
@@ -1415,7 +1435,18 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
               <dt className="font-semibold text-brand-700">
                 {company ? t(locale).place.company : t(locale).place.category}
               </dt>
-              <dd className="text-neutral-700">{categoryName}</dd>
+              <dd className="text-neutral-700">
+                {parent ? (
+                  <Link
+                    href={parent.route.path}
+                    className="hover:text-brand-600 hover:underline"
+                  >
+                    {categoryName}
+                  </Link>
+                ) : (
+                  categoryName
+                )}
+              </dd>
             </div>
             {inherited("phone") && (
               <div className="flex gap-2">
@@ -1932,7 +1963,9 @@ async function ThingsToDoView({
   }));
 
   const attractionsSection = sections.find(
-    (s) => s.contentType === "categoryPage" && slugOf(s) === "atracciones",
+    (s) =>
+      s.contentType === "categoryPage" &&
+      canonicalSlug(slugOf(s)) === "atracciones",
   );
   const attractions = attractionsSection
     ? (await listingEntriesOrdered(attractionsSection.route.path)).filter(
@@ -1948,12 +1981,13 @@ async function ThingsToDoView({
     : [];
 
   const cinemasSection = sections.find(
-    (s) => s.contentType === "categoryPage" && slugOf(s) === "cines",
+    (s) => s.contentType === "categoryPage" && canonicalSlug(slugOf(s)) === "cines",
   );
 
   const ideaSections = sections.filter(
     (s) =>
-      s.contentType === "categoryPage" && !IDEAS_EXCLUDED_SLUGS.has(slugOf(s)),
+      s.contentType === "categoryPage" &&
+      !IDEAS_EXCLUDED_SLUGS.has(canonicalSlug(slugOf(s))),
   );
   const ideas: GuideSection[] = await Promise.all(
     ideaSections.map(async (section) => {
@@ -1964,7 +1998,7 @@ async function ThingsToDoView({
       return {
         id: section.id,
         name: section.name,
-        slug: slugOf(section),
+        slug: canonicalSlug(slugOf(section)),
         href: section.route.path,
         entries,
         markers: [

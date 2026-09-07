@@ -3,7 +3,12 @@
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 import { type Locale, localeHref, t } from "@/lib/i18n";
-import { fold, type SearchEntry } from "@/lib/search";
+import {
+  matchesTokens,
+  searchText,
+  searchTokens,
+  type SearchEntry,
+} from "@/lib/search";
 
 const MAX_SUGGESTIONS = 8;
 
@@ -42,7 +47,7 @@ export default function SearchAutocomplete({
         setIndex(
           entries.map((e) => ({
             ...e,
-            folded: fold(`${e.name} ${e.category} ${e.extra}`),
+            folded: searchText(e),
           })),
         ),
       )
@@ -50,11 +55,10 @@ export default function SearchAutocomplete({
   }
 
   const suggestions = useMemo(() => {
-    const needle = fold(q.trim());
-    if (!needle || !index) return [];
-    const tokens = needle.split(/\s+/);
+    const tokens = searchTokens(q);
+    if (tokens.length === 0 || !index) return [];
     return index
-      .filter((e) => tokens.every((t) => e.folded.includes(t)))
+      .filter((e) => matchesTokens(e.folded, tokens))
       .slice(0, MAX_SUGGESTIONS);
   }, [q, index]);
 
@@ -79,7 +83,10 @@ export default function SearchAutocomplete({
     }
   }
 
-  const showList = open && suggestions.length > 0;
+  // Open on any query, not only on a hit: a dropdown that disappears when
+  // nothing matches reads as a broken search box, and the row that opens the
+  // full results is the pointer affordance for what Enter already does.
+  const showList = open && q.trim().length > 0 && index !== null;
 
   return (
     <form
@@ -131,6 +138,11 @@ export default function SearchAutocomplete({
           onMouseDown={(e) => e.preventDefault()}
           className="absolute left-0 right-0 top-full z-20 mt-2 overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-lg"
         >
+          {suggestions.length === 0 && (
+            <li className="px-4 py-2.5 text-sm text-neutral-500">
+              {t(locale).search.noSuggestions}
+            </li>
+          )}
           {suggestions.map((entry, i) => (
             <li
               key={entry.path}
@@ -158,6 +170,14 @@ export default function SearchAutocomplete({
               )}
             </li>
           ))}
+          <li className="border-t border-neutral-200">
+            <button
+              type="submit"
+              className="w-full cursor-pointer px-4 py-2.5 text-left text-sm font-medium text-brand-700 hover:bg-neutral-100"
+            >
+              {t(locale).search.seeAllResults(q.trim())}
+            </button>
+          </li>
         </ul>
       )}
     </form>

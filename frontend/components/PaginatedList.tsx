@@ -1,7 +1,8 @@
 "use client";
 
-import { Children, useRef, useState, type ReactNode } from "react";
+import { Children, useRef, type ReactNode } from "react";
 import { useWords } from "@/components/LocaleProvider";
+import { useUrlQuery } from "./urlQuery";
 
 const PAGE_SIZE = 12;
 
@@ -9,19 +10,23 @@ const PAGE_SIZE = 12;
  * Client-side pagination for a server-rendered list: every card is rendered on
  * the server (so the full listing stays in the HTML for crawlers and the
  * facility filter can still see every entry) and only the current page is
- * shown. Remount it — a `key` tied to the filter state — to reset to page 1
- * when the underlying list changes.
+ * shown. The page number lives in the query string, so page 3 of a listing is
+ * a link that works; whoever narrows the list clears the parameter to restart
+ * at page 1. `param` names it, for a page that ever holds two such lists.
  */
 export default function PaginatedList({
   children,
   className,
+  param = "pagina",
 }: {
   children: ReactNode;
   className?: string;
+  param?: string;
 }) {
   const words = useWords();
+  const { params, set } = useUrlQuery();
   const items = Children.toArray(children);
-  const [page, setPage] = useState(1);
+  const page = Number(params.get(param)) || 1;
   const top = useRef<HTMLDivElement>(null);
 
   const pageCount = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
@@ -29,7 +34,11 @@ export default function PaginatedList({
   const visible = items.slice((current - 1) * PAGE_SIZE, current * PAGE_SIZE);
 
   const goTo = (next: number) => {
-    setPage(next);
+    // Page 1 is the bare URL: it is what every link into the listing points at.
+    set((query) => {
+      if (next <= 1) query.delete(param);
+      else query.set(param, String(next));
+    });
     top.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
@@ -46,7 +55,7 @@ export default function PaginatedList({
             onClick={() => goTo(current - 1)}
             label={words.listing.previousPage}
           >
-            Anterior
+            {words.listing.previous}
           </PageButton>
           {pageNumbers(current, pageCount).map((entry, index) =>
             entry === null ? (
@@ -58,7 +67,7 @@ export default function PaginatedList({
                 key={entry}
                 active={entry === current}
                 onClick={() => goTo(entry)}
-                label={`Página ${entry}`}
+                label={words.listing.page(entry)}
               >
                 {entry}
               </PageButton>
@@ -69,7 +78,7 @@ export default function PaginatedList({
             onClick={() => goTo(current + 1)}
             label={words.listing.nextPage}
           >
-            Siguiente
+            {words.listing.next}
           </PageButton>
         </nav>
       )}

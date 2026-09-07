@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { useWords } from "@/components/LocaleProvider";
+import { useUrlQuery } from "./urlQuery";
 import FilterDropdown from "./FilterDropdown";
 import MarkersMap, { type MapMarker } from "./MarkersMap";
 import PaginatedList from "./PaginatedList";
@@ -42,6 +43,14 @@ export interface ListingEntry {
  * to their left. Filters narrow both views at once.
  * `gridClassName` is the grid the cards sit in: two wide columns by default,
  * overridden by listings whose cards are the narrower "Qué Hacer" ones.
+ * `emptyLabel` is what an empty listing says; a listing that is not of places
+ * (a company's branches) overrides it.
+ *
+ * What the visitor picked lives in the query string (one parameter per filter
+ * group plus `vista`), so a narrowed listing is a link someone can share and
+ * Back walks the picks instead of leaving the site. The values are the CMS
+ * names the dropdowns list, which is why such a link does not carry across
+ * languages — neither does the path it hangs from.
  */
 export default function ListingViews({
   entries,
@@ -57,13 +66,17 @@ export default function ListingViews({
   children?: ReactNode;
 }) {
   const words = useWords();
-  const [selected, setSelected] = useState<Record<string, string[]>>({});
-  const [view, setView] = useState<ListingView>("lista");
+  const { params, set } = useUrlQuery();
+  const view: ListingView = params.get("vista") === "mapa" ? "mapa" : "lista";
 
   const groups = filters.filter((group) => group.options.length > 0);
-  const active = groups.filter(
-    (group) => (selected[group.key] ?? []).length > 0,
+  const selected = Object.fromEntries(
+    groups.map((group) => [
+      group.key,
+      params.getAll(group.key).filter((value) => group.options.includes(value)),
+    ]),
   );
+  const active = groups.filter((group) => selected[group.key]!.length > 0);
 
   const filtered = active.length
     ? entries.filter((entry) =>
@@ -80,15 +93,29 @@ export default function ListingViews({
   const markers = filtered.flatMap((entry) => entry.markers);
   const mappable = entries.some((entry) => entry.markers.length > 0);
 
+  // Narrowing the list restarts it at page 1: the page lives in the URL too.
   const toggle = (key: string, value: string) =>
-    setSelected((current) => {
-      const picks = current[key] ?? [];
-      return {
-        ...current,
-        [key]: picks.includes(value)
-          ? picks.filter((v) => v !== value)
-          : [...picks, value],
-      };
+    set((next) => {
+      const picks = selected[key] ?? [];
+      next.delete(key);
+      for (const pick of picks.includes(value)
+        ? picks.filter((v) => v !== value)
+        : [...picks, value]) {
+        next.append(key, pick);
+      }
+      next.delete("pagina");
+    });
+
+  const clear = () =>
+    set((next) => {
+      for (const group of groups) next.delete(group.key);
+      next.delete("pagina");
+    });
+
+  const setView = (value: ListingView) =>
+    set((next) => {
+      if (value === "mapa") next.set("vista", "mapa");
+      else next.delete("vista");
     });
 
   return (
@@ -110,7 +137,7 @@ export default function ListingViews({
           {active.length > 0 && (
             <button
               type="button"
-              onClick={() => setSelected({})}
+              onClick={clear}
               className="text-sm text-neutral-500 underline-offset-2 hover:text-brand-700 hover:underline"
             >
               {words.listing.clearFilters}
@@ -123,7 +150,9 @@ export default function ListingViews({
 
       {filtered.length === 0 ? (
         <p className="mt-8 text-neutral-500">
-          {entries.length === 0 ? emptyLabel : words.listing.noMatches}
+          {entries.length === 0
+            ? (emptyLabel ?? words.listing.empty)
+            : words.listing.noMatches}
         </p>
       ) : view === "mapa" ? (
         <div className="mt-8">
@@ -138,13 +167,7 @@ export default function ListingViews({
           )}
         </div>
       ) : (
-        // Remounted on every filter change so the list restarts at page 1.
-        <PaginatedList
-          key={groups
-            .map((group) => (selected[group.key] ?? []).join("|"))
-            .join("&&")}
-          className={gridClassName}
-        >
+        <PaginatedList className={gridClassName}>
           {filtered.map((entry) => entry.card)}
         </PaginatedList>
       )}

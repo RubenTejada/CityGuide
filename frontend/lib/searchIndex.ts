@@ -55,9 +55,11 @@ function toEntry(
 }
 
 /**
- * Precomputed autocomplete index for one city: categories, subcategories,
- * places, companies and events. Built from the (ISR-cached) Delivery API,
- * so repeat requests are served without hitting the CMS.
+ * Precomputed search index for one city: categories, subcategories, places,
+ * companies, plazas, events, articles and films — everything the portal gives
+ * a page of its own. Built from the (ISR-cached) Delivery API, so repeat
+ * requests are served without hitting the CMS. The /buscar page searches the
+ * same index, so the two can never disagree about what the city holds.
  */
 
 export async function buildSearchIndex(
@@ -74,13 +76,15 @@ export async function buildSearchIndex(
     sections.map((s) => [trimPath(s.route.path), s.name]),
   );
 
-  const [subcategories, companies, places, events, articles] =
+  const [subcategories, companies, malls, places, events, articles, movies] =
     await Promise.all([
       getDescendantsOfType(cityPath, "subcategory", undefined, locale),
       getDescendantsOfType(cityPath, "company", undefined, locale),
+      getDescendantsOfType(cityPath, "mall", undefined, locale),
       getDescendantsOfType(cityPath, "place", undefined, locale),
       getDescendantsOfType(cityPath, "eventItem", undefined, locale),
       getDescendantsOfType(cityPath, "article", undefined, locale),
+      getDescendantsOfType(cityPath, "movie", undefined, locale),
     ]);
 
   const companyNameByPath = new Map(
@@ -91,8 +95,10 @@ export async function buildSearchIndex(
     ...sections.filter((s) => s.contentType === "categoryPage"),
     ...subcategories,
     ...companies,
+    ...malls,
     ...places,
     ...events,
     ...articles,
+    ...movies,
   ].map((item) => toEntry(item, sectionNameByPath, companyNameByPath, locale));
 }

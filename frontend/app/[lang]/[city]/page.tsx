@@ -105,14 +105,13 @@ async function ComingSoon({ city }: { city: UmbracoItem }) {
           {words.city.comingSoon}
         </p>
         <h1 className="mt-3 text-3xl font-bold sm:text-4xl">
-          {city.name} está en construcción
+          {words.city.comingSoonHeading(city.name)}
         </h1>
         <p className="mt-4 text-neutral-600">
-          {text(city, "intro") ||
-            `Todavía estamos armando la guía de ${city.name}. Vuelve pronto.`}
+          {text(city, "intro") || words.city.comingSoonBody(city.name)}
         </p>
         <Link
-          href="/"
+          href={localeHref(locale, "/")}
           className="mt-8 inline-block rounded-full bg-sun-400 px-5 py-2.5 text-sm font-semibold text-neutral-900 shadow-sm transition-colors hover:bg-sun-300"
         >
           {words.city.otherCity}

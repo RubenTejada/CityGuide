@@ -133,6 +133,9 @@ const es = {
     readMore: "Leer más…",
     otherCity: "Elegir otra ciudad",
     comingSoon: "En construcción",
+    comingSoonHeading: (city: string): string => `${city} está en construcción`,
+    comingSoonBody: (city: string): string =>
+      `Todavía estamos armando la guía de ${city}. Vuelve pronto.`,
   },
   listing: {
     clearFilters: "Limpiar filtros",
@@ -142,8 +145,11 @@ const es = {
     noneOnMap: "Ninguno de estos resultados tiene ubicación en el mapa.",
     grid: "Cuadrícula",
     map: "Mapa",
+    previous: "Anterior",
+    next: "Siguiente",
     previousPage: "Página anterior",
     nextPage: "Página siguiente",
+    page: (n: number): string => `Página ${n}`,
     pagination: "Paginación",
     cuisine: "Tipo de comida",
     venueType: "Tipo de local",
@@ -255,6 +261,8 @@ const es = {
       categoryPage: "Categoría",
       subcategory: "Subcategoría",
       article: "Artículo",
+      mall: "Plaza",
+      movie: "Película",
     } as Record<string, string>,
     heading: (query: string): string => `Resultados para «${query}»`,
     count: (total: number): string =>
@@ -262,6 +270,16 @@ const es = {
     inCity: (city: string): string => ` en ${city}`,
     empty:
       "No encontramos nada con ese término. Prueba con otra palabra o revisa la ortografía.",
+    noSuggestions: "Sin sugerencias",
+    moreLinks: "Secciones, artículos y películas",
+    seeAllResults: (query: string): string =>
+      `Ver todos los resultados para «${query}»`,
+  },
+  notFound: {
+    title: "No encontramos esta página",
+    body: "El enlace puede estar roto o el contenido ya no existe. Busca lo que necesitas o vuelve a la portada de la ciudad.",
+    backToCity: "Volver a la ciudad",
+    backHome: "Elegir otra ciudad",
   },
   article: {
     more: "Más artículos",
@@ -436,6 +454,9 @@ const en: typeof es = {
     readMore: "Read more…",
     otherCity: "Choose another city",
     comingSoon: "Coming soon",
+    comingSoonHeading: (city: string): string => `${city} is under construction`,
+    comingSoonBody: (city: string): string =>
+      `We are still putting the ${city} guide together. Come back soon.`,
   },
   listing: {
     clearFilters: "Clear filters",
@@ -445,8 +466,11 @@ const en: typeof es = {
     noneOnMap: "None of these results has a location on the map.",
     grid: "Grid",
     map: "Map",
+    previous: "Previous",
+    next: "Next",
     previousPage: "Previous page",
     nextPage: "Next page",
+    page: (n: number): string => `Page ${n}`,
     pagination: "Pagination",
     cuisine: "Cuisine",
     venueType: "Venue type",
@@ -555,12 +579,23 @@ const en: typeof es = {
       categoryPage: "Section",
       subcategory: "Subcategory",
       article: "Article",
+      mall: "Mall",
+      movie: "Movie",
     } as Record<string, string>,
     heading: (query: string): string => `Results for “${query}”`,
     count: (total: number): string =>
       total === 1 ? "1 result" : `${total} results`,
     inCity: (city: string): string => ` in ${city}`,
     empty: "Nothing matched that term. Try another word or check the spelling.",
+    noSuggestions: "No suggestions",
+    moreLinks: "Sections, articles and movies",
+    seeAllResults: (query: string): string => `See all results for “${query}”`,
+  },
+  notFound: {
+    title: "We could not find this page",
+    body: "The link may be broken, or the content is no longer there. Search for what you need, or go back to the city home page.",
+    backToCity: "Back to the city",
+    backHome: "Choose another city",
   },
   article: {
     more: "More articles",
