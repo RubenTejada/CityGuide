@@ -10,6 +10,14 @@ on:
     - cron: "23 8 * * *"
   workflow_dispatch:
     inputs:
+      apply:
+        description: >-
+          Write the changes of the pass that takes a path or a name — merge_mall,
+          move_place, recycle_place, exclude_place. Left off, each one only prints what
+          it would do. The passes chosen from a list carry their own "plan"/"apply".
+        type: boolean
+        required: false
+        default: false
       section:
         description: >-
           Limit the run to these sections (comma-separated), matched against
@@ -75,11 +83,6 @@ on:
         description: The plaza that stays. Required with merge_mall_from.
         required: false
         default: ""
-      merge_mall_apply:
-        description: Write the merge. Left off, it only prints what it would do.
-        type: boolean
-        required: false
-        default: false
       move_place_from:
         description: >-
           Maintenance pass instead of the ingestion run: content path of a node to
@@ -92,11 +95,6 @@ on:
         description: Content path of the new parent. Required with move_place_from.
         required: false
         default: ""
-      move_place_apply:
-        description: Write the move. Left off, it only prints what it would do.
-        type: boolean
-        required: false
-        default: false
       purge_duplicate_places:
         description: >-
           Maintenance pass instead of the ingestion run: sends to the recycle bin the
@@ -144,11 +142,6 @@ on:
           Google listing filed under a second section.
         required: false
         default: ""
-      recycle_place_apply:
-        description: Write the recycle. Left off, it only prints what it would do.
-        type: boolean
-        required: false
-        default: false
       exclude_place:
         description: >-
           Maintenance pass instead of the ingestion run: Google place ids (comma-separated)
@@ -161,11 +154,6 @@ on:
         description: Note written beside each excluded id, for the editor. Optional.
         required: false
         default: ""
-      exclude_apply:
-        description: Write the exclusion. Left off, it only prints what it would do.
-        type: boolean
-        required: false
-        default: false
       gallery:
         description: >-
           Maintenance pass instead of the ingestion run: gives the best-rated places
@@ -281,23 +269,20 @@ jobs:
           Cinemas__Ratings__TmdbApiKey: ${{ secrets.TMDB_API_KEY }}
           Cinemas__Ratings__OmdbApiKey: ${{ secrets.OMDB_API_KEY }}
           SECTION: ${{ inputs.section }}
+          APPLY: ${{ inputs.apply }}
           RECATEGORIZE: ${{ inputs.recategorize_events }}
           PURGE_FOREIGN: ${{ inputs.purge_foreign_events }}
           REGROUP: ${{ inputs.regroup_malls }}
           LINK: ${{ inputs.link_malls }}
           MERGE_FROM: ${{ inputs.merge_mall_from }}
           MERGE_INTO: ${{ inputs.merge_mall_into }}
-          MERGE_APPLY: ${{ inputs.merge_mall_apply }}
           MOVE_FROM: ${{ inputs.move_place_from }}
           MOVE_TO: ${{ inputs.move_place_to }}
-          MOVE_APPLY: ${{ inputs.move_place_apply }}
           PURGE_DUPLICATES: ${{ inputs.purge_duplicate_places }}
           REGROUP_COMPANIES: ${{ inputs.regroup_companies }}
           RECYCLE_PATH: ${{ inputs.recycle_place }}
-          RECYCLE_APPLY: ${{ inputs.recycle_place_apply }}
           EXCLUDE_IDS: ${{ inputs.exclude_place }}
           EXCLUDE_NOTE: ${{ inputs.exclude_note }}
-          EXCLUDE_APPLY: ${{ inputs.exclude_apply }}
           TRANSLATE: ${{ inputs.translate }}
           GALLERY: ${{ inputs.gallery }}
           GALLERY_PLACES: ${{ inputs.gallery_places }}
@@ -346,25 +331,25 @@ jobs:
           elif [ "$LINK" = "apply" ]; then
             dotnet run -c Release -- --link-malls --apply $paid_flag
           elif [ -n "$MERGE_FROM" ] && [ -n "$MERGE_INTO" ]; then
-            if [ "$MERGE_APPLY" = "true" ]; then
+            if [ "$APPLY" = "true" ]; then
               dotnet run -c Release -- --merge-mall "$MERGE_FROM" "$MERGE_INTO" --apply $paid_flag
             else
               dotnet run -c Release -- --merge-mall "$MERGE_FROM" "$MERGE_INTO" $paid_flag
             fi
           elif [ -n "$MOVE_FROM" ] && [ -n "$MOVE_TO" ]; then
-            if [ "$MOVE_APPLY" = "true" ]; then
+            if [ "$APPLY" = "true" ]; then
               dotnet run -c Release -- --move-place "$MOVE_FROM" "$MOVE_TO" --apply $paid_flag
             else
               dotnet run -c Release -- --move-place "$MOVE_FROM" "$MOVE_TO" $paid_flag
             fi
           elif [ -n "$RECYCLE_PATH" ]; then
-            if [ "$RECYCLE_APPLY" = "true" ]; then
+            if [ "$APPLY" = "true" ]; then
               dotnet run -c Release -- --recycle-place "$RECYCLE_PATH" --apply $paid_flag
             else
               dotnet run -c Release -- --recycle-place "$RECYCLE_PATH" $paid_flag
             fi
           elif [ -n "$EXCLUDE_IDS" ]; then
-            if [ "$EXCLUDE_APPLY" = "true" ]; then
+            if [ "$APPLY" = "true" ]; then
               dotnet run -c Release -- --exclude-place "$EXCLUDE_IDS" --note "$EXCLUDE_NOTE" --apply $paid_flag
             else
               dotnet run -c Release -- --exclude-place "$EXCLUDE_IDS" --note "$EXCLUDE_NOTE" $paid_flag
