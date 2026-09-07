@@ -7,10 +7,15 @@ using SkiaSharp;
 
 namespace CityGuide.Agent;
 
-/// <summary>The pages of one menu and the address they were read from. The source is
-/// stored beside the images: it is what an editor follows to check a price, and what
-/// the page declares as "hasMenu" to a search engine.</summary>
-public record FoundMenu(IReadOnlyList<FoundImage> Pages, string SourceUrl);
+/// <summary>
+/// One menu and the address it was read from, in whichever of the two shapes the site
+/// publishes: the pages of a carta as images, or the text of a menu page for the model
+/// to structure. Never both — a site that scans its carta has no text to read, and one
+/// that writes it out has no pages. The source is stored beside either: it is what an
+/// editor follows to check a price, and what the page declares as "hasMenu" to a search
+/// engine.
+/// </summary>
+public record FoundMenu(IReadOnlyList<FoundImage> Pages, string SourceUrl, string? Text = null);
 
 /// <summary>
 /// The menu of a restaurant, read from its own site. Google's Places API states no
@@ -24,7 +29,7 @@ public record FoundMenu(IReadOnlyList<FoundImage> Pages, string SourceUrl);
 /// menu as far as this pass is concerned, and a place without one keeps its page
 /// exactly as it was.
 /// </summary>
-public partial class MenuSources(WebFiles web, int maxPages)
+public partial class MenuSources(WebFiles web, int maxPages, int maxTextCharacters)
 {
     /// <summary>How many links off the home page are followed before giving up. A site
     /// that says "menú" in four places and means none of them is not worth a fifth
@@ -34,6 +39,13 @@ public partial class MenuSources(WebFiles web, int maxPages)
     /// <summary>A picture too small to read is not a menu page: it is the icon beside
     /// the word "menú" in the navigation bar.</summary>
     private const int MinImageBytes = 20_000;
+
+    /// <summary>How many prices a page has to show before its text is taken for a
+    /// carta. One is a "desde RD$500" on the home page; several are a menu.</summary>
+    private const int MinPrices = 5;
+
+    /// <summary>Shorter than this the page is a banner, not a carta.</summary>
+    private const int MinTextLength = 300;
 
     [GeneratedRegex("""<script[^>]+application/ld\+json[^>]*>(.*?)</script>""",
         RegexOptions.IgnoreCase | RegexOptions.Singleline)]
@@ -58,6 +70,18 @@ public partial class MenuSources(WebFiles web, int maxPages)
 
     [GeneratedRegex("<[^>]+>")]
     private static partial Regex Tag();
+
+    [GeneratedRegex("""<(script|style|noscript|svg)\b[^>]*>.*?</\1>""",
+        RegexOptions.IgnoreCase | RegexOptions.Singleline)]
+    private static partial Regex Noise();
+
+    [GeneratedRegex(@"\s+")]
+    private static partial Regex Whitespace();
+
+    /// <summary>A price as a Dominican carta writes it. The currency is what tells a
+    /// menu from an article about the restaurant.</summary>
+    [GeneratedRegex(@"(?:RD\$|US\$|\$)\s?\d")]
+    private static partial Regex Price();
 
     /// <summary>What a link or a file name says when it leads to the carta. Normalized,
     /// so "Menú" and "MENU" are the same word.</summary>
@@ -106,72 +130,80 @@ public partial class MenuSources(WebFiles web, int maxPages)
             return null;
         }
 
+        FoundMenu? text = null;
         foreach (Uri candidate in MenuLinks(html, site).Take(MaxCandidates))
         {
-            if (await PagesAtAsync(candidate, followLinks: true) is { Count: > 0 } pages)
+            FoundMenu? found = await ReadAsync(candidate, followLinks: true);
+            if (found is { Pages.Count: > 0 })
             {
-                return new FoundMenu(pages, candidate.AbsoluteUri);
+                return found;
             }
+
+            // A page written out in text is an answer, but the wrong one while another
+            // candidate may still hold the scanned carta: it is kept and returned last.
+            text ??= found;
         }
 
-        return null;
+        // A site of one page keeps its carta on the page it has, and no link leads to it.
+        return text ?? MenuText(html, site);
     }
 
     /// <summary>
-    /// The menu pages one address holds: a PDF rasterized page by page, an image taken
-    /// as the single page it is, or the menu pictures of an HTML page. A page that
-    /// carries no picture of its own but links the PDF is followed one step further,
-    /// which is the shape of most restaurant sites — "Nuestra carta" is a page with a
-    /// download button on it.
+    /// The menu one address holds: a PDF rasterized page by page, an image taken as the
+    /// single page it is, the menu pictures of an HTML page — or, when the page carries
+    /// no picture of its own, the text of the carta written out on it. A page that only
+    /// links the PDF is followed one step further, which is the shape of most restaurant
+    /// sites: "Nuestra carta" is a page with a download button on it.
     /// </summary>
-    private async Task<IReadOnlyList<FoundImage>> PagesAtAsync(Uri url, bool followLinks)
+    private async Task<FoundMenu?> ReadAsync(Uri url, bool followLinks)
     {
         if (await web.GetFileAsync(url.AbsoluteUri) is not (byte[] bytes, string contentType))
         {
-            return [];
+            return null;
         }
 
         if (contentType.Contains("pdf", StringComparison.OrdinalIgnoreCase))
         {
-            return PdfPages(bytes, url);
+            return Menu(PdfPages(bytes, url), url);
         }
 
         if (contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
         {
             return contentType.Contains("svg", StringComparison.OrdinalIgnoreCase)
                 || bytes.Length < MinImageBytes
-                    ? []
-                    : [new FoundImage(bytes, contentType, $"Sitio del lugar — {url.Host}")];
+                    ? null
+                    : Menu([new FoundImage(bytes, contentType, $"Sitio del lugar — {url.Host}")], url);
         }
 
         if (!contentType.Contains("html", StringComparison.OrdinalIgnoreCase))
         {
-            return [];
+            return null;
         }
 
         string html = System.Text.Encoding.UTF8.GetString(bytes);
         if (await MenuImagesAsync(html, url) is { Count: > 0 } pictures)
         {
-            return pictures;
-        }
-
-        if (!followLinks)
-        {
-            return [];
+            return Menu(pictures, url);
         }
 
         // "Nuestra carta" reached, and it is a page with a PDF on it: one more step,
         // and only towards a file — following a second HTML page would walk the site.
-        foreach (Uri nested in MenuLinks(html, url).Where(IsFile).Take(2))
+        if (followLinks)
         {
-            if (await PagesAtAsync(nested, followLinks: false) is { Count: > 0 } pages)
+            foreach (Uri nested in MenuLinks(html, url).Where(IsFile).Take(2))
             {
-                return pages;
+                if (await ReadAsync(nested, followLinks: false) is { Pages.Count: > 0 } found)
+                {
+                    return found;
+                }
             }
         }
 
-        return [];
+        return MenuText(html, url);
     }
+
+    private static FoundMenu? Menu(IReadOnlyList<FoundImage> pages, Uri url) =>
+        pages.Count > 0 ? new FoundMenu(pages, url.AbsoluteUri) : null;
 
     /// <summary>Every page of a PDF as a PNG, capped at what a menu is worth showing.
     /// A file this side cannot render — encrypted, or not the PDF its content type
@@ -293,6 +325,43 @@ public partial class MenuSources(WebFiles web, int maxPages)
         }
 
         return declared.Concat(files).Concat(links);
+    }
+
+    /// <summary>
+    /// The text of a page when it reads like a carta, capped at what one model call is
+    /// worth. Half the restaurants write their menu out — sections, dishes and prices as
+    /// HTML — and a picture is not what that is; this is what the model turns into the
+    /// carta the portal renders.
+    ///
+    /// A page only counts when it carries prices, several of them. Without that rule the
+    /// "Nosotros" page of every restaurant would be sent to the model, which would
+    /// dutifully invent a menu out of it.
+    /// </summary>
+    private FoundMenu? MenuText(string html, Uri url)
+    {
+        string text = ReadableText(html);
+        if (text.Length < MinTextLength || Price().Matches(text).Count < MinPrices)
+        {
+            return null;
+        }
+
+        return new FoundMenu(
+            [],
+            url.AbsoluteUri,
+            text.Length > maxTextCharacters ? text[..maxTextCharacters] : text);
+    }
+
+    /// <summary>An HTML page as the text a reader sees: scripts and styles dropped, every
+    /// tag a line break, entities decoded, blank lines collapsed. Crude on purpose — the
+    /// model reads it, and a carta survives being flattened.</summary>
+    private static string ReadableText(string html)
+    {
+        string stripped = Tag().Replace(Noise().Replace(html, " "), "\n");
+        IEnumerable<string> lines = System.Net.WebUtility.HtmlDecode(stripped)
+            .Split('\n')
+            .Select(line => Whitespace().Replace(line, " ").Trim())
+            .Where(line => line.Length > 0);
+        return string.Join("\n", lines);
     }
 
     /// <summary>Whether two addresses belong to the same site. "www" is not part of

@@ -25,6 +25,16 @@ public class ClaudeClient(HttpClient http, string apiKey, string model) : IEnric
         return EventCategories.Parse(arguments, events.Count);
     }
 
+    public async Task<StructuredMenu?> StructureMenuAsync(
+        string placeName, string cityName, string menuText)
+    {
+        JsonElement arguments = await CallToolAsync(
+            MenuPrompt.ToolName, MenuPrompt.ToolDescription, MenuPrompt.Schema,
+            MenuPrompt.UserMessage(placeName, cityName, menuText),
+            temperature: 0, maxTokens: MenuPrompt.MaxAnswerTokens);
+        return MenuPrompt.Parse(arguments);
+    }
+
     public async Task<Dictionary<int, Dictionary<string, string>>> TranslateAsync(
         IReadOnlyList<TranslationRequest> entries)
     {

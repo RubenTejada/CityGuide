@@ -240,10 +240,10 @@ if (args.Contains("--gallery"))
 
 // Maintenance pass: the menu of the places a section leads with, read from their own
 // site — Google's Places API states no menu, only the address of the site, so this is
-// the one source there is. It is free: no Google request and no model token, only
-// somebody else's pages fetched through the throttler. Intended with "--section
-// restaurantes"; without it every place with a website is walked, which costs nothing
-// but time. Nothing is written without --apply.
+// the one source there is. No Google request either way; a scanned carta costs nothing
+// at all, and one written out in text costs the model call that structures it, which is
+// why that half only runs with --paid. Intended with "--section restaurantes"; without
+// it every place with a website is walked. Nothing is written without --apply.
 if (args.Contains("--menus"))
 {
     int menuPlaces =
@@ -251,7 +251,8 @@ if (args.Contains("--menus"))
             ? askedMenus
             : config.Menus.MaxPlaces;
     await new PlaceMenus(
-            new MenuSources(web, config.Menus.MaxPages), umbraco, config.Menus.MinReviews)
+            new MenuSources(web, config.Menus.MaxPages, config.Menus.MaxTextCharacters),
+            umbraco, enricher, config.Menus.MinReviews)
         .RunAsync(args.Contains("--apply"), SectionSelected, menuPlaces);
     return 0;
 }

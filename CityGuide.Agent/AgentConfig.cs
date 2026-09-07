@@ -31,6 +31,11 @@ public class MenusConfig
     /// requests to somebody else's site, and the throttler makes them slow on purpose.</summary>
     public int MaxPlaces { get; set; } = 25;
 
+    /// <summary>How much of a menu page's text is put to the model. A carta runs to a
+    /// few thousand characters; past this it is the page's whole site — every section of
+    /// the navigation flattened — and the answer is no better for it.</summary>
+    public int MaxTextCharacters { get; set; } = 24_000;
+
     /// <summary>How many Google reviews a place needs before the menu pass ranks it,
     /// for the same reason the gallery has one: a five-star average over five reviews
     /// is not what a section leads with.</summary>

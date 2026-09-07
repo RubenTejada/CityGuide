@@ -19,6 +19,7 @@ import ListingViews, {
 import { type MapMarker } from "@/components/MarkersMap";
 import PaginatedList from "@/components/PaginatedList";
 import PlaceCard from "@/components/PlaceCard";
+import MenuDialog from "@/components/MenuDialog";
 import MenuViewer from "@/components/MenuViewer";
 import PhotoGallery from "@/components/PhotoGallery";
 import PlaceMap from "@/components/PlaceMap";
@@ -51,6 +52,7 @@ import {
   localeHref,
   t,
 } from "@/lib/i18n";
+import { placeMenu } from "@/lib/menu";
 import { getTopMoviesToday } from "@/lib/movieCatalog";
 import { canonicalSlug, localizedSectionPath } from "@/lib/sectionSlugs";
 import {
@@ -1417,6 +1419,10 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
   // antes de ir. Una sola página ya es un menú — hay restaurantes cuya carta cabe en
   // una hoja — así que basta con tener alguna.
   const menu = photoUrls(item, "menu");
+  const menuSections = placeMenu(item, locale);
+  // El día que el portal leyó la carta, no el día del menú: con la fecha delante, y la
+  // advertencia al lado, un precio viejo se lee por lo que es.
+  const menuCaptured = formatDate(item.properties["menuUpdated"], locale) || null;
   const ownPhoto = photoUrl(item);
   const inheritedPhoto = ownPhoto ?? (company ? photoUrl(company) : null);
   // No photo and no company logo: fall back to the section's image.
@@ -1441,6 +1447,7 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
           website,
           hours: inherited("hours"),
           image: inheritedPhoto,
+          menu: menuSections,
         })}
       />
       <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -1486,6 +1493,16 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
                 pages={menu}
                 name={displayName}
                 source={text(item, "menuSource") || null}
+                captured={menuCaptured}
+              />
+            </div>
+          )}
+          {menuSections.length > 0 && (
+            <div className="mt-4">
+              <MenuDialog
+                sections={menuSections}
+                source={text(item, "menuSource") || null}
+                captured={menuCaptured}
               />
             </div>
           )}

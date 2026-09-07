@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 /** Lo que el visor escribe. Lo pone quien lo abre, porque no es lo mismo pasar fotos
  *  de un lugar que pasar las páginas de su carta. */
@@ -24,19 +24,24 @@ export type ViewerLabels = {
  * clic en el fondo cierra también.
  *
  * Lo comparten la galería de fotos y el menú: son las mismas imágenes en grande, y una
- * segunda copia de esto solo serviría para que las dos se separaran.
+ * segunda copia de esto solo serviría para que las dos se separaran. Lo único que las
+ * distingue es la nota al pie, que el menú lleva y la galería no.
  */
 export default function ImageViewer({
   images,
   name,
   start,
   labels,
+  note,
   onClose,
 }: {
   images: string[];
   name: string;
   start: number;
   labels: ViewerLabels;
+  /** Lo que haya que decir de estas imágenes con ellas delante: de dónde salió un
+   *  menú, cuándo se capturó y que los precios pueden haber cambiado. */
+  note?: ReactNode;
   onClose: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -122,6 +127,12 @@ export default function ImageViewer({
             </button>
           ))}
         </div>
+
+        {note && (
+          <div className="border-t border-white/15 px-4 py-3 text-white/70">
+            {note}
+          </div>
+        )}
       </div>
     </dialog>
   );

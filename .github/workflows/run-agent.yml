@@ -186,9 +186,11 @@ on:
       menus:
         description: >-
           Maintenance pass instead of the ingestion run: reads the menu of the
-          best-rated places of "section" from their own site and stores its pages as
-          images. Free — Google states no menu, so nothing but the site is fetched —
-          and meant with section "restaurantes". "plan" only lists the places.
+          best-rated places of "section" from their own site — a scanned carta as
+          images, a menu written out in text as the structured carta the page renders.
+          No Google request either way; the structured half is one model call per
+          restaurant and needs "paid", the scanned half is free. Meant with section
+          "restaurantes". "plan" only lists the places.
         type: choice
         required: false
         options:
@@ -323,7 +325,7 @@ jobs:
           elif [ "$MENUS" = "plan" ] || [ "$MENUS" = "apply" ]; then
             apply_flag=""
             if [ "$MENUS" = "apply" ]; then apply_flag="--apply"; fi
-            dotnet run -c Release -- --menus $MENUS_PLACES $apply_flag $section_flag
+            dotnet run -c Release -- --menus $MENUS_PLACES $apply_flag $section_flag $paid_flag
           elif [ "$TRANSLATE" = "plan" ]; then
             dotnet run -c Release -- --translate $section_flag $paid_flag
           elif [ "$TRANSLATE" = "apply" ]; then

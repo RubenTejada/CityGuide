@@ -19,8 +19,8 @@ public record Enrichment(
 
 /// <summary>
 /// The agent's model-backed steps: a Spanish description + facility mapping for a
-/// newly discovered place, the category of a scraped event, and the English translation
-/// of the prose already in the CMS. Implemented by
+/// newly discovered place, the category of a scraped event, the carta behind a
+/// restaurant's menu page, and the English translation of the prose already in the CMS. Implemented by
 /// AzureOpenAiClient (production) and ClaudeClient (fallback). Everything else
 /// (dedupe, rating refresh, cinema sync, trailers, event scraping) is plain code.
 /// </summary>
@@ -31,6 +31,10 @@ public interface IEnrichmentClient
     /// <summary>Categories a batch of scraped events, keyed by their position in
     /// the list. Positions the model left out stay uncategorized.</summary>
     Task<Dictionary<int, string>> ClassifyEventsAsync(IReadOnlyList<ScrapedEvent> events);
+
+    /// <summary>Structures the text of a restaurant's menu page into its carta, in both
+    /// languages, or null when the page turned out not to be one.</summary>
+    Task<StructuredMenu?> StructureMenuAsync(string placeName, string cityName, string menuText);
 
     /// <summary>Translates a batch of Spanish prose into English, keyed by the entry's
     /// position in the list and then by property alias. Entries or fields the model left

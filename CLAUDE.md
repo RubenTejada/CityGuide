@@ -102,12 +102,15 @@ cd CityGuide.Agent && dotnet run -- --paid --gallery 2 --section restaurantes --
 
 # The menu of the best-rated restaurants, read from their own site: Google's Places
 # API states no menu, only the address of the site, so that is the one source there
-# is. A PDF becomes one image per page, a "carta" page gives up the pictures on it,
-# and a restaurant that publishes its menu only on Instagram keeps the page it has.
-# Nothing is billed — no Google request and no model token — so it needs no --paid.
+# is. A PDF becomes one image per page and a "carta" page gives up the pictures on
+# it; that half is free — no Google request, no model token — and runs without --paid.
 # Plan until --apply, and --section is what keeps it on the restaurants.
 cd CityGuide.Agent && dotnet run -- --menus 25 --section restaurantes
 cd CityGuide.Agent && dotnet run -- --menus 25 --section restaurantes --apply
+# With --paid the same pass also reads the menus written out as text — half of them
+# are — putting the page through the model once per restaurant to get the carta the
+# detail page renders. Without it those places are reported and left for a later pass.
+cd CityGuide.Agent && dotnet run -- --paid --menus 25 --section restaurantes --apply
 
 # IMDb / Rotten Tomatoes scores on the movie catalog need two free keys, set as
 # user-secrets (leave either empty to run without it — the scores just stay blank):
@@ -376,22 +379,54 @@ only links the PDF is followed one step further. Nothing is taken on size alone,
 menu would be the dining room and the chef. Three kinds of site are left alone: a social
 profile (`WebFiles.ReadableSite`, the same rule that governs the free photos), a delivery
 app or review portal storing somebody else's catalogue (`MenuSources.CanRead`), and a
-branch, which stores no website of its own. **Measured on the fifteen best-rated
-restaurants of the CMS that have their own site, three answered.** The rest publish their
-carta as HTML text (Adrián Tropical, Zola) or behind JavaScript (the Wix ones), neither of
-which is an image; a structured menu written by the model over the same pages is what
-would reach them, and none of this pass has to change for that. The pages are stored on
+branch, which stores no website of its own. Measured on the fifteen best-rated restaurants
+of the CMS that have their own site, three publish a scanned carta.
+
+**The other half write their menu out, and that is what the model is for.** A page with no
+picture of its own is kept as text when it reads like a carta — several prices in the
+currency, `MenuSources.MenuText` — and `MenuPrompt` puts it through the model once
+(`IEnrichmentClient.StructureMenuAsync`, temperature 0) to get sections, dishes, prices
+and descriptions back. That call is billed per token, which is why this half of the pass
+needs `--paid`: without a model the place is reported and left for a later pass, and every
+scanned carta is still brought home. The prompt copies, it does not write — the price is
+the line the carta prints ("RD$450", "Desde RD$284"), a page that turns out not to be a
+menu comes back empty, and `MenuPrompt.Parse` drops what has no name, cuts what overruns
+the caps and refuses an answer under four dishes, so the CMS only ever receives a
+structure this side has checked. The result is stored as `menuData`, one JSON document
+holding **both languages at once**: the same call returns the English section name and
+dish description beside the Spanish ones, and the dish name is in neither language in
+particular, because a dish is called what it is called. That is why `menuData` is
+invariant like `facilities` rather than culture-variant — `lib/menu.ts` picks the side the
+page is in on render, falling back to the Spanish section name (a section must have one)
+but never showing a Spanish description on an English page. The translation pass never
+sees it. What this still does not reach is a menu drawn by JavaScript (Zola's, the Wix
+ones): the raw HTML carries no prices, and nothing short of a headless browser would find
+them. The pages are stored on
 `place` as `menu`, a third multi-image property (`EnsurePlaceMenuSchemaAsync`, with
 `menuSource` and `menuUpdated` beside it): images say the same thing in both languages, so
 none of the three varies by culture. The source is stored because a menu is the one thing
 on the page that goes stale without anybody noticing — it is what an editor follows to
 check a price, what the visitor sees under the button, and what the page declares to a
 search engine as `hasMenu` (only on the types schema.org lets carry one, so a shop never
-does). The frontend puts it beside the opening hours, as one more thing consulted before
-going: a button with the first page as its thumbnail and the page count
-(`MenuViewer`), opening the same modal the gallery opens — that viewer is now
-`ImageViewer`, shared by both, since it is the same images seen large and a second copy
-would only let the two drift apart. A place with no menu shows nothing.
+does). Both shapes reach the page the same way: a button beside the opening hours, as one more
+thing consulted before going, opening a modal. The scanned pages get a button carrying the
+first page as its thumbnail and the page count (`MenuViewer`), and open the same viewer
+the gallery opens — that viewer is now `ImageViewer`, shared by both, since it is the same
+images seen large and a second copy would only let the two drift apart. The written carta
+gets a button carrying cutlery and the number of dishes (`MenuDialog`, with `MenuSections`
+as the list inside it): a carta of thirty dishes rendered into the page pushes the map and
+"¿Qué está cerca?" off the screen, and it is consulted when it is wanted, not in passing.
+Being behind a button costs it nothing it was worth having — the JSON-LD is in the page
+either way, so Google still gets a real `Menu` with its sections and dishes (`menuJsonLd`
+in `seo.ts`; a dish declares an `offers` price only when the carta states one plain number,
+so a "Desde RD$284" publishes no figure the restaurant never quoted).
+
+Inside both modals, and only there, goes `MenuNote`: where the menu was read from, **the
+date the portal captured it** (`menuUpdated`, formatted by the page and passed in, so the
+server and the browser never disagree about a timezone) and the warning that prices and
+dishes may have changed since. A copied carta is right the day it is taken and drifts from
+then on, and the place to say so is with the prices in front of the reader, not under a
+button nobody has pressed. A place with no menu shows nothing.
 
 Every event gets a main image: the one the source declares, else the `og:image` of its
 ticket page, else a Google photo of its venue. `EventSync` runs once per city in `Events:Cities` (each entry a `CityPath`, its own `Sources` and its own `VenueSections`) and fills that city's `eventos` from public event portals (TodoTickets detail pages, Eventbrite listings) via per-source strategies ("jsonld-listing", "jsonld-detail"); the national portals are listed by every city and scraped once for the whole pass (`EventSync.ScrapeCache`, keyed by source URL) — the feed is the same and only the rectangle that filters it differs, so the second city costs no request; events publish immediately, dedupe by ticket URL and name+date, and only agent-created (`source` = `agent:*`) past events are deleted — TuBoleta (JS-loaded dates), Uepa Tickets (Cloudflare) and TicketExpress (a listing frozen in 2020 whose pages state neither venue nor a real date, so the prose parser invented future ones) are deliberately not scraped. Every portal lists the whole country, so an event is only imported when its location is inside the city's `agentArea` rectangle (`EventVenues`): the portals state the venue's coordinates in their JSON-LD and the rectangle decides for free — the locality they file it under does not, since Escenario 360 reads "Los Alcarrizos" and stands on Av. John F. Kennedy — and an event without coordinates is kept only when its venue name resolves, on Google restricted to that same rectangle, to a place carrying every significant word of the name. A failed lookup is never read as "not in the city", and a city with no `agentArea` keeps importing everything. Resolving the venue also yields a full place, so the venue is created in the section its Google types belong to (`Events:VenueSections` — bars and attractions; a hotel or a shop matches none and only gives the event its coordinates, which is what puts it on the events map), like any discovered place and deduped by Google place id. `dotnet run -- --purge-foreign-events [--apply]` applies the same rule to the events already imported and recycles the ones outside the city (seeded and hand-made events are never touched); the "Run agent" workflow exposes it as the `purge_foreign_events` input. Each event's "Categoría" comes from the model (`EventCategories`: one batched call per portal, from the vocabulary the seeded events use), because no portal states one and the title is usually just the artist's name — an event stays uncategorized, never mislabelled, when no model is configured or the call fails. `dotnet run -- --scrape-events` prints what each source yields, and whether the city filter would keep it, without touching the CMS; `dotnet run -- --recategorize-events [--apply]` reclassifies the events the agent already created (only `agent:*` ones — hand-made and seeded events keep their editor's category), and the "Run agent" workflow exposes it as the `recategorize_events` input so it can be run against Azure. `dotnet run -- --purge-event-source <portal> [--apply]` recycles what a retired portal left behind: dropping a source from a city's `Sources` stops new imports but not the old ones, which are neither past nor locatable (TicketExpress's seven events sat there until this removed them). A venue is looked up once per pass, not once per event: a portal lists a season at one

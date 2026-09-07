@@ -673,7 +673,7 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         string? Source, DateTime CreateDate,
         string? Phone = null, string? Website = null, string? Hours = null,
         int RatingCount = 0, int GalleryCount = 0, int MenuCount = 0,
-        string? PhotoUrl = null)
+        string? PhotoUrl = null, bool HasMenuData = false)
     {
         public bool HasPhoto => PhotoMediaKey is not null;
 
@@ -741,7 +741,7 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
                 item.GetProperty("createDate").GetDateTime(),
                 Text("phone"), Text("website"), Text("hours"),
                 (int)Coord("googleRatingCount"), Images("gallery"), Images("menu"),
-                photoAddress));
+                photoAddress, Text("menuData") is not null));
         }
 
         return places;
@@ -1088,16 +1088,27 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
     }
 
     /// <summary>
-    /// Replaces a place's menu with the given pages, in order, and records where they
-    /// were read from and when. The source is what an editor follows to check a price
-    /// and what the page declares to a search engine; the date is what says a carta is
-    /// old, which is the only way a menu goes wrong without anyone noticing.
+    /// Replaces a place's menu — the pages of a scanned carta, the structured one the
+    /// model read off a menu page, or both — and records where it was read from and
+    /// when. The source is what an editor follows to check a price and what the page
+    /// declares to a search engine; the date is what says a carta is old, which is the
+    /// only way a menu goes wrong without anyone noticing.
     /// </summary>
-    public async Task SetMenuAsync(Guid id, IReadOnlyList<Guid> mediaKeys, string sourceUrl)
+    public async Task SetMenuAsync(
+        Guid id, IReadOnlyList<Guid> mediaKeys, string sourceUrl, string? menuData = null)
     {
         (string name, string state, Dictionary<string, object?> values) = await ReadDocumentAsync(id);
-        values["menu"] = JsonSerializer.SerializeToElement(
-            mediaKeys.Select(mediaKey => new { key = Guid.NewGuid(), mediaKey }));
+        if (mediaKeys.Count > 0)
+        {
+            values["menu"] = JsonSerializer.SerializeToElement(
+                mediaKeys.Select(mediaKey => new { key = Guid.NewGuid(), mediaKey }));
+        }
+
+        if (menuData is not null)
+        {
+            values["menuData"] = menuData;
+        }
+
         values["menuSource"] = sourceUrl;
         values["menuUpdated"] = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss");
         await WriteDocumentAsync(id, name, values, state);

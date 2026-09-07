@@ -184,8 +184,13 @@ const es = {
     galleryClose: "Cerrar la galería",
     galleryCount: (n: number, total: number): string => `${n} de ${total}`,
     menu: "Ver el menú",
+    menuHeading: "Menú",
     menuPages: (n: number): string => (n === 1 ? "1 página" : `${n} páginas`),
     menuFrom: "Tomado de",
+    menuDishes: (n: number): string => (n === 1 ? "1 plato" : `${n} platos`),
+    menuCaptured: (date: string): string => `capturado el ${date}`,
+    menuPricesMayChange:
+      "Los precios y los platos pueden haber cambiado desde esa fecha.",
     menuOpen: (n: number, total: number): string =>
       `Ver la página ${n} de ${total} del menú`,
     menuPrevious: "Página anterior",
@@ -528,8 +533,12 @@ const en: typeof es = {
     galleryClose: "Close the gallery",
     galleryCount: (n: number, total: number): string => `${n} of ${total}`,
     menu: "See the menu",
+    menuHeading: "Menu",
     menuPages: (n: number): string => (n === 1 ? "1 page" : `${n} pages`),
     menuFrom: "From",
+    menuDishes: (n: number): string => (n === 1 ? "1 dish" : `${n} dishes`),
+    menuCaptured: (date: string): string => `captured on ${date}`,
+    menuPricesMayChange: "Prices and dishes may have changed since that date.",
     menuOpen: (n: number, total: number): string =>
       `See page ${n} of ${total} of the menu`,
     menuPrevious: "Previous page",

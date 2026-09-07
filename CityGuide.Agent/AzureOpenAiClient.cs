@@ -49,6 +49,16 @@ public class AzureOpenAiClient(HttpClient http, AzureOpenAiConfig config) : IEnr
         return arguments is null ? [] : EventCategories.Parse(arguments.Value, events.Count);
     }
 
+    public async Task<StructuredMenu?> StructureMenuAsync(
+        string placeName, string cityName, string menuText)
+    {
+        JsonElement? arguments = await CallToolAsync(
+            MenuPrompt.ToolName, MenuPrompt.ToolDescription, MenuPrompt.Schema,
+            MenuPrompt.UserMessage(placeName, cityName, menuText), placeName,
+            temperature: 0, maxTokens: MenuPrompt.MaxAnswerTokens);
+        return arguments is null ? null : MenuPrompt.Parse(arguments.Value);
+    }
+
     public async Task<Dictionary<int, Dictionary<string, string>>> TranslateAsync(
         IReadOnlyList<TranslationRequest> entries)
     {

@@ -15,6 +15,7 @@ import {
   t,
   type Locale,
 } from "./i18n";
+import type { MenuGroup } from "./menu";
 import { canonicalPath } from "./sectionSlugs";
 import { SOCIAL_ACCOUNTS } from "./social";
 import { num, photoUrl, text, type UmbracoItem } from "./umbraco";
@@ -358,6 +359,56 @@ export function businessType(routePath: string): string {
   return SECTION_BUSINESS_TYPES[section] ?? "LocalBusiness";
 }
 
+/**
+ * What a place declares as its menu. A carta the model structured is a real `Menu`,
+ * section by section and dish by dish — that is the whole point of storing it as text
+ * instead of as a picture. A place whose menu is only a set of scanned pages says
+ * nothing to a search engine about what is on them, so it declares the address it was
+ * read from and no more.
+ */
+function menuJsonLd(sections: MenuGroup[] | undefined, url: string | undefined) {
+  if (!sections?.length) return url;
+  return prune({
+    "@type": "Menu",
+    url,
+    hasMenuSection: sections.map((section) => ({
+      "@type": "MenuSection",
+      name: section.name,
+      hasMenuItem: section.items.map((dish) =>
+        prune({
+          "@type": "MenuItem",
+          name: dish.name,
+          description: dish.description,
+          offers: menuOffer(dish.price),
+        }),
+      ),
+    })),
+  });
+}
+
+/**
+ * A dish's price as an offer, and only when the carta states one plain number: "RD$450"
+ * is 450 pesos, while "Desde RD$284" and "RD$180 / RD$320" are a floor and a choice.
+ * Declaring either of those as *the* price would publish a figure the restaurant never
+ * quoted, so they are left as the text the page prints.
+ */
+function menuOffer(price: string | undefined) {
+  const digits = /^RD\$\s?([\d.,]+)$/.exec(price?.trim() ?? "")?.[1];
+  if (digits === undefined) return undefined;
+
+  // "1,250" and "1.250" are both one thousand two hundred and fifty: a separator with
+  // exactly three digits behind it groups thousands, anything else is the decimal.
+  const separator = Math.max(digits.lastIndexOf(","), digits.lastIndexOf("."));
+  const decimals = separator >= 0 && digits.length - separator - 1 !== 3;
+  const normalized = decimals
+    ? `${digits.slice(0, separator).replace(/[.,]/g, "")}.${digits.slice(separator + 1)}`
+    : digits.replace(/[.,]/g, "");
+  const amount = Number(normalized);
+  return Number.isFinite(amount) && amount > 0
+    ? { "@type": "Offer", price: amount, priceCurrency: "DOP" }
+    : undefined;
+}
+
 // ---- opening hours ----
 
 /** Spanish day abbreviations used in the free-text "Horario" property. */
@@ -525,6 +576,8 @@ export interface PlaceJsonLdInput {
   image?: string | null;
   /** Overrides the section-derived schema.org type (malls, companies). */
   type?: string;
+  /** The carta already parsed by the view, when the place carries one. */
+  menu?: MenuGroup[];
 }
 
 /** A physical venue: place, company branch, mall or attraction. */
@@ -539,6 +592,7 @@ export function placeJsonLd({
   hours,
   image,
   type,
+  menu,
 }: PlaceJsonLdInput): JsonLd {
   const url = absoluteUrl(item.route.path);
   return prune({
@@ -555,10 +609,8 @@ export function placeJsonLd({
     address: postalAddress(text(item, "address"), cityName, country),
     geo: geo(item),
     openingHoursSpecification: openingHoursJsonLd(hours ?? text(item, "hours")),
-    // The menu the portal shows is a set of images, which says nothing to a search
-    // engine; the page it was read from is the address Google asks for.
     hasMenu: MENU_TYPES.has(type ?? businessType(item.route.path))
-      ? firstText(text(item, "menuSource")) || undefined
+      ? menuJsonLd(menu, firstText(text(item, "menuSource")) || undefined)
       : undefined,
     aggregateRating: aggregateRating(item),
     amenityFeature: (

@@ -1015,15 +1015,20 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
     }
 
     /// <summary>
-    /// Idempotent, runs every startup: gives "place" the menu a restaurant's detail page
-    /// opens in a viewer — the pages of its carta as images ("menu"), the address they
-    /// were read from ("menuSource") and the date of the reading ("menuUpdated").
+    /// Idempotent, runs every startup: gives "place" the menu of a restaurant, in the two
+    /// shapes a site publishes it — the pages of a scanned carta as images ("menu"), and
+    /// the carta the model read off a menu page as JSON ("menuData") — plus the address
+    /// it was read from ("menuSource") and the date of the reading ("menuUpdated").
     ///
-    /// The pages are images and not prose, so nothing here varies by culture: a carta
-    /// says the same thing on both sides of the portal. The source is stored because a
-    /// menu is the one thing on the page that goes stale without anybody noticing — it
-    /// is what an editor follows to check a price and what the page declares to a search
-    /// engine as "hasMenu"; the date is what says how old the reading is.
+    /// None of the four varies by culture, "menuData" included: it is one document
+    /// holding both languages at once (an English section name and dish description
+    /// beside the Spanish ones, written by the same model call), which the frontend picks
+    /// from on render, the way it already does with "facilities". A dish name is in
+    /// neither language in particular — a dish is called what it is called. The source is
+    /// stored because a menu is the one thing on the page that goes stale without anybody
+    /// noticing — it is what an editor follows to check a price and what the page
+    /// declares to a search engine as "hasMenu"; the date is what says how old the
+    /// reading is.
     ///
     /// Each property is guarded on its own, so an installation that already carries one
     /// of them still gets the rest.
@@ -1039,14 +1044,16 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         IDataType menuPicker =
             (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.MediaPicker3MultipleImagesGuid))!;
         IDataType textstring = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.TextstringGuid))!;
+        IDataType textarea = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.TextareaGuid))!;
         IDataType datePicker =
             (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.DatePickerWithTimeGuid))!;
 
         var wanted = new (string Alias, IDataType Editor, string Name, int SortOrder)[]
         {
             ("menu", menuPicker, "Menú (páginas)", 13),
-            ("menuSource", textstring, "Origen del menú", 14),
-            ("menuUpdated", datePicker, "Menú actualizado", 15),
+            ("menuData", textarea, "Menú (carta en texto)", 14),
+            ("menuSource", textstring, "Origen del menú", 15),
+            ("menuUpdated", datePicker, "Menú actualizado", 16),
         };
 
         var added = false;
