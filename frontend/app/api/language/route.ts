@@ -40,8 +40,11 @@ export async function GET(request: Request) {
       : `${localePrefix(target)}/${bare.split("/").filter(Boolean)[0] ?? ""}`;
   }
 
-  return Response.redirect(
-    new URL(`${destination}${query ? `?${query}` : ""}`, url.origin),
-    307,
-  );
+  // A relative Location, not an absolute one: behind Azure's proxy the request
+  // URL's origin is the container's internal address ("https://9ed54d…:8080"),
+  // and redirecting there sends the visitor somewhere that does not resolve.
+  return new Response(null, {
+    status: 307,
+    headers: { Location: `${destination}${query ? `?${query}` : ""}` },
+  });
 }
