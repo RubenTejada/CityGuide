@@ -11,6 +11,13 @@ export type SectionTab = { id: string; href: string; label: string };
  * The header's section bar. The tab of the section you are in stays lit —
  * including on the pages below it (a subcategory, a place) — so the bar says
  * where you are and not only where you can go.
+ *
+ * Past `sm` it wraps rather than scrolls, and a second row of tabs on a wide
+ * screen reads as broken rather than as a bar. Nine sections in English came to
+ * 1165px against the 1152px the container gives them, so the tabs are padded a
+ * little tighter than the rest of the header and the longest label of a language
+ * is shortened in `nav.shortLabels` — the lever "Empresas y Servicios" already
+ * uses to fit as "Empresas".
  */
 export default function SectionTabs({
   home,
@@ -87,7 +94,7 @@ function Tab({
     <PendingLink
       href={href}
       aria-current={active ? "page" : undefined}
-      className={`-mt-px shrink-0 rounded-t-md border-t-2 px-3 py-3 text-sm font-medium tracking-wide uppercase transition-colors ${
+      className={`-mt-px shrink-0 rounded-t-md border-t-2 px-2.5 py-3 text-sm font-medium tracking-wide uppercase transition-colors ${
         active
           ? "border-sun-300 bg-neutral-800 text-white"
           : "border-transparent text-neutral-300 hover:bg-neutral-800/60 hover:text-white"

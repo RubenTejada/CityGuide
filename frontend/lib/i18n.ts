@@ -413,10 +413,12 @@ const en: typeof es = {
     loadingSection: "Loading section…",
     loading: "Loading…",
     breadcrumb: "Breadcrumb",
-    shortLabels: { "businesses-services": "Businesses" } as Record<
-      string,
-      string
-    >,
+    shortLabels: {
+      "businesses-services": "Businesses",
+      // Nine English tabs overflow the bar by a hair; the section keeps its full
+      // name everywhere else.
+      "movie-theaters": "Movies",
+    } as Record<string, string>,
   },
   home: {
     heading: "Choose your city",
