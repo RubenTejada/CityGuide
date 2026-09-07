@@ -279,7 +279,7 @@ export default async function CityLandingPage({
                   {text(event, "description")}
                 </p>
                 <p className="mt-2 text-sm font-medium text-brand-600">
-                  Leer más…
+                  {words.city.readMore}
                 </p>
               </Link>
             ))}

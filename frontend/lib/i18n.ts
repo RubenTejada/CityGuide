@@ -188,6 +188,7 @@ const es = {
     tickets: "Entradas",
   },
   thingsToDo: {
+    heading: (city: string): string => `Qué Hacer en ${city}`,
     upcomingEvents: "Eventos próximos",
     noUpcomingEvents: "No hay eventos próximos publicados todavía.",
     openToday: "Parques y atracciones abiertos hoy",
@@ -487,6 +488,7 @@ const en: typeof es = {
     tickets: "Tickets",
   },
   thingsToDo: {
+    heading: (city: string): string => `Things to Do in ${city}`,
     upcomingEvents: "Upcoming events",
     noUpcomingEvents: "No upcoming events published yet.",
     openToday: "Parks and attractions open today",

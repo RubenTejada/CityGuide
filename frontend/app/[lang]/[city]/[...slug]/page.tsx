@@ -1983,7 +1983,7 @@ async function ThingsToDoView({
         )}
       />
       <h1 className="mt-4 text-3xl font-bold">
-        Qué Hacer en {cityItem?.name ?? item.name}
+        {t(locale).thingsToDo.heading(cityItem?.name ?? item.name)}
       </h1>
       {text(item, "intro") && (
         <p className="mt-2 max-w-2xl text-neutral-600">{text(item, "intro")}</p>

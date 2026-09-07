@@ -191,7 +191,9 @@ export default function ThingsToDoExplorer({
 
           {showEvents && (
             <section className="mt-8">
-              <h2 className="text-lg font-semibold">Eventos próximos</h2>
+              <h2 className="text-lg font-semibold">
+                {words.thingsToDo.upcomingEvents}
+              </h2>
               <div className={CARD_GRID}>
                 {events.map((event) => (
                   <EventCard key={event.id} event={event} compact />
