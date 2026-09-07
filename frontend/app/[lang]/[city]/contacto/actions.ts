@@ -7,6 +7,8 @@ import {
   type RequestType,
 } from "@/lib/contact";
 import { DEFAULT_LOCALE, isLocale, t } from "@/lib/i18n";
+import { sendMetaEvent } from "@/lib/metaCapi";
+import { SITE_URL } from "@/lib/seo";
 
 const BASE_URL = process.env.UMBRACO_BASE_URL ?? "http://localhost:54509";
 
@@ -47,7 +49,8 @@ export async function sendContactMessage(
     return { status: "error", error: words.message };
   }
 
-  const forwarded = (await headers()).get("x-forwarded-for");
+  const headerList = await headers();
+  const forwarded = headerList.get("x-forwarded-for");
 
   try {
     const response = await fetch(`${BASE_URL}/api/contact`, {
@@ -78,6 +81,18 @@ export async function sendContactMessage(
   } catch {
     return { status: "error", error: words.failed };
   }
+
+  // The conversion an ad campaign optimizes toward, reported from here rather
+  // than from the form: the message is filed, and a server event survives the
+  // ad blockers that swallow the browser pixel. Does nothing unless the
+  // Conversions API token is configured.
+  await sendMetaEvent({
+    name: "Lead",
+    sourceUrl: headerList.get("referer") ?? SITE_URL,
+    email,
+    phone: field(data, "phone"),
+    contentName: requestType,
+  });
 
   return { status: "sent" };
 }

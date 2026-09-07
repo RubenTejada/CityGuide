@@ -9,6 +9,7 @@ import SearchAutocomplete from "@/components/SearchAutocomplete";
 import CitySwitcher, { type CityOption } from "@/components/CitySwitcher";
 import SectionTabs from "@/components/SectionTabs";
 import SiteLogo from "@/components/SiteLogo";
+import SocialLinks from "@/components/SocialLinks";
 import LanguageToggle from "@/components/LanguageToggle";
 import { getChildren, getCities, getItem } from "@/lib/cms";
 import { contentSegments, localeHref, t, type Locale } from "@/lib/i18n";
@@ -143,6 +144,7 @@ export default async function CityLayout({
                 {words.nav.contact}
               </PendingLink>
             </div>
+            <SocialLinks locale={locale} className="mt-6" />
             <p className="mt-8 text-xs text-neutral-600">
               © {new Date().getFullYear()} QueHacerRD.com — {words.site.rights}
             </p>

@@ -119,7 +119,13 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         Dictionary<string, string> CategoryPrompts,
         GeoArea? Area,
         HashSet<string> ExcludedPlaceIds,
-        Dictionary<string, DateOnly> QueryLog);
+        Dictionary<string, DateOnly> QueryLog,
+        Dictionary<Guid, SocialLogEntry> SocialLog);
+
+    /// <summary>One line of the social log: when a node was announced, and what it was
+    /// called — the name is there for the editor reading the field, and is carried
+    /// through every rewrite so an old line never loses it.</summary>
+    public record SocialLogEntry(DateOnly Date, string Name);
 
     /// <summary>
     /// Agent configuration stored on the city node ("Agente" tab): the city name
@@ -160,7 +166,7 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
 
         return new CityAgentConfig(
             cityName, prompts, ParseArea(Text("agentArea")), ParseExcluded(Text("agentExcludedPlaces")),
-            ParseQueryLog(Text("agentQueryLog")));
+            ParseQueryLog(Text("agentQueryLog")), ParseSocialLog(Text("agentSocialLog")));
     }
 
     /// <summary>
@@ -190,6 +196,35 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
     public static string FormatQueryLog(Dictionary<string, DateOnly> log) => string.Join("\n",
         log.OrderBy(entry => entry.Key, StringComparer.OrdinalIgnoreCase)
             .Select(entry => $"{entry.Value:yyyy-MM-dd} {entry.Key}"));
+
+    /// <summary>
+    /// The "Publicaciones ya hechas" field: one "yyyy-MM-dd &lt;id&gt; el nombre" line per
+    /// node the agent has already announced on Facebook and Instagram. Same reason as the
+    /// query log — the container the agent runs in keeps nothing between passes — and the
+    /// same consequence: an editor who empties it is asking for the portal to announce its
+    /// restaurants a second time.
+    /// </summary>
+    private static Dictionary<Guid, SocialLogEntry> ParseSocialLog(string? value)
+    {
+        var log = new Dictionary<Guid, SocialLogEntry>();
+        foreach (string line in (value ?? "").Split('\n'))
+        {
+            string[] parts = line.Trim().Split(' ', 3, StringSplitOptions.TrimEntries);
+            if (parts.Length >= 2
+                && DateOnly.TryParse(parts[0], System.Globalization.CultureInfo.InvariantCulture, out DateOnly date)
+                && Guid.TryParse(parts[1], out Guid id))
+            {
+                log[id] = new SocialLogEntry(date, parts.Length > 2 ? parts[2] : "");
+            }
+        }
+
+        return log;
+    }
+
+    /// <summary>The same field written back, newest first so the last pass reads at the top.</summary>
+    public static string FormatSocialLog(Dictionary<Guid, SocialLogEntry> log) => string.Join("\n", log
+        .OrderByDescending(entry => entry.Value.Date)
+        .Select(entry => $"{entry.Value.Date:yyyy-MM-dd} {entry.Key} {entry.Value.Name}".TrimEnd()));
 
     /// <summary>
     /// The "Lugares excluidos" field: one Google place id per line, with an optional
@@ -637,7 +672,8 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         string? Address, string? GooglePlaceId, Guid? PhotoMediaKey, double Rating,
         string? Source, DateTime CreateDate,
         string? Phone = null, string? Website = null, string? Hours = null,
-        int RatingCount = 0, int GalleryCount = 0, int MenuCount = 0)
+        int RatingCount = 0, int GalleryCount = 0, int MenuCount = 0,
+        string? PhotoUrl = null)
     {
         public bool HasPhoto => PhotoMediaKey is not null;
 
@@ -680,6 +716,14 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
                 && mediaKey.TryGetGuid(out Guid key)
                 ? key
                 : null;
+            // The picture's own address, for the callers that hand it to somebody else
+            // rather than move it around inside the CMS (a social post states a URL and
+            // the network downloads it itself).
+            string? photoAddress = photoKey is not null
+                && photo[0].TryGetProperty("url", out JsonElement photoUrl)
+                && photoUrl.ValueKind == JsonValueKind.String
+                ? photoUrl.GetString()
+                : null;
             // How many images the gallery already holds, so the pass that fills it can
             // tell a place that has one from a place that does not without reading the
             // document — the picture URLs themselves are the frontend's business.
@@ -696,10 +740,63 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
                 Coord("googleRating"), Text("source"),
                 item.GetProperty("createDate").GetDateTime(),
                 Text("phone"), Text("website"), Text("hours"),
-                (int)Coord("googleRatingCount"), Images("gallery"), Images("menu")));
+                (int)Coord("googleRatingCount"), Images("gallery"), Images("menu"),
+                photoAddress));
         }
 
         return places;
+    }
+
+    /// <summary>
+    /// A published node as something outside the CMS sees it: its name, where it lives,
+    /// when it was created, the address of its picture and every property that reads as
+    /// text. Unlike <see cref="PublishedPlace"/> it says nothing about what a place is —
+    /// it is the shape an event, a film and a place have in common, which is what a social
+    /// post needs and all it needs.
+    /// </summary>
+    public record PublishedItem(
+        Guid Id, string Name, string Path, DateTime CreateDate,
+        string? PhotoUrl, Dictionary<string, string> Text);
+
+    public async Task<List<PublishedItem>> GetPublishedItemsAsync(string contentType)
+    {
+        var items = new List<PublishedItem>();
+        foreach (JsonElement item in await GetDeliveryItemsAsync($"contentType%3A{contentType}"))
+        {
+            JsonElement props = item.GetProperty("properties");
+            var text = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (JsonProperty property in props.EnumerateObject())
+            {
+                // A number reads as text here on purpose: a rating and a duration are
+                // written into a sentence, never computed with.
+                if (property.Value.ValueKind == JsonValueKind.String
+                    && property.Value.GetString() is { Length: > 0 } value)
+                {
+                    text[property.Name] = value;
+                }
+                else if (property.Value.ValueKind == JsonValueKind.Number)
+                {
+                    text[property.Name] = property.Value.GetRawText();
+                }
+            }
+
+            string? photo = props.TryGetProperty("photo", out JsonElement picker)
+                && picker.ValueKind == JsonValueKind.Array && picker.GetArrayLength() > 0
+                && picker[0].TryGetProperty("url", out JsonElement url)
+                && url.ValueKind == JsonValueKind.String
+                ? url.GetString()
+                : null;
+
+            items.Add(new PublishedItem(
+                item.GetProperty("id").GetGuid(),
+                item.GetProperty("name").GetString() ?? "",
+                item.GetProperty("route").GetProperty("path").GetString() ?? "",
+                item.GetProperty("createDate").GetDateTime(),
+                photo,
+                text));
+        }
+
+        return items;
     }
 
     public record DocumentDetail(string Name, Dictionary<string, string?> TextValues);

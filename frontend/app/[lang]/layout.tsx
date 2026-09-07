@@ -3,6 +3,7 @@ import { Geist, Geist_Mono, Oswald } from "next/font/google";
 import Analytics from "@/components/Analytics";
 import InlineScript from "@/components/InlineScript";
 import JsonLd from "@/components/JsonLd";
+import MetaPixel from "@/components/MetaPixel";
 import LocaleProvider from "@/components/LocaleProvider";
 import { HTML_LANG, LOCALES, OG_LOCALE, type Locale } from "@/lib/i18n";
 import {
@@ -106,6 +107,7 @@ export default async function RootLayout({
       <body className="min-h-full flex flex-col bg-neutral-100 text-neutral-900">
         <JsonLd data={siteJsonLd(locale)} />
         <Analytics />
+        <MetaPixel />
         <LocaleProvider locale={locale}>{children}</LocaleProvider>
       </body>
     </html>

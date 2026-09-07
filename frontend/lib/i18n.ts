@@ -119,6 +119,16 @@ const es = {
       string
     >,
   },
+  social: {
+    /** Encabeza los enlaces a las cuentas del portal, en el pie de página. */
+    follow: "Síguenos",
+    share: "Compartir",
+    shareOn: (network: string) => `Compartir en ${network}`,
+    /** El menú de compartir del propio teléfono: Instagram, Threads, lo que tenga instalado. */
+    shareMore: "Más opciones para compartir",
+    copyLink: "Copiar enlace",
+    copied: "Enlace copiado",
+  },
   home: {
     heading: "Elige tu ciudad",
     lead: "Bares, restaurantes, atracciones y un poco más — ubícate con un clic.",
@@ -455,6 +465,14 @@ const en: typeof es = {
       // name everywhere else.
       "movie-theaters": "Movies",
     } as Record<string, string>,
+  },
+  social: {
+    follow: "Follow us",
+    share: "Share",
+    shareOn: (network: string) => `Share on ${network}`,
+    shareMore: "More ways to share",
+    copyLink: "Copy link",
+    copied: "Link copied",
   },
   home: {
     heading: "Choose your city",

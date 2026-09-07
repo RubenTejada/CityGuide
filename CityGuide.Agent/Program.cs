@@ -256,6 +256,44 @@ if (args.Contains("--menus"))
     return 0;
 }
 
+// Announces the portal's own content on Facebook and Instagram: the events of the week,
+// the films that just reached the cartelera and the best-rated places a discovery run has
+// added. It is free — a caption is the content the CMS already holds, arranged in a
+// sentence, with no Google request and no model token — so it needs no --paid. It is also
+// the one pass that publishes outside the portal, which is why it never runs on its own:
+// the nightly job does not post, and nothing goes out without --apply.
+if (args.Contains("--social"))
+{
+    int socialPosts =
+        int.TryParse(args.SkipWhile(a => a != "--social").Skip(1).FirstOrDefault(), out int askedPosts)
+            ? askedPosts
+            : config.Social.MaxPostsPerPass;
+    var metaClient = new MetaClient(http, config.Social);
+    bool applySocial = args.Contains("--apply");
+    if (applySocial && !metaClient.CanPostToFacebook)
+    {
+        Console.Error.WriteLine(
+            "Faltan credenciales de Meta. Configura Social:PageId, Social:InstagramUserId y "
+            + "Social:AccessToken (user-secrets locales, secretos del repositorio en Azure).");
+        return 1;
+    }
+
+    foreach (SocialCityConfig socialCity in config.Social.Cities.Where(c => SectionSelected(c.CityPath)))
+    {
+        try
+        {
+            await new SocialSync(umbraco, metaClient, config.Social, socialCity)
+                .RunAsync(applySocial, socialPosts);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"! Redes sociales ({socialCity.CityPath}): {ex.Message}");
+        }
+    }
+
+    return 0;
+}
+
 // Maintenance pass: the events the agent imported before it asked where they happen.
 // Every ticket portal lists the whole country, so the section filled up with Santiago,
 // Higüey and Punta Cana; each venue is looked up inside the city rectangle and the ones

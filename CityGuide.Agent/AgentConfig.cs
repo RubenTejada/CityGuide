@@ -10,6 +10,7 @@ public class AgentConfig
     public CinemasConfig Cinemas { get; set; } = new();
     public EventsConfig Events { get; set; } = new();
     public MenusConfig Menus { get; set; } = new();
+    public SocialConfig Social { get; set; } = new();
     public ThrottleConfig Throttle { get; set; } = new();
 }
 
@@ -34,6 +35,74 @@ public class MenusConfig
     /// for the same reason the gallery has one: a five-star average over five reviews
     /// is not what a section leads with.</summary>
     public int MinReviews { get; set; } = 100;
+}
+
+/// <summary>
+/// Publishing the portal's own content on Facebook and Instagram. Both are reached
+/// through one Graph API token: an Instagram business account is published to through
+/// the Facebook Page it is linked to.
+///
+/// The token is a secret and belongs in user-secrets locally and in the repository
+/// secrets in Azure — never in this file. Without it the pass prints its plan and
+/// posts nothing, which is also what an installation that does not use social media
+/// gets by leaving these empty.
+/// </summary>
+public class SocialConfig
+{
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>Numeric id of the Facebook Page the portal posts as.</summary>
+    public string PageId { get; set; } = "";
+
+    /// <summary>Id of the Instagram business account linked to that Page.</summary>
+    public string InstagramUserId { get; set; } = "";
+
+    /// <summary>A long-lived Page access token (sixty days) or a system-user token.</summary>
+    public string AccessToken { get; set; } = "";
+
+    public string ApiVersion { get; set; } = "v21.0";
+
+    /// <summary>
+    /// Public origin of the portal. Every post links to it, and every picture is
+    /// handed to Meta through it: the site proxies /media from the CMS, so this is the
+    /// one address that is public, branded and already serving those images.
+    /// </summary>
+    public string SiteUrl { get; set; } = "https://quehacerrd.com";
+
+    /// <summary>
+    /// How many posts one pass may publish per city. Small on purpose: an account that
+    /// posts eight times in a minute is an account the network throttles and a feed
+    /// people mute. Instagram's own ceiling is 50 in 24 hours.
+    /// </summary>
+    public int MaxPostsPerPass { get; set; } = 3;
+
+    /// <summary>How far ahead an event is worth announcing.</summary>
+    public int EventDaysAhead { get; set; } = 7;
+
+    /// <summary>How recently the cinema sync must have catalogued a film for it to
+    /// count as new in the cartelera.</summary>
+    public int MovieDaysNew { get; set; } = 7;
+
+    /// <summary>A place is announced when the guide would lead with it: the rating and
+    /// the review count that keep a five-star average over five reviews out.</summary>
+    public double MinRating { get; set; } = 4.3;
+
+    public int MinReviews { get; set; } = 100;
+
+    /// <summary>Hashtags every post carries, before the city's own.</summary>
+    public List<string> Hashtags { get; set; } = [];
+
+    public List<SocialCityConfig> Cities { get; set; } = [];
+}
+
+public class SocialCityConfig
+{
+    /// <summary>Umbraco route path of the city whose content is announced. Its node also
+    /// holds the log of what has already gone out ("Publicaciones ya hechas").</summary>
+    public string CityPath { get; set; } = "";
+
+    /// <summary>Hashtags of this city, added to the shared ones.</summary>
+    public List<string> Hashtags { get; set; } = [];
 }
 
 public class ThrottleConfig

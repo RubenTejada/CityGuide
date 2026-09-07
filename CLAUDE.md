@@ -125,6 +125,16 @@ cd CityGuide.Agent && dotnet run -- --paid --translate
 cd CityGuide.Agent && dotnet run -- --paid --translate --apply
 cd CityGuide.Agent && dotnet run -- --paid --translate --section restaurantes --apply
 
+# Announce the portal's own content on Facebook and Instagram: the events of the
+# week, the films that just reached the cartelera and the best-rated places of the
+# city. A caption is the content the CMS already holds arranged in a sentence — no
+# Google request, no model token — so it needs no --paid. It is the one pass that
+# publishes outside the portal: it never runs on its own (the nightly job does not
+# post), it prints every caption and posts nothing until --apply, and it needs three
+# secrets: Social:PageId, Social:InstagramUserId and Social:AccessToken.
+cd CityGuide.Agent && dotnet run -- --social --section santo-domingo
+cd CityGuide.Agent && dotnet run -- --social 3 --section santo-domingo --apply
+
 # Build everything
 dotnet build CityGuide.slnx
 ```
@@ -439,6 +449,31 @@ capped height under the map.
 
 The "¿Qué está cerca?" map panel calls `GET /api/nearby` (`CityGuideWeb/CityGuide/NearbyController.cs`, haversine scan over `NearbyIndex`). It draws as a `MapBlock` like every other map with a list beside it. The index is the projection of every published `place` — category, branch name, photo, logo, url, rating — built once and held until a publish, unpublish, delete or move drops it (`NearbyIndexInvalidator`, the same four notifications the frontend cache invalidator listens to); a request used to read every place node plus each of its ancestors out of the content cache. It is built inside the request that finds it empty (resolving a node URL needs the ambient request state) and concurrent requests wait on that one build. The frontend proxies the endpoint via a Next.js rewrite so the browser call is same-origin.
 
+**The portal announces itself.** `--social [n]` (`SocialSync` over `MetaClient`, scoped
+by `--section`, whose city slug picks one city) publishes to the Facebook Page and the
+Instagram business account linked to it: the events starting within
+`Social:EventDaysAhead`, the films the cinema sync catalogued in the last
+`Social:MovieDaysNew` days, and the best-rated places the pass has not announced yet
+(`Social:MinRating`/`MinReviews`, and a place with no description of its own is skipped —
+that is a branch reading its company's prose). One of each kind before a second of any,
+capped by `Social:MaxPostsPerPass`, so a feed is never three restaurants in a row. It
+costs nothing: a caption is the name, the rating and the first sentence of a description
+an enrichment call paid for long ago, which is why the pass needs no `--paid`; and it is
+the one pass that writes outside the portal, so it never runs on its own — the nightly
+job does not post — and prints every caption until `--apply`. Both networks are reached
+through one Graph API token (Instagram is published to through its Page), but not the
+same way: Facebook takes the picture and the caption in one request, Instagram takes a
+container it downloads the image into and then a publish, and it refuses anything outside
+4:5 – 1.91:1 — a film poster is 2:3, so films go to Facebook alone. Meta downloads the
+picture itself, so what it is handed is a URL on the portal's own origin, which already
+proxies `/media` from the CMS. What it must never do is announce the same place twice,
+and the container the agent runs in keeps nothing between passes, so the memory lives in
+the CMS beside the query log: `agentSocialLog`, the "Publicaciones ya hechas" field on
+the city node, one `yyyy-MM-dd <id> <nombre>` line per node already posted. A post that
+failed is not written to it, so the next pass offers it again. `.github/workflows/run-agent.yml`
+exposes it as the `social` dispatch input (plan / apply, `social_posts` for the cap), with
+the three Meta credentials as repository secrets.
+
 ## SEO
 
 All of it is derived from the CMS item, so content published later is covered without code changes.
@@ -635,6 +670,46 @@ Google Analytics 4 (gtag.js) is rendered site-wide by `frontend/components/Analy
 the root layout. It emits nothing unless `NEXT_PUBLIC_GA_MEASUREMENT_ID` is set, so local development
 does not report traffic; `.github/workflows/deploy-frontend.yml` sets it to `G-RTX0GNHR74` at build
 time (`NEXT_PUBLIC_*` values are inlined by `next build`, not read at runtime).
+
+## Meta pixel and Conversions API
+
+Ads on Facebook and Instagram optimize toward what they can measure, so the portal
+reports both sides of it.
+
+- **The browser pixel** is `frontend/components/MetaPixel.tsx`, mounted in the root
+  layout beside `Analytics`. It emits nothing unless `NEXT_PUBLIC_META_PIXEL_ID` is set,
+  so local development reports no traffic; the deploy workflow passes it at build time
+  from the `NEXT_PUBLIC_META_PIXEL_ID` repository secret (`NEXT_PUBLIC_*` values are
+  inlined by `next build`, not read at runtime). Unlike GA4 it does not listen to the
+  History API, so every client-side navigation fires its own `PageView` and the first one
+  is skipped — the base snippet already sent it.
+- **The server side** is `frontend/lib/metaCapi.ts`, and it reports the one event a
+  campaign is actually bought for: a contact message filed. It is sent from the Server
+  Action (`app/[lang]/[city]/contacto/actions.ts`) rather than from the form, because a
+  server event survives the ad blockers that swallow the pixel. It posts personal data —
+  a hashed email and phone, the visitor's IP and user agent, the pixel's own `_fbp`/`_fbc`
+  cookies — so nothing is sent at all unless `META_CONVERSIONS_TOKEN` is configured, and a
+  send that fails is swallowed: the message is already in the CMS.
+- `META_TEST_EVENT_CODE` routes server events to the "Test events" tab of Events Manager
+  instead of the dataset, for checking the wiring before a campaign runs.
+
+## Sharing and the portal's own accounts
+
+`frontend/lib/social.ts` holds both sides of one handful of facts: the accounts the portal
+publishes to and the links a visitor sends a page with. The accounts are the footer's
+profile links (`SocialLinks`) *and* what the Organization JSON-LD declares as `sameAs`, so
+a handle that changes changes in one place. `ShareButtons` is the call to action beside
+the title of every page the portal owns a subject on — a place, a plaza, a company, a film
+and an event — and reads "Compartir" followed by the networks that publish a share URL
+(WhatsApp, Facebook, X, Telegram), the phone's own share sheet and the link itself.
+Instagram is deliberately absent from the link list: it publishes no share URL, so a
+button for it would only open an empty composer. It is reached — with Threads, Messenger,
+Telegram's app and whatever else the visitor has installed — through `navigator.share`,
+which is what the sheet button calls. That button only exists where the browser really has
+a sheet, and whether it does is read with `useSyncExternalStore` (server snapshot `false`)
+rather than set from an effect, so it neither hydrates into a mismatch nor shows a control
+that does nothing on the desktop. The URL shared is built on the server from the item's
+route, so it is the canonical one and never the query string the visitor arrived with.
 
 ## Contact form
 

@@ -23,6 +23,7 @@ import MenuViewer from "@/components/MenuViewer";
 import PhotoGallery from "@/components/PhotoGallery";
 import PlaceMap from "@/components/PlaceMap";
 import Rating from "@/components/Rating";
+import ShareButtons from "@/components/ShareButtons";
 import Cartelera from "@/components/cine/Cartelera";
 import DateTabs from "@/components/cine/DateTabs";
 import MovieReviewBadges from "@/components/cine/MovieReviewBadges";
@@ -60,6 +61,7 @@ import {
   subcategoryIcon,
 } from "@/lib/sections";
 import {
+  absoluteUrl,
   articleJsonLd,
   breadcrumbJsonLd,
   eventJsonLd,
@@ -898,6 +900,11 @@ async function MovieView({
             {trailer && (
               <TrailerModal youtubeId={trailer} movieName={item.name} />
             )}
+            <ShareButtons
+              url={absoluteUrl(item.route.path)}
+              title={item.name}
+              className="sm:ml-auto"
+            />
           </div>
           {meta.length > 0 && (
             <p className="mt-2 text-sm text-neutral-500">{meta.join(" · ")}</p>
@@ -1158,10 +1165,15 @@ async function MallView({ item }: { item: UmbracoItem }) {
             sizes="128px"
           />
         </div>
-        <div className="min-w-0">
-          <div className="flex items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-3xl font-bold">{item.name}</h1>
             {directions && <DirectionsLink href={directions} locale={locale} />}
+            <ShareButtons
+              url={absoluteUrl(item.route.path)}
+              title={item.name}
+              className="sm:ml-auto"
+            />
           </div>
           <dl className="mt-3 space-y-1.5 text-sm">
             {text(item, "address") && (
@@ -1316,8 +1328,15 @@ async function CompanyView({ item }: { item: UmbracoItem }) {
             sizes="128px"
           />
         </div>
-        <div className="min-w-0">
-          <h1 className="text-3xl font-bold">{item.name}</h1>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="text-3xl font-bold">{item.name}</h1>
+            <ShareButtons
+              url={absoluteUrl(item.route.path)}
+              title={item.name}
+              className="sm:ml-auto"
+            />
+          </div>
           <dl className="mt-3 space-y-1.5 text-sm">
             {text(item, "phone") && (
               <div className="flex gap-2">
@@ -1424,9 +1443,14 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
           image: inheritedPhoto,
         })}
       />
-      <div className="mt-4 flex items-center gap-3">
+      <div className="mt-4 flex flex-wrap items-center gap-3">
         <h1 className="text-3xl font-bold">{displayName}</h1>
         {directions && <DirectionsLink href={directions} locale={locale} />}
+        <ShareButtons
+          url={absoluteUrl(item.route.path)}
+          title={displayName}
+          className="sm:ml-auto"
+        />
       </div>
       <div className="mt-1">
         <Rating place={item} locale={locale} />
@@ -1660,9 +1684,14 @@ async function EventView({ item }: { item: UmbracoItem }) {
           locale,
         )}
       />
-      <div className="mt-4 flex items-center gap-3">
+      <div className="mt-4 flex flex-wrap items-center gap-3">
         <h1 className="text-3xl font-bold">{item.name}</h1>
         {directions && <DirectionsLink href={directions} locale={locale} />}
+        <ShareButtons
+          url={absoluteUrl(item.route.path)}
+          title={item.name}
+          className="sm:ml-auto"
+        />
       </div>
       {text(item, "category") && (
         <span className="mt-3 inline-block rounded-full bg-brand-100 px-3 py-1 text-sm font-medium text-brand-800">

@@ -1113,6 +1113,11 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
                 + "Google ya pagada. Mientras la fecha sea reciente el agente no vuelve a "
                 + "pagarla (Google:QueryCooldownDays, 30 días). Vaciar este campo hace que la "
                 + "próxima pasada busque todo otra vez.", 5),
+            ("agentSocialLog", textarea, "Publicaciones ya hechas",
+                "La otra memoria del agente: una línea \"aaaa-mm-dd <id> <nombre>\" por "
+                + "contenido ya anunciado en Facebook e Instagram. Es lo que impide que el "
+                + "portal publique dos veces el mismo restaurante. Vaciar este campo hace "
+                + "que la próxima pasada vuelva a anunciarlo todo.", 6),
             ("agentExcludedPlaces", textarea, "Lugares excluidos",
                 "Ids de Google que el agente nunca debe crear, uno por línea, con un "
                 + "comentario opcional después de #. P. ej. "

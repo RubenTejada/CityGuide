@@ -16,6 +16,7 @@ import {
   type Locale,
 } from "./i18n";
 import { canonicalPath } from "./sectionSlugs";
+import { SOCIAL_ACCOUNTS } from "./social";
 import { num, photoUrl, text, type UmbracoItem } from "./umbraco";
 
 export const SITE_NAME = "QueHacerRD";
@@ -729,6 +730,9 @@ export function publisherJsonLd(): JsonLd {
     name: SITE_NAME,
     url: SITE_URL,
     logo: { "@type": "ImageObject", url: `${SITE_URL}/logo.svg` },
+    // The profiles the portal publishes to: what ties the site and the accounts
+    // together for a search engine, and the reason they live in one module.
+    sameAs: SOCIAL_ACCOUNTS.map((account) => account.url),
   };
 }
 

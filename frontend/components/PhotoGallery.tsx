@@ -14,7 +14,7 @@ const WIDE_FROM = 7;
 
 /**
  * La galería de un lugar: una foto principal y, pegada debajo, una tira de tres o seis,
- * todo un rectángulo sin junta entre fotos. La tira no se mueve; lo que rota es la
+ * todo un rectángulo con 4px de junta entre fotos. La tira no se mueve; lo que rota es la
  * principal, que va subiendo una tras otra las fotos de abajo — la que está arriba queda
  * marcada en la tira — fundiéndose despacio sobre la que sustituye.
  *
@@ -59,7 +59,9 @@ export default function PhotoGallery({
       <div
         role="group"
         aria-label={label}
-        className="overflow-hidden rounded-xl bg-neutral-200"
+        // La junta de 4px la pinta el fondo del propio bloque, que en oscuro se
+        // oscurece con el resto de las superficies claras.
+        className="flex flex-col gap-1 overflow-hidden rounded-xl bg-neutral-200"
         onMouseEnter={() => setPaused(true)}
         onMouseLeave={() => setPaused(false)}
       >
@@ -73,7 +75,7 @@ export default function PhotoGallery({
           className="aspect-11/8"
           onOpen={setViewing}
         />
-        <div className="grid grid-cols-3">
+        <div className="grid grid-cols-3 gap-1">
           {Array.from({ length: tiles }, (_, tile) => (
             <Cell
               key={tile}
