@@ -470,6 +470,15 @@ URL segment (`/santo-domingo/restaurantes` and `/en/santo-domingo/restaurants`).
   a culture only routes when everything above it is published in it, and `--section` therefore
   pulls in the ancestors of what it selects. A node whose prose comes back untranslated is left
   for the next pass rather than published as an English page carrying Spanish text.
+  Two things bite a full pass over the whole site. It reads the tree from the Delivery API's
+  list endpoint, which is backed by Examine, and a CMS that has just restarted answers with a
+  total it cannot yet fill — so `GetPublishedNodesAsync` refuses a short page rather than let a
+  pass cover a slice of the site and report the whole of it. And a pass over a few thousand
+  nodes outlives the Azure login of the "Run agent" workflow: `azure/login` obtains an OIDC
+  client assertion good for five minutes, and once the access token it bought expires an hour
+  in, `DefaultAzureCredential` cannot buy another (`AADSTS700024`). Nothing is lost — the pass
+  writes node by node and the next one resumes where it stopped — so a first full translation
+  simply takes two runs.
 - **The migration is irreversible and rewrites content data.** Back the database up before
   deploying it. Production runs on **Azure SQL** (`quehacerrd-sql/cityguide`), not on the SQLite
   file the local install uses and not on the leftover `.db` files still sitting in the app's

@@ -43,6 +43,7 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
     public async Task<List<PublishedNode>> GetPublishedNodesAsync(string contentType, string culture)
     {
         var nodes = new List<PublishedNode>();
+        var total = 0;
         const int pageSize = 100;
         for (var skip = 0; ; skip += pageSize)
         {
@@ -59,7 +60,7 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
             }
 
             using JsonDocument doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-            int total = doc.RootElement.GetProperty("total").GetInt32();
+            total = doc.RootElement.GetProperty("total").GetInt32();
             var page = 0;
             foreach (JsonElement item in doc.RootElement.GetProperty("items").EnumerateArray())
             {
@@ -86,6 +87,18 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
             {
                 break;
             }
+        }
+
+        // The Delivery API's list endpoint reads from an Examine index, and a CMS that
+        // has just restarted answers with a total it cannot yet fill — pages come back
+        // empty while the index rebuilds. Silently returning the short list would let a
+        // caller work over a slice of the site and report that it had covered all of it.
+        if (nodes.Count < total)
+        {
+            throw new InvalidOperationException(
+                $"The Delivery API listed {total} '{contentType}' nodes in '{culture}' but only "
+                + $"returned {nodes.Count}. Its index is probably still rebuilding after a "
+                + "restart — wait for it to finish and run this again.");
         }
 
         return nodes;
