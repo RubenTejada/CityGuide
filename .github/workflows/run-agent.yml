@@ -109,6 +109,20 @@ on:
           - plan
           - apply
         default: "no"
+      translate:
+        description: >-
+          Maintenance pass instead of the ingestion run: fills the English side of the
+          portal from the Spanish one, writing only what is missing. Touches Google not
+          at all, but the model is billed per token, so it needs "paid". Scoped by
+          "section" (its ancestors are always included). "plan" only prints what it
+          would do.
+        type: choice
+        required: false
+        options:
+          - "no"
+          - plan
+          - apply
+        default: "no"
       regroup_companies:
         description: >-
           Maintenance pass instead of the ingestion run: files under their chain the
@@ -225,6 +239,7 @@ jobs:
           EXCLUDE_IDS: ${{ inputs.exclude_place }}
           EXCLUDE_NOTE: ${{ inputs.exclude_note }}
           EXCLUDE_APPLY: ${{ inputs.exclude_apply }}
+          TRANSLATE: ${{ inputs.translate }}
           PUBLISH: ${{ inputs.publish }}
           PAID: ${{ inputs.paid }}
         run: |
@@ -232,7 +247,13 @@ jobs:
           # model. Without this flag it leaves both alone and the run cannot be billed.
           paid_flag=""
           if [ "$PAID" = "true" ]; then paid_flag="--paid"; fi
-          if [ "$RECATEGORIZE" = "true" ]; then
+          section_flag=""
+          if [ -n "$SECTION" ]; then section_flag="--section $SECTION"; fi
+          if [ "$TRANSLATE" = "plan" ]; then
+            dotnet run -c Release -- --translate $section_flag $paid_flag
+          elif [ "$TRANSLATE" = "apply" ]; then
+            dotnet run -c Release -- --translate --apply $section_flag $paid_flag
+          elif [ "$RECATEGORIZE" = "true" ]; then
             dotnet run -c Release -- --recategorize-events --apply $paid_flag
           elif [ "$PURGE_FOREIGN" = "plan" ]; then
             dotnet run -c Release -- --purge-foreign-events $paid_flag

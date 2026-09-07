@@ -193,6 +193,25 @@ if (args.Contains("--recategorize-events"))
     return 0;
 }
 
+// Maintenance pass: fill the English side of the portal from the Spanish one. It writes
+// only what is missing, so the first pass covers the whole site and every one after it
+// only picks up what a discovery run has since created. Nothing here touches Google —
+// the words are already in the CMS — and most of the text is answered by a table rather
+// than by the model. Prints the plan and changes nothing without --apply.
+if (args.Contains("--translate"))
+{
+    if (enricher is null)
+    {
+        Console.Error.WriteLine(
+            "--translate necesita el modelo de enriquecimiento, que se factura por token. "
+            + "Añade --paid para ejecutarlo.");
+        return 1;
+    }
+
+    await new TranslateSync(umbraco, enricher).RunAsync(args.Contains("--apply"), sections);
+    return 0;
+}
+
 // Maintenance pass: the events the agent imported before it asked where they happen.
 // Every ticket portal lists the whole country, so the section filled up with Santiago,
 // Higüey and Punta Cana; each venue is looked up inside the city rectangle and the ones

@@ -47,6 +47,16 @@ public class AzureOpenAiClient(HttpClient http, AzureOpenAiConfig config) : IEnr
         return arguments is null ? [] : EventCategories.Parse(arguments.Value, events.Count);
     }
 
+    public async Task<Dictionary<int, Dictionary<string, string>>> TranslateAsync(
+        IReadOnlyList<TranslationRequest> entries)
+    {
+        JsonElement? arguments = await CallToolAsync(
+            Translation.ToolName, Translation.ToolDescription, Translation.Schema,
+            Translation.UserMessage(entries), entries[0].Name,
+            temperature: 0, maxTokens: Translation.MaxAnswerTokens);
+        return arguments is null ? [] : Translation.Parse(arguments.Value, entries);
+    }
+
     /// <summary>
     /// One forced function call, returning its arguments — null when Azure's
     /// content filter refused the request, which callers answer with an empty
@@ -56,13 +66,14 @@ public class AzureOpenAiClient(HttpClient http, AzureOpenAiConfig config) : IEnr
     /// </summary>
     private async Task<JsonElement?> CallToolAsync(
         string toolName, string toolDescription, object schema, string userMessage, string subject,
-        double temperature = 1)
+        double temperature = 1, int maxTokens = 2048)
     {
         var payload = new
         {
             temperature,
             // Room for the batched event classification; a description never nears it.
-            max_tokens = 2048,
+            // A translation batch does, and asks for its own.
+            max_tokens = maxTokens,
             tools = new object[]
             {
                 new

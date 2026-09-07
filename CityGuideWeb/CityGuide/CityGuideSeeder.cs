@@ -10,6 +10,7 @@ using Umbraco.Cms.Core.Serialization;
 using Umbraco.Cms.Core.Services;
 using Umbraco.Cms.Core.Services.OperationStatus;
 using Umbraco.Cms.Core.Strings;
+using Umbraco.Cms.Core.Models.ContentEditing;
 using Umbraco.Cms.Core.Models.Membership;
 using Umbraco.Cms.Core.Security;
 using OpenIddict.Abstractions;
@@ -46,6 +47,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
     private readonly IExamineManager _examineManager;
     private readonly IIndexRebuilder _indexRebuilder;
     private readonly ILanguageService _languageService;
+    private readonly IDomainService _domainService;
     private readonly IUserService _userService;
     private readonly IUserGroupService _userGroupService;
     private readonly IBackOfficeUserClientCredentialsManager _clientCredentialsManager;
@@ -69,6 +71,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         IExamineManager examineManager,
         IIndexRebuilder indexRebuilder,
         ILanguageService languageService,
+        IDomainService domainService,
         IUserService userService,
         IUserGroupService userGroupService,
         IBackOfficeUserClientCredentialsManager clientCredentialsManager,
@@ -91,6 +94,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         _examineManager = examineManager;
         _indexRebuilder = indexRebuilder;
         _languageService = languageService;
+        _domainService = domainService;
         _userService = userService;
         _userGroupService = userGroupService;
         _clientCredentialsManager = clientCredentialsManager;
@@ -145,6 +149,8 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         await EnsureLanguagesAsync();
 
         await EnsureCultureVariationAsync();
+
+        await EnsureCultureDomainsAsync();
 
         await EnsureContactSchemaAsync();
 
@@ -348,15 +354,15 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
 
     private void SeedContent()
     {
-        IContent site = _contentService.Create("TuCiudad", -1, "site");
-        site.SetValue("siteName", "TuCiudad.com");
+        IContent site = CreateContent("TuCiudad", -1, "site");
+        SetSeedValue(site, "siteName", "TuCiudad.com");
         _contentService.Save(site);
 
-        IContent city = _contentService.Create("Santo Domingo", site.Id, "city");
-        city.SetValue("intro", "Bares, restaurantes, atracciones y un poco más de Santo Domingo. Ubícate con un clic.");
-        city.SetValue("country", "República Dominicana");
-        city.SetValue("latitude", 18.4718m);
-        city.SetValue("longitude", -69.9312m);
+        IContent city = CreateContent("Santo Domingo", site.Id, "city");
+        SetSeedValue(city, "intro", "Bares, restaurantes, atracciones y un poco más de Santo Domingo. Ubícate con un clic.");
+        SetSeedValue(city, "country", "República Dominicana");
+        SetSeedValue(city, "latitude", 18.4718m);
+        SetSeedValue(city, "longitude", -69.9312m);
         _contentService.Save(city);
 
         IContent restaurantes = CreateCategory(city, "Restaurantes", "Los mejores restaurantes de la ciudad.");
@@ -365,11 +371,11 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         IContent cines = CreateCategory(city, "Cines", "Carteleras y salas de cine.");
         IContent servicios = CreateCategory(city, "Empresas y Servicios", "Empresas y servicios locales.");
 
-        IContent china = _contentService.Create("China", restaurantes.Id, "subcategory");
+        IContent china = CreateContent("China", restaurantes.Id, "subcategory");
         _contentService.Save(china);
-        IContent criolla = _contentService.Create("Criolla", restaurantes.Id, "subcategory");
+        IContent criolla = CreateContent("Criolla", restaurantes.Id, "subcategory");
         _contentService.Save(criolla);
-        IContent italiana = _contentService.Create("Italiana", restaurantes.Id, "subcategory");
+        IContent italiana = CreateContent("Italiana", restaurantes.Id, "subcategory");
         _contentService.Save(italiana);
 
         CreatePlace(china.Id, "Pan Oliva",
@@ -421,30 +427,30 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
             18.4680m, -69.9390m,
             ["Aire Acondicionado", "Parqueo", "Delivery", "Horario Extendido"]);
 
-        IContent eventos = _contentService.Create("Eventos", city.Id, "eventsPage");
+        IContent eventos = CreateContent("Eventos", city.Id, "eventsPage");
         _contentService.Save(eventos);
-        IContent evento = _contentService.Create("Festival Gastronómico Dominicano", eventos.Id, "eventItem");
-        evento.SetValue("description", "Una semana dedicada a la cocina dominicana con los mejores chefs de la ciudad.");
-        evento.SetValue("startDate", new DateTime(2026, 10, 5, 18, 0, 0));
-        evento.SetValue("endDate", new DateTime(2026, 10, 11, 23, 0, 0));
-        evento.SetValue("venueName", "Plaza España");
-        evento.SetValue("address", "Plaza España, Zona Colonial");
-        evento.SetValue("latitude", 18.4773m);
-        evento.SetValue("longitude", -69.8822m);
-        evento.SetValue("category", "Gastronomía");
+        IContent evento = CreateContent("Festival Gastronómico Dominicano", eventos.Id, "eventItem");
+        SetSeedValue(evento, "description", "Una semana dedicada a la cocina dominicana con los mejores chefs de la ciudad.");
+        SetSeedValue(evento, "startDate", new DateTime(2026, 10, 5, 18, 0, 0));
+        SetSeedValue(evento, "endDate", new DateTime(2026, 10, 11, 23, 0, 0));
+        SetSeedValue(evento, "venueName", "Plaza España");
+        SetSeedValue(evento, "address", "Plaza España, Zona Colonial");
+        SetSeedValue(evento, "latitude", 18.4773m);
+        SetSeedValue(evento, "longitude", -69.8822m);
+        SetSeedValue(evento, "category", "Gastronomía");
         _contentService.Save(evento);
 
-        IContent queHacer = _contentService.Create("Qué Hacer", city.Id, "thingsToDoPage");
-        queHacer.SetValue("intro", ThingsToDoIntro);
+        IContent queHacer = CreateContent("Qué Hacer", city.Id, "thingsToDoPage");
+        SetSeedValue(queHacer, "intro", ThingsToDoIntro);
         _contentService.Save(queHacer);
 
-        _contentService.PublishBranch(site, PublishBranchFilter.IncludeUnpublished, ["*"]);
+        _contentService.PublishBranch(site, PublishBranchFilter.IncludeUnpublished, SeededCultures(site));
     }
 
     private IContent CreateCategory(IContent city, string name, string intro)
     {
-        IContent category = _contentService.Create(name, city.Id, "categoryPage");
-        category.SetValue("intro", intro);
+        IContent category = CreateContent(name, city.Id, "categoryPage");
+        SetSeedValue(category, "intro", intro);
         _contentService.Save(category);
         return category;
     }
@@ -454,23 +460,23 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         string hours, decimal latitude, decimal longitude, string[] facilities,
         string? website = null, string? photoValue = null)
     {
-        IContent place = _contentService.Create(name, parentId, "place");
-        place.SetValue("description", description);
-        place.SetValue("address", address);
-        place.SetValue("phone", phone);
-        place.SetValue("hours", hours);
-        place.SetValue("latitude", latitude);
-        place.SetValue("longitude", longitude);
-        place.SetValue("facilities", JsonSerializer.Serialize(facilities));
-        place.SetValue("source", "manual");
+        IContent place = CreateContent(name, parentId, "place");
+        SetSeedValue(place, "description", description);
+        SetSeedValue(place, "address", address);
+        SetSeedValue(place, "phone", phone);
+        SetSeedValue(place, "hours", hours);
+        SetSeedValue(place, "latitude", latitude);
+        SetSeedValue(place, "longitude", longitude);
+        SetSeedValue(place, "facilities", JsonSerializer.Serialize(facilities));
+        SetSeedValue(place, "source", "manual");
         if (website is not null)
         {
-            place.SetValue("website", website);
+            SetSeedValue(place, "website", website);
         }
 
         if (photoValue is not null)
         {
-            place.SetValue("photo", photoValue);
+            SetSeedValue(place, "photo", photoValue);
         }
 
         _contentService.Save(place);
@@ -489,7 +495,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
     {
         foreach (IContent content in created.OrderBy(c => c.Level))
         {
-            _contentService.Publish(content, ["*"]);
+            _contentService.Publish(content, SeededCultures(content));
         }
     }
 
@@ -626,6 +632,9 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
     /// <summary>The second culture the portal is offered in.</summary>
     public const string EnglishCulture = "en-US";
 
+    /// <summary>URL prefix the English culture is served under.</summary>
+    public const string EnglishPathPrefix = "/en";
+
     /// <summary>
     /// Document types offered in both languages, each with the properties carrying text
     /// a reader sees. Everything not listed stays invariant and is shared by both
@@ -636,6 +645,9 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
     /// </summary>
     private static readonly (string Alias, string[] Properties)[] TranslatedDocumentTypes =
     [
+        // The site root carries no translatable text of its own, but a culture only
+        // routes when every ancestor is published in it, so it has to vary as well.
+        ("site", []),
         ("city", ["intro", "country", "metaTitle", "metaDescription"]),
         ("categoryPage", ["intro", "metaTitle", "metaDescription"]),
         ("subcategory", ["intro", "metaTitle", "metaDescription"]),
@@ -757,6 +769,49 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
                 throw new InvalidOperationException(
                     $"Failed to make '{alias}' vary by culture: {attempt.Result}");
             }
+        }
+    }
+
+    /// <summary>
+    /// Binds the two cultures to a URL prefix on the site root: Spanish at "/" (the
+    /// root's own culture) and English under "/en". Umbraco builds no URL at all for
+    /// variant content whose culture is not bound to a domain, and content the Delivery
+    /// API cannot route is dropped from its answers — the symptom is a list endpoint
+    /// reporting a total with an empty "items" array, and every item-by-path lookup
+    /// returning 404. Guarded on the domains already assigned and run every startup.
+    /// </summary>
+    private async Task EnsureCultureDomainsAsync()
+    {
+        IContent? site = _contentService.GetRootContent()
+            .FirstOrDefault(c => c.ContentType.Alias == "site");
+        if (site is null)
+        {
+            return;
+        }
+
+        IEnumerable<IDomain> assigned =
+            await _domainService.GetAssignedDomainsAsync(site.Key, includeWildcards: true);
+        bool englishBound = assigned.Any(d =>
+            string.Equals(d.DomainName, EnglishPathPrefix, StringComparison.OrdinalIgnoreCase));
+        bool spanishIsRootCulture = assigned.Any(d =>
+            d.IsWildcard && string.Equals(d.LanguageIsoCode, SpanishCulture, StringComparison.OrdinalIgnoreCase));
+        if (englishBound && spanishIsRootCulture)
+        {
+            return;
+        }
+
+        _logger.LogInformation("CityGuide: binding '{Spanish}' to '/' and '{English}' to '{Prefix}'",
+            SpanishCulture, EnglishCulture, EnglishPathPrefix);
+        Attempt<DomainUpdateResult, DomainOperationStatus> attempt = await _domainService.UpdateDomainsAsync(
+            site.Key,
+            new DomainsUpdateModel
+            {
+                DefaultIsoCode = SpanishCulture,
+                Domains = [new DomainModel { DomainName = EnglishPathPrefix, IsoCode = EnglishCulture }],
+            });
+        if (!attempt.Success)
+        {
+            throw new InvalidOperationException($"Failed to bind culture domains: {attempt.Status}");
         }
     }
 
@@ -1186,7 +1241,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
                 continue;
             }
 
-            city.SetValue(alias, value);
+            SetSeedValue(city, alias, value);
             seeded.Add(alias);
         }
 
@@ -1197,7 +1252,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
 
         _logger.LogInformation("CityGuide: seeding {Fields} on '{City}'", string.Join(", ", seeded), cityName);
         _contentService.Save(city);
-        _contentService.Publish(city, ["*"]);
+        _contentService.Publish(city, SeededCultures(city));
         return true;
     }
 
@@ -1346,11 +1401,11 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
             }
 
             _logger.LogInformation("CityGuide: seeding city '{City}'", definition.Name);
-            IContent city = _contentService.Create(definition.Name, site.Id, "city");
-            city.SetValue("intro", definition.Intro);
-            city.SetValue("country", definition.Country);
-            city.SetValue("latitude", definition.Latitude);
-            city.SetValue("longitude", definition.Longitude);
+            IContent city = CreateContent(definition.Name, site.Id, "city");
+            SetSeedValue(city, "intro", definition.Intro);
+            SetSeedValue(city, "country", definition.Country);
+            SetSeedValue(city, "latitude", definition.Latitude);
+            SetSeedValue(city, "longitude", definition.Longitude);
             _contentService.Save(city);
             created.Add(city);
         }
@@ -1401,7 +1456,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
                         continue;
                     }
 
-                    IContent child = _contentService.Create(subcategory, category.Id, "subcategory");
+                    IContent child = CreateContent(subcategory, category.Id, "subcategory");
                     _contentService.Save(child);
                     created.Add(child);
                 }
@@ -1409,15 +1464,15 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
 
             if (Descendant(city, "eventsPage", "Eventos") is null)
             {
-                IContent eventos = _contentService.Create("Eventos", city.Id, "eventsPage");
+                IContent eventos = CreateContent("Eventos", city.Id, "eventsPage");
                 _contentService.Save(eventos);
                 created.Add(eventos);
             }
 
             if (Descendant(city, "thingsToDoPage", "Qué Hacer") is null)
             {
-                IContent queHacer = _contentService.Create("Qué Hacer", city.Id, "thingsToDoPage");
-                queHacer.SetValue("intro", ThingsToDoIntro);
+                IContent queHacer = CreateContent("Qué Hacer", city.Id, "thingsToDoPage");
+                SetSeedValue(queHacer, "intro", ThingsToDoIntro);
                 _contentService.Save(queHacer);
                 created.Add(queHacer);
             }
@@ -1453,14 +1508,14 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
             if (opening || announcing)
             {
                 _logger.LogInformation("CityGuide: opening '{City}' to visitors", definition.Name);
-                city.SetValue("comingSoon", false);
+                SetSeedValue(city, "comingSoon", false);
                 if (announcing)
                 {
-                    city.SetValue("intro", definition.Intro);
+                    SetSeedValue(city, "intro", definition.Intro);
                 }
 
                 _contentService.Save(city);
-                _contentService.Publish(city, ["*"]);
+                _contentService.Publish(city, SeededCultures(city));
                 changed = true;
             }
         }
@@ -1537,10 +1592,10 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         }
 
         _logger.LogInformation("CityGuide: seeding 'Qué Hacer' page");
-        IContent queHacer = _contentService.Create("Qué Hacer", city.Id, "thingsToDoPage");
-        queHacer.SetValue("intro", ThingsToDoIntro);
+        IContent queHacer = CreateContent("Qué Hacer", city.Id, "thingsToDoPage");
+        SetSeedValue(queHacer, "intro", ThingsToDoIntro);
         _contentService.Save(queHacer);
-        _contentService.PublishBranch(queHacer, PublishBranchFilter.IncludeUnpublished, ["*"]);
+        _contentService.PublishBranch(queHacer, PublishBranchFilter.IncludeUnpublished, SeededCultures(queHacer));
         return true;
     }
 
@@ -1682,7 +1737,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
                 continue;
             }
 
-            item.SetValue("category", category);
+            SetSeedValue(item, "category", category);
             _contentService.Save(item);
             changed = true;
         }
@@ -1702,7 +1757,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
             }
 
             _logger.LogInformation("CityGuide: adding photo to event '{Name}'", item.Name);
-            item.SetValue("photo", photoValue);
+            SetSeedValue(item, "photo", photoValue);
             _contentService.Save(item);
             changed = true;
         }
@@ -1711,27 +1766,27 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         foreach (SeedEvent seed in Events.Where(s => !existingNames.Contains(s.Name)))
         {
             _logger.LogInformation("CityGuide: seeding event '{Name}'", seed.Name);
-            IContent evento = _contentService.Create(seed.Name, eventos.Id, "eventItem");
-            evento.SetValue("description", seed.Description);
-            evento.SetValue("startDate", seed.Start);
-            evento.SetValue("endDate", seed.End);
-            evento.SetValue("venueName", seed.Venue);
-            evento.SetValue("address", seed.Address);
-            evento.SetValue("latitude", seed.Latitude);
-            evento.SetValue("longitude", seed.Longitude);
-            evento.SetValue("category", seed.Category);
+            IContent evento = CreateContent(seed.Name, eventos.Id, "eventItem");
+            SetSeedValue(evento, "description", seed.Description);
+            SetSeedValue(evento, "startDate", seed.Start);
+            SetSeedValue(evento, "endDate", seed.End);
+            SetSeedValue(evento, "venueName", seed.Venue);
+            SetSeedValue(evento, "address", seed.Address);
+            SetSeedValue(evento, "latitude", seed.Latitude);
+            SetSeedValue(evento, "longitude", seed.Longitude);
+            SetSeedValue(evento, "category", seed.Category);
             if (seed.Website is not null)
             {
-                evento.SetValue("website", seed.Website);
+                SetSeedValue(evento, "website", seed.Website);
             }
             if (seed.Phone is not null)
             {
-                evento.SetValue("phone", seed.Phone);
+                SetSeedValue(evento, "phone", seed.Phone);
             }
             if (seed.Photo is not null
                 && CreateSeedMedia(PhotoFolder(), $"Foto {seed.Name}", $"events/{seed.Photo}") is { } newPhoto)
             {
-                evento.SetValue("photo", newPhoto);
+                SetSeedValue(evento, "photo", newPhoto);
             }
             _contentService.Save(evento);
             changed = true;
@@ -1743,7 +1798,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
             // nothing under here is deliberately held back as a draft. The remaining
             // branch publishes are the same — each covers a subtree this method just
             // created, never one the agent may already have written drafts into.
-            _contentService.PublishBranch(eventos, PublishBranchFilter.IncludeUnpublished, ["*"]);
+            _contentService.PublishBranch(eventos, PublishBranchFilter.IncludeUnpublished, SeededCultures(eventos));
         }
         return changed;
     }
@@ -1763,15 +1818,15 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         {
             string? photoValue = CreateLogoMedia(logoFolder, chain.Name, chain.LogoFile);
 
-            IContent company = _contentService.Create(chain.Name, parentId, "company");
-            company.SetValue("description", chain.Description);
-            company.SetValue("address", chain.Branches[0].Address);
-            company.SetValue("phone", chain.Phone);
-            company.SetValue("website", chain.Website);
-            company.SetValue("hours", chain.Hours);
+            IContent company = CreateContent(chain.Name, parentId, "company");
+            SetSeedValue(company, "description", chain.Description);
+            SetSeedValue(company, "address", chain.Branches[0].Address);
+            SetSeedValue(company, "phone", chain.Phone);
+            SetSeedValue(company, "website", chain.Website);
+            SetSeedValue(company, "hours", chain.Hours);
             if (photoValue is not null)
             {
-                company.SetValue("photo", photoValue);
+                SetSeedValue(company, "photo", photoValue);
             }
 
             _contentService.Save(company);
@@ -1918,14 +1973,14 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
             _logger.LogInformation("CityGuide: seeding banks under 'Empresas y Servicios'");
         }
 
-        IContent bancos = _contentService.Create("Bancos", servicios.Id, "subcategory");
+        IContent bancos = CreateContent("Bancos", servicios.Id, "subcategory");
         _contentService.Save(bancos);
 
         IMedia logoFolder = GetOrCreateRootMediaFolder("Bancos");
 
         SeedChainCompanies(bancos.Id, logoFolder, Banks, ["Aire Acondicionado", "Parqueo"]);
 
-        _contentService.PublishBranch(bancos, PublishBranchFilter.IncludeUnpublished, ["*"]);
+        _contentService.PublishBranch(bancos, PublishBranchFilter.IncludeUnpublished, SeededCultures(bancos));
         return true;
     }
 
@@ -2210,8 +2265,8 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         if (articulos is null)
         {
             _logger.LogInformation("CityGuide: seeding 'Artículos' page");
-            articulos = _contentService.Create("Artículos", city.Id, "articlesPage");
-            articulos.SetValue("intro",
+            articulos = CreateContent("Artículos", city.Id, "articlesPage");
+            SetSeedValue(articulos, "intro",
                 "Guías, rutas e ideas escritas para disfrutar la ciudad: planes por barrio, por presupuesto y para cada tipo de plan.");
             _contentService.Save(articulos);
             seeded = true;
@@ -2231,29 +2286,29 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
                 }
 
                 _logger.LogInformation("CityGuide: updating seed article '{Name}'", seed.Name);
-                existing.SetValue("summary", seed.Summary);
-                existing.SetValue("body", seed.Body);
-                existing.SetValue("heroImageUrl", seed.HeroImageUrl);
+                SetSeedValue(existing, "summary", seed.Summary);
+                SetSeedValue(existing, "body", seed.Body);
+                SetSeedValue(existing, "heroImageUrl", seed.HeroImageUrl);
                 _contentService.Save(existing);
                 seeded = true;
                 continue;
             }
 
             _logger.LogInformation("CityGuide: seeding article '{Name}'", seed.Name);
-            IContent article = _contentService.Create(seed.Name, articulos.Id, "article");
-            article.SetValue("summary", seed.Summary);
-            article.SetValue("body", seed.Body);
-            article.SetValue("heroImageUrl", seed.HeroImageUrl);
-            article.SetValue("author", "Equipo TuCiudad");
-            article.SetValue("publishDate", seed.PublishDate);
-            article.SetValue("category", seed.Category);
+            IContent article = CreateContent(seed.Name, articulos.Id, "article");
+            SetSeedValue(article, "summary", seed.Summary);
+            SetSeedValue(article, "body", seed.Body);
+            SetSeedValue(article, "heroImageUrl", seed.HeroImageUrl);
+            SetSeedValue(article, "author", "Equipo TuCiudad");
+            SetSeedValue(article, "publishDate", seed.PublishDate);
+            SetSeedValue(article, "category", seed.Category);
             _contentService.Save(article);
             seeded = true;
         }
 
         if (seeded)
         {
-            _contentService.PublishBranch(articulos, PublishBranchFilter.IncludeUnpublished, ["*"]);
+            _contentService.PublishBranch(articulos, PublishBranchFilter.IncludeUnpublished, SeededCultures(articulos));
         }
 
         return seeded;
@@ -2322,15 +2377,15 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
 
         string? photoValue = CreateLogoMedia(logoFolder, "Caribbean Cinemas", "caribbean-cinemas.png");
 
-        IContent company = _contentService.Create("Caribbean Cinemas", cines.Id, "company");
-        company.SetValue("description",
+        IContent company = CreateContent("Caribbean Cinemas", cines.Id, "company");
+        SetSeedValue(company, "description",
             "La cadena de cines líder del Caribe: salas CXC, 4DX y VIP con la cartelera "
             + "más completa de estrenos en Santo Domingo.");
-        company.SetValue("address", CaribbeanCinemasBranches[0].Address);
-        company.SetValue("website", "https://rd.caribbeancinemas.com");
+        SetSeedValue(company, "address", CaribbeanCinemasBranches[0].Address);
+        SetSeedValue(company, "website", "https://rd.caribbeancinemas.com");
         if (photoValue is not null)
         {
-            company.SetValue("photo", photoValue);
+            SetSeedValue(company, "photo", photoValue);
         }
 
         _contentService.Save(company);
@@ -2345,7 +2400,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
                 ["Aire Acondicionado", "Parqueo", "Apto para Niños"]);
         }
 
-        _contentService.PublishBranch(company, PublishBranchFilter.IncludeUnpublished, ["*"]);
+        _contentService.PublishBranch(company, PublishBranchFilter.IncludeUnpublished, SeededCultures(company));
         return true;
     }
 
@@ -2451,8 +2506,8 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         if (atracciones is null)
         {
             _logger.LogInformation("CityGuide: seeding 'Atracciones' category");
-            atracciones = _contentService.Create("Atracciones", city.Id, "categoryPage");
-            atracciones.SetValue("intro", "Parques, monumentos y lugares emblemáticos para disfrutar la ciudad.");
+            atracciones = CreateContent("Atracciones", city.Id, "categoryPage");
+            SetSeedValue(atracciones, "intro", "Parques, monumentos y lugares emblemáticos para disfrutar la ciudad.");
             _contentService.Save(atracciones);
             created.Add(atracciones);
         }
@@ -2482,10 +2537,10 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
             }
 
             _logger.LogInformation("CityGuide: correcting the coordinates of '{Name}'", name);
-            place.SetValue("latitude", latitude);
-            place.SetValue("longitude", longitude);
+            SetSeedValue(place, "latitude", latitude);
+            SetSeedValue(place, "longitude", longitude);
             _contentService.Save(place);
-            _contentService.Publish(place, ["*"]);
+            _contentService.Publish(place, SeededCultures(place));
             repaired = true;
         }
 
@@ -2589,7 +2644,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
             if (subcategory is null)
             {
                 _logger.LogInformation("CityGuide: seeding '{Name}' subcategory under 'Bares y Clubes'", subcategoryName);
-                subcategory = _contentService.Create(subcategoryName, bares.Id, "subcategory");
+                subcategory = CreateContent(subcategoryName, bares.Id, "subcategory");
                 _contentService.Save(subcategory);
                 created.Add(subcategory);
             }
@@ -2721,11 +2776,11 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         if (Descendant(tiendas, "subcategory", "Supermercados") is null)
         {
             _logger.LogInformation("CityGuide: seeding supermarkets under 'Tiendas'");
-            IContent supermercados = _contentService.Create("Supermercados", tiendas.Id, "subcategory");
+            IContent supermercados = CreateContent("Supermercados", tiendas.Id, "subcategory");
             _contentService.Save(supermercados);
             SeedChainCompanies(supermercados.Id, GetOrCreateRootMediaFolder("Supermercados"),
                 Supermarkets, ["Aire Acondicionado", "Parqueo"]);
-            _contentService.PublishBranch(supermercados, PublishBranchFilter.IncludeUnpublished, ["*"]);
+            _contentService.PublishBranch(supermercados, PublishBranchFilter.IncludeUnpublished, SeededCultures(supermercados));
             seeded = true;
         }
 
@@ -2739,11 +2794,11 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
                 _contentService.Delete(legacyFlat);
             }
 
-            IContent farmacias = _contentService.Create("Farmacias", tiendas.Id, "subcategory");
+            IContent farmacias = CreateContent("Farmacias", tiendas.Id, "subcategory");
             _contentService.Save(farmacias);
             SeedChainCompanies(farmacias.Id, GetOrCreateRootMediaFolder("Farmacias"),
                 Pharmacies, ["Aire Acondicionado", "Delivery"]);
-            _contentService.PublishBranch(farmacias, PublishBranchFilter.IncludeUnpublished, ["*"]);
+            _contentService.PublishBranch(farmacias, PublishBranchFilter.IncludeUnpublished, SeededCultures(farmacias));
             seeded = true;
         }
 
@@ -3028,24 +3083,24 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
             _contentService.Delete(legacyFlat);
         }
 
-        IContent plazas = _contentService.Create("Plazas Comerciales y Malls", tiendas.Id, "subcategory");
+        IContent plazas = CreateContent("Plazas Comerciales y Malls", tiendas.Id, "subcategory");
         _contentService.Save(plazas);
 
         foreach (Mall mall in Malls)
         {
-            IContent mallContent = _contentService.Create(mall.Name, plazas.Id, "mall");
-            mallContent.SetValue("description", mall.Description);
-            mallContent.SetValue("address", mall.Address);
-            mallContent.SetValue("phone", mall.Phone);
-            mallContent.SetValue("website", mall.Website);
-            mallContent.SetValue("hours", mall.Hours);
-            mallContent.SetValue("latitude", mall.Latitude);
-            mallContent.SetValue("longitude", mall.Longitude);
+            IContent mallContent = CreateContent(mall.Name, plazas.Id, "mall");
+            SetSeedValue(mallContent, "description", mall.Description);
+            SetSeedValue(mallContent, "address", mall.Address);
+            SetSeedValue(mallContent, "phone", mall.Phone);
+            SetSeedValue(mallContent, "website", mall.Website);
+            SetSeedValue(mallContent, "hours", mall.Hours);
+            SetSeedValue(mallContent, "latitude", mall.Latitude);
+            SetSeedValue(mallContent, "longitude", mall.Longitude);
             _contentService.Save(mallContent);
 
             foreach (MallGroup group in mall.Groups)
             {
-                IContent groupContent = _contentService.Create(group.Name, mallContent.Id, "subcategory");
+                IContent groupContent = CreateContent(group.Name, mallContent.Id, "subcategory");
                 _contentService.Save(groupContent);
 
                 foreach (MallStore store in group.Stores)
@@ -3056,7 +3111,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
             }
         }
 
-        _contentService.PublishBranch(plazas, PublishBranchFilter.IncludeUnpublished, ["*"]);
+        _contentService.PublishBranch(plazas, PublishBranchFilter.IncludeUnpublished, SeededCultures(plazas));
         return true;
     }
 
@@ -3129,9 +3184,9 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
             }
 
             _logger.LogInformation("CityGuide: restoring missing logo for '{Name}'", name);
-            company.SetValue("photo", photoValue);
+            SetSeedValue(company, "photo", photoValue);
             _contentService.Save(company);
-            _contentService.Publish(company, ["*"]);
+            _contentService.Publish(company, SeededCultures(company));
             changed = true;
         }
 
@@ -3215,7 +3270,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         }
 
         _logger.LogInformation("CityGuide: seeding the contact inbox");
-        IContent inbox = _contentService.Create(ContactInboxName, site.Id, "contactInbox");
+        IContent inbox = CreateContent(ContactInboxName, site.Id, "contactInbox");
         _contentService.Save(inbox);
     }
 

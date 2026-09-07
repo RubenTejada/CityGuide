@@ -25,18 +25,28 @@ public class ClaudeClient(HttpClient http, string apiKey, string model) : IEnric
         return EventCategories.Parse(arguments, events.Count);
     }
 
+    public async Task<Dictionary<int, Dictionary<string, string>>> TranslateAsync(
+        IReadOnlyList<TranslationRequest> entries)
+    {
+        JsonElement arguments = await CallToolAsync(
+            Translation.ToolName, Translation.ToolDescription, Translation.Schema,
+            Translation.UserMessage(entries), temperature: 0, maxTokens: Translation.MaxAnswerTokens);
+        return Translation.Parse(arguments, entries);
+    }
+
     /// <summary>One forced tool call, returning its input. <paramref name="temperature"/>
     /// is 0 where the answer is a label, so two runs agree, and 1 for the descriptions.</summary>
     private async Task<JsonElement> CallToolAsync(
         string toolName, string toolDescription, object schema, string userMessage,
-        double temperature = 1)
+        double temperature = 1, int maxTokens = 2048)
     {
         var payload = new
         {
             model,
             temperature,
             // Room for the batched event classification; a description never nears it.
-            max_tokens = 2048,
+            // A translation batch does, and asks for its own.
+            max_tokens = maxTokens,
             tools = new object[]
             {
                 new

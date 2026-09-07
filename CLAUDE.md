@@ -99,6 +99,15 @@ cd CityGuide.Agent && dotnet run -- --scrape-events
 # In Azure the same two are the repository secrets TMDB_API_KEY / OMDB_API_KEY,
 # passed by the "Run agent" workflow as Cinemas__Ratings__*.
 
+# Fill the English side of the portal from the Spanish one. Writes only what is
+# missing, so the first pass covers the site and later ones only pick up what
+# discovery has since created. No Google requests at all; the model is billed per
+# token, which is why it needs --paid. Plan until --apply, and --section narrows it
+# (ancestors of the selection are always included, or the pages have no English URL).
+cd CityGuide.Agent && dotnet run -- --paid --translate
+cd CityGuide.Agent && dotnet run -- --paid --translate --apply
+cd CityGuide.Agent && dotnet run -- --paid --translate --section restaurantes --apply
+
 # Build everything
 dotnet build CityGuide.slnx
 ```
@@ -407,6 +416,66 @@ and every schema.org builder. `components/JsonLd.tsx` renders it.
   written by the model there, and deriving their metadata in the agent would only duplicate `seo.ts`.
 - **A new document type needs**: a `case` in `generateMetadata`, a JSON-LD builder call in its view, an
   entry in `SITEMAP_HINTS`, and its alias in `SeoDocumentTypes` in the seeder.
+
+## Two languages (es-DO / en-US)
+
+The portal is served in Spanish and English through **Umbraco culture variants**, not through
+parallel `*En` properties: the node *name* varies too, which is what gives each culture its own
+URL segment (`/santo-domingo/restaurantes` and `/en/santo-domingo/restaurants`).
+
+- **Which content varies** is declared once, in `TranslatedDocumentTypes` (`CityGuideSeeder`):
+  every document type the portal publishes, each with the properties carrying text a reader sees
+  (`description`, `intro`, `country`, `hours`, `summary`, `body`, `synopsis`, `genre`, `category`,
+  `metaTitle`, `metaDescription`). Everything else stays invariant and is shared by both
+  cultures — coordinates, phone, website, photos, Google ids and ratings say the same thing in
+  either language, and `facilities` is a closed vocabulary the frontend translates on render.
+  `site` carries no translatable text but varies anyway: a culture only routes when every
+  ancestor is published in it. `contactInbox`/`contactMessage` never vary — they are backoffice
+  records, not pages.
+- **The default language is `es-DO`, and that is load-bearing.** When a document type is switched
+  from invariant to culture-variant, Umbraco moves the values it already holds into the *default*
+  culture, and an Umbraco install defaults to `en-US` — which would file every Spanish description
+  the portal has under English. `EnsureLanguagesAsync` makes Spanish the default and
+  `EnsureCultureVariationAsync` refuses to migrate anything until it is.
+- **English has no fallback and is not mandatory.** A page nobody has translated is simply absent
+  from the English site instead of serving Spanish text under an English URL, which is what would
+  make the two hreflang variants duplicates of each other. The Delivery API answers
+  `Accept-Language: en-US` with only what is published in English.
+- **Culture domains are mandatory, not cosmetic.** Umbraco builds no URL at all for variant
+  content whose culture is not bound to a domain, and content the Delivery API cannot route is
+  dropped from its answers — the symptom is a list endpoint reporting a `total` with an empty
+  `items` array while every item-by-path lookup 404s. `EnsureCultureDomainsAsync` binds Spanish
+  to the site root itself and English to the `/en` prefix.
+- **Every write sends back what it does not mention.** `ContentCultures` (in the agent) says
+  which aliases carry a culture on the Management API wire; `UmbracoClient` owns the stamping
+  (`WithCulture`) and reads back only the culture it is working on (`BelongsTo`, `VariantOf`).
+  A PUT replaces the whole document and a caller only ever describes one language, so every
+  write goes through `PutDocumentAsync`, which reads the document first and re-sends every
+  stored value under a property-and-culture the caller is *not* writing. That covers two
+  different losses: the other language's prose (without it a discovery run deletes the English
+  page of every place the translation pass had covered) and every **shared** property, which
+  belongs to no culture and would otherwise be wiped by whichever pass wrote last, taking the
+  address, phone, coordinates, rating and photo with it. Publishing is per culture and additive
+  (`PublishAsync(id, culture)`).
+- **`--translate` fills the English side** (`TranslateSync`), writing only what is missing: the
+  first pass covers the site and every pass after it picks up what a discovery run has since
+  created. It touches Google not at all — the words are already in the CMS. Most of the text
+  never reaches the model either: `TranslatedVocabulary` answers opening hours (Google's own
+  closed vocabulary of seven day names and two words, a quarter of the Spanish text in the CMS),
+  event and article categories, film genres, and the section names — those last are curated
+  rather than translated on the fly, because they become the English URL segment and a URL that
+  changes between runs is a URL that breaks; a name missing from the table is reported and left
+  in Spanish. What is left for the model is descriptions, intros, article bodies and the SEO
+  pair, batched by character budget (`Translation`). Nodes are translated ancestors-first, since
+  a culture only routes when everything above it is published in it, and `--section` therefore
+  pulls in the ancestors of what it selects. A node whose prose comes back untranslated is left
+  for the next pass rather than published as an English page carrying Spanish text.
+- **The migration is irreversible and rewrites content data.** Back the database up before
+  deploying it. Production runs on **Azure SQL** (`quehacerrd-sql/cityguide`), not on the SQLite
+  file the local install uses and not on the leftover `.db` files still sitting in the app's
+  `/home/data`: back it up with `az sql db copy` (or restore point-in-time — the Basic tier keeps
+  seven days). Schema and agent must ship together: an agent still writing `culture: null` fails
+  against variant types.
 
 ## The seeder (read this before touching content or schema)
 

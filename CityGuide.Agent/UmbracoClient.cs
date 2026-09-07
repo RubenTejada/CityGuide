@@ -30,6 +30,77 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         return (doc.RootElement.GetProperty("id").GetGuid(), doc.RootElement.GetProperty("name").GetString()!);
     }
 
+    /// <summary>A published node as the Delivery API serves it, in one culture.</summary>
+    public record PublishedNode(Guid Id, string ContentType, string Name, string Path, Dictionary<string, string> Text);
+
+    /// <summary>
+    /// Every published node of a content type, with its text properties, in one culture.
+    /// Read from the Delivery API rather than walked through the Management API: one
+    /// request per hundred nodes instead of one per node, and it answers a culture with
+    /// exactly what is published in it — which is how the translation pass knows what it
+    /// has already covered.
+    /// </summary>
+    public async Task<List<PublishedNode>> GetPublishedNodesAsync(string contentType, string culture)
+    {
+        var nodes = new List<PublishedNode>();
+        const int pageSize = 100;
+        for (var skip = 0; ; skip += pageSize)
+        {
+            var request = new HttpRequestMessage(
+                HttpMethod.Get,
+                $"{config.BaseUrl}/umbraco/delivery/api/v2/content"
+                + $"?filter=contentType:{Uri.EscapeDataString(contentType)}&skip={skip}&take={pageSize}");
+            request.Headers.Add("Accept-Language", culture);
+
+            HttpResponseMessage response = await http.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
+            {
+                break;
+            }
+
+            using JsonDocument doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            int total = doc.RootElement.GetProperty("total").GetInt32();
+            var page = 0;
+            foreach (JsonElement item in doc.RootElement.GetProperty("items").EnumerateArray())
+            {
+                var text = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                foreach (JsonProperty property in item.GetProperty("properties").EnumerateObject())
+                {
+                    if (property.Value.ValueKind == JsonValueKind.String
+                        && property.Value.GetString() is { Length: > 0 } value)
+                    {
+                        text[property.Name] = value;
+                    }
+                }
+
+                nodes.Add(new PublishedNode(
+                    item.GetProperty("id").GetGuid(),
+                    contentType,
+                    item.GetProperty("name").GetString() ?? "",
+                    item.GetProperty("route").GetProperty("path").GetString() ?? "",
+                    text));
+                page++;
+            }
+
+            if (page == 0 || nodes.Count >= total)
+            {
+                break;
+            }
+        }
+
+        return nodes;
+    }
+
+    /// <summary>
+    /// Writes one culture of a document and publishes that culture. Everything the
+    /// document holds in the other one is carried through untouched.
+    /// </summary>
+    public async Task WriteCultureAsync(Guid id, string name, IEnumerable<object> values, string culture)
+    {
+        await PutDocumentAsync(id, name, values, culture);
+        await PublishAsync(id, culture);
+    }
+
     public record CityAgentConfig(
         string CityName,
         Dictionary<string, string> CategoryPrompts,
@@ -325,12 +396,13 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
             var page = 0;
             foreach (JsonElement item in doc.RootElement.GetProperty("items").EnumerateArray())
             {
-                string name = item.GetProperty("variants")[0].GetProperty("name").GetString() ?? "";
+                JsonElement itemVariant = VariantOf(item, ContentCultures.Spanish);
+                string name = itemVariant.GetProperty("name").GetString() ?? "";
                 children.Add(new ChildDocument(
                     item.GetProperty("id").GetGuid(),
                     name,
                     item.GetProperty("documentType").GetProperty("id").GetGuid(),
-                    item.GetProperty("variants")[0].TryGetProperty("state", out JsonElement state)
+                    itemVariant.TryGetProperty("state", out JsonElement state)
                         ? state.GetString() ?? ""
                         : ""));
                 page++;
@@ -347,6 +419,138 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         return children;
     }
 
+    /// <summary>A value as the Management API takes it: the property, its content, and
+    /// the culture it belongs to — null when the property is shared by every culture.</summary>
+    private record CultureValue(string Alias, object? Value, string? Culture, string? Segment = null);
+
+    /// <summary>A document's name in one culture.</summary>
+    private record CultureVariant(string? Culture, string? Segment, string Name);
+
+    /// <summary>
+    /// Stamps the culture onto the values a caller built. Callers describe a document in
+    /// one language as plain { alias, value } pairs; which of those properties actually
+    /// vary by culture is part of the Management API's wire format, and this client is
+    /// the layer that owns it. The API rejects a culture on a shared property and a
+    /// culture-less value on a varying one, so both cases have to be got right here.
+    /// </summary>
+    private static List<CultureValue> WithCulture(IEnumerable<object> values, string culture) =>
+    [
+        .. values.Select(v =>
+        {
+            JsonElement element = JsonSerializer.SerializeToElement(v);
+            string alias = element.GetProperty("alias").GetString() ?? "";
+            return new CultureValue(
+                alias,
+                element.TryGetProperty("value", out JsonElement value) ? value.Clone() : null,
+                ContentCultures.CultureOf(alias, culture));
+        }),
+    ];
+
+    /// <summary>Whether a value read back belongs to this culture, or to both.</summary>
+    private static bool BelongsTo(JsonElement value, string culture) =>
+        ContentCultures.Belongs(
+            value.TryGetProperty("culture", out JsonElement own) ? own.GetString() : null, culture);
+
+    /// <summary>
+    /// The variant of a document carrying this culture. A translated document has one
+    /// variant per language and the order is not guaranteed, so the first one is only a
+    /// fallback for content that varies by nothing.
+    /// </summary>
+    private static JsonElement VariantOf(JsonElement root, string culture)
+    {
+        JsonElement variants = root.GetProperty("variants");
+        foreach (JsonElement variant in variants.EnumerateArray())
+        {
+            if (BelongsTo(variant, culture))
+            {
+                return variant;
+            }
+        }
+
+        return variants[0];
+    }
+
+    /// <summary>
+    /// Writes one culture of a document, keeping everything the caller did not mention.
+    /// A PUT replaces the whole document, and a caller only ever describes one language:
+    /// what it leaves out is the *other* language's prose — which a discovery run would
+    /// otherwise delete from every place the translation pass had covered — and every
+    /// shared property, which belongs to no culture and would be deleted by whichever
+    /// pass wrote last, taking the address, the phone, the coordinates and the rating
+    /// with it. So what is sent is the caller's values plus every value already stored
+    /// under a property-and-culture the caller is not writing.
+    /// </summary>
+    private async Task PutDocumentAsync(
+        Guid id, string name, IEnumerable<object> values, string culture)
+    {
+        List<CultureValue> written = WithCulture(values, culture);
+        HashSet<(string, string?)> replaced =
+            [.. written.Select(v => (v.Alias, v.Culture))];
+        (List<CultureValue> kept, List<CultureVariant> otherVariants) =
+            await UntouchedAsync(id, replaced, culture);
+
+        HttpRequestMessage request = await AuthorizedRequestAsync(
+            HttpMethod.Put, $"/umbraco/management/api/v1/document/{id}");
+        request.Content = JsonContent.Create(new
+        {
+            template = (object?)null,
+            values = written.Concat(kept),
+            variants = new List<CultureVariant> { new(culture, null, name) }.Concat(otherVariants),
+        });
+
+        HttpResponseMessage response = await http.SendAsync(request);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException(
+                $"Update '{name}' failed ({(int)response.StatusCode}): {await response.Content.ReadAsStringAsync()}");
+        }
+    }
+
+    /// <summary>
+    /// What a write must send back unchanged: every stored value the caller is not
+    /// replacing — the other culture's prose and the shared properties alike — and the
+    /// names of every culture but the one being written.
+    /// </summary>
+    private async Task<(List<CultureValue> Values, List<CultureVariant> Variants)> UntouchedAsync(
+        Guid id, HashSet<(string, string?)> replaced, string culture)
+    {
+        HttpRequestMessage request = await AuthorizedRequestAsync(
+            HttpMethod.Get, $"/umbraco/management/api/v1/document/{id}");
+        HttpResponseMessage response = await http.SendAsync(request);
+        if (!response.IsSuccessStatusCode)
+        {
+            return ([], []);
+        }
+
+        using JsonDocument doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        JsonElement root = doc.RootElement;
+
+        var values = new List<CultureValue>();
+        foreach (JsonElement v in root.GetProperty("values").EnumerateArray())
+        {
+            string alias = v.GetProperty("alias").GetString() ?? "";
+            string? valueCulture = v.TryGetProperty("culture", out JsonElement own) ? own.GetString() : null;
+            if (!replaced.Contains((alias, valueCulture)))
+            {
+                values.Add(new CultureValue(alias, v.GetProperty("value").Clone(), valueCulture));
+            }
+        }
+
+        var variants = new List<CultureVariant>();
+        foreach (JsonElement variant in root.GetProperty("variants").EnumerateArray())
+        {
+            string? variantCulture =
+                variant.TryGetProperty("culture", out JsonElement own) ? own.GetString() : null;
+            if (!ContentCultures.Belongs(variantCulture, culture))
+            {
+                variants.Add(new CultureVariant(
+                    variantCulture, null, variant.GetProperty("name").GetString() ?? ""));
+            }
+        }
+
+        return (values, variants);
+    }
+
     /// <summary>Creates a document and publishes it. Returns the new document id.</summary>
     public async Task<Guid> CreateDocumentAsync(
         Guid parentId, Guid docTypeId, string name, IEnumerable<object> values, bool publish = true)
@@ -359,8 +563,8 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
             parent = new { id = parentId },
             documentType = new { id = docTypeId },
             template = (object?)null,
-            values,
-            variants = new[] { new { culture = (string?)null, segment = (string?)null, name } },
+            values = WithCulture(values, ContentCultures.Spanish),
+            variants = new[] { new { culture = ContentCultures.Spanish, segment = (string?)null, name } },
         });
 
         HttpResponseMessage response = await http.SendAsync(request);
@@ -378,25 +582,10 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         return documentId;
     }
 
-    /// <summary>Replaces a document's values and republishes it.</summary>
+    /// <summary>Replaces a document's Spanish values and republishes it.</summary>
     public async Task UpdateDocumentAsync(Guid id, string name, IEnumerable<object> values)
     {
-        HttpRequestMessage request = await AuthorizedRequestAsync(
-            HttpMethod.Put, $"/umbraco/management/api/v1/document/{id}");
-        request.Content = JsonContent.Create(new
-        {
-            template = (object?)null,
-            values,
-            variants = new[] { new { culture = (string?)null, segment = (string?)null, name } },
-        });
-
-        HttpResponseMessage response = await http.SendAsync(request);
-        if (!response.IsSuccessStatusCode)
-        {
-            throw new InvalidOperationException(
-                $"Update '{name}' failed ({(int)response.StatusCode}): {await response.Content.ReadAsStringAsync()}");
-        }
-
+        await PutDocumentAsync(id, name, values, ContentCultures.Spanish);
         await PublishAsync(id);
     }
 
@@ -477,6 +666,11 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         var values = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         foreach (JsonElement v in doc.RootElement.GetProperty("values").EnumerateArray())
         {
+            if (!BelongsTo(v, ContentCultures.Spanish))
+            {
+                continue;
+            }
+
             JsonElement value = v.GetProperty("value");
             if (value.ValueKind is JsonValueKind.String or JsonValueKind.Number)
             {
@@ -487,7 +681,7 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         }
 
         return new DocumentDetail(
-            doc.RootElement.GetProperty("variants")[0].GetProperty("name").GetString() ?? "", values);
+            VariantOf(doc.RootElement, ContentCultures.Spanish).GetProperty("name").GetString() ?? "", values);
     }
 
     /// <summary>
@@ -546,12 +740,15 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
 
         using JsonDocument doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         JsonElement root = doc.RootElement;
-        JsonElement variant = root.GetProperty("variants")[0];
+        JsonElement variant = VariantOf(root, ContentCultures.Spanish);
 
         var values = new Dictionary<string, object?>();
         foreach (JsonElement v in root.GetProperty("values").EnumerateArray())
         {
-            values[v.GetProperty("alias").GetString()!] = v.GetProperty("value").Clone();
+            if (BelongsTo(v, ContentCultures.Spanish))
+            {
+                values[v.GetProperty("alias").GetString()!] = v.GetProperty("value").Clone();
+            }
         }
 
         return (variant.GetProperty("name").GetString() ?? "",
@@ -579,20 +776,9 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
     private async Task WriteDocumentAsync(
         Guid id, string name, Dictionary<string, object?> values, string state)
     {
-        HttpRequestMessage request = await AuthorizedRequestAsync(
-            HttpMethod.Put, $"/umbraco/management/api/v1/document/{id}");
-        request.Content = JsonContent.Create(new
-        {
-            template = (object?)null,
-            values = values.Select(v => new { alias = v.Key, value = v.Value }),
-            variants = new[] { new { culture = (string?)null, segment = (string?)null, name } },
-        });
-        HttpResponseMessage response = await http.SendAsync(request);
-        if (!response.IsSuccessStatusCode)
-        {
-            throw new InvalidOperationException(
-                $"Update '{name}' failed ({(int)response.StatusCode}): {await response.Content.ReadAsStringAsync()}");
-        }
+        await PutDocumentAsync(
+            id, name, values.Select(v => (object)new { alias = v.Key, value = v.Value }),
+            ContentCultures.Spanish);
 
         if (state.StartsWith("Published", StringComparison.Ordinal))
         {
@@ -819,13 +1005,19 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         }
     }
 
-    public async Task PublishAsync(Guid id)
+    /// <summary>
+    /// Publishes one culture of a document. Publishing is per culture and additive, so
+    /// releasing the Spanish page leaves an English one already published alone — and a
+    /// culture nobody has translated is never published, which is what keeps the English
+    /// site from serving Spanish text under an English URL.
+    /// </summary>
+    public async Task PublishAsync(Guid id, string culture = ContentCultures.Spanish)
     {
         HttpRequestMessage request = await AuthorizedRequestAsync(
             HttpMethod.Put, $"/umbraco/management/api/v1/document/{id}/publish");
         request.Content = JsonContent.Create(new
         {
-            publishSchedules = new[] { new { culture = (string?)null, schedule = (object?)null } },
+            publishSchedules = new[] { new { culture = (string?)culture, schedule = (object?)null } },
         });
         HttpResponseMessage response = await http.SendAsync(request);
         if (!response.IsSuccessStatusCode)
@@ -1180,8 +1372,8 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
             parent = new { id = parentId },
             documentType = new { id = docTypeId },
             template = (object?)null,
-            values,
-            variants = new[] { new { culture = (string?)null, segment = (string?)null, name } },
+            values = WithCulture(values.Where(v => v is not null)!, ContentCultures.Spanish),
+            variants = new[] { new { culture = ContentCultures.Spanish, segment = (string?)null, name } },
         });
 
         HttpResponseMessage response = await http.SendAsync(request);
@@ -1193,18 +1385,7 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
 
         if (config.PublishImmediately)
         {
-            HttpRequestMessage publishRequest = await AuthorizedRequestAsync(
-                HttpMethod.Put, $"/umbraco/management/api/v1/document/{documentId}/publish");
-            publishRequest.Content = JsonContent.Create(new
-            {
-                publishSchedules = new[] { new { culture = (string?)null, schedule = (object?)null } },
-            });
-            HttpResponseMessage publishResponse = await http.SendAsync(publishRequest);
-            if (!publishResponse.IsSuccessStatusCode)
-            {
-                throw new InvalidOperationException(
-                    $"Publish failed ({(int)publishResponse.StatusCode}): {await publishResponse.Content.ReadAsStringAsync()}");
-            }
+            await PublishAsync(documentId);
         }
 
         return documentId;
