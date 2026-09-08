@@ -57,4 +57,17 @@ public static class CuisineMap
     public static string SubcategoryFor(IEnumerable<string> types) =>
         types.Select(t => ByGoogleType.GetValueOrDefault(t)).FirstOrDefault(name => name is not null)
         ?? Fallback;
+
+    /// <summary>True when Google typed the place as a restaurant and nothing more, so
+    /// the map has no answer for it. Most discovered restaurants are in this state,
+    /// which is what <see cref="PlaceCuisines"/> asks the model about.</summary>
+    public static bool IsGeneric(IEnumerable<string> types) => SubcategoryFor(types) == Fallback;
+
+    /// <summary>The whole vocabulary — every subcategory the map files a restaurant
+    /// under, plus <see cref="Fallback"/> for the place whose cuisine really cannot be
+    /// told. It is the closed list the model chooses from, so a classified place lands
+    /// in a subcategory the CMS already has instead of in a name of the model's own.
+    /// </summary>
+    public static readonly string[] Options =
+        [.. ByGoogleType.Values.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal), Fallback];
 }

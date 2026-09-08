@@ -19,8 +19,9 @@ public record Enrichment(
 
 /// <summary>
 /// The agent's model-backed steps: a Spanish description + facility mapping for a
-/// newly discovered place, the category of a scraped event, the carta behind a
-/// restaurant's menu page, and the English translation of the prose already in the CMS. Implemented by
+/// newly discovered place, the category of a scraped event, the cuisine of a restaurant
+/// Google types generically, the carta behind a restaurant's menu page, and the English
+/// translation of the prose already in the CMS. Implemented by
 /// AzureOpenAiClient (production) and ClaudeClient (fallback). Everything else
 /// (dedupe, rating refresh, cinema sync, trailers, event scraping) is plain code.
 /// </summary>
@@ -31,6 +32,11 @@ public interface IEnrichmentClient
     /// <summary>Categories a batch of scraped events, keyed by their position in
     /// the list. Positions the model left out stay uncategorized.</summary>
     Task<Dictionary<int, string>> ClassifyEventsAsync(IReadOnlyList<ScrapedEvent> events);
+
+    /// <summary>The cuisine of a batch of restaurants Google typed as nothing more than
+    /// "restaurant", keyed by their position in the list. Positions the model left out
+    /// keep the subcategory they have.</summary>
+    Task<Dictionary<int, string>> ClassifyCuisinesAsync(IReadOnlyList<CuisineCandidate> places);
 
     /// <summary>Structures the text of a restaurant's menu page into its carta, in both
     /// languages, or null when the page turned out not to be one.</summary>

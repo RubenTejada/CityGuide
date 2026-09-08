@@ -25,6 +25,14 @@ public class ClaudeClient(HttpClient http, string apiKey, string model) : IEnric
         return EventCategories.Parse(arguments, events.Count);
     }
 
+    public async Task<Dictionary<int, string>> ClassifyCuisinesAsync(IReadOnlyList<CuisineCandidate> places)
+    {
+        JsonElement arguments = await CallToolAsync(
+            PlaceCuisines.ToolName, PlaceCuisines.ToolDescription, PlaceCuisines.Schema,
+            PlaceCuisines.UserMessage(places), temperature: 0);
+        return PlaceCuisines.Parse(arguments, places.Count);
+    }
+
     public async Task<StructuredMenu?> StructureMenuAsync(
         string placeName, string cityName, string menuText)
     {

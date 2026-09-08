@@ -43,6 +43,7 @@ public static partial class TranslatedVocabulary
         ["Desayunos y Brunch"] = "Breakfast & Brunch",
         ["Española"] = "Spanish",
         ["Francesa"] = "French",
+        ["India"] = "Indian",
         ["Italiana"] = "Italian",
         ["Japonesa"] = "Japanese",
         ["Mariscos"] = "Seafood",
@@ -51,7 +52,9 @@ public static partial class TranslatedVocabulary
         ["Parrilladas"] = "Steakhouse & Grill",
         ["Peruana"] = "Peruvian",
         ["Pizzerías"] = "Pizzerias",
+        ["Tailandesa"] = "Thai",
         ["Vegetariana"] = "Vegetarian",
+        ["Vietnamita"] = "Vietnamese",
 
         // Nightlife, retail and services
         ["Bancos"] = "Banks",

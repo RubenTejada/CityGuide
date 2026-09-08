@@ -35,6 +35,20 @@ on:
         type: boolean
         required: false
         default: false
+      recategorize_places:
+        description: >-
+          Maintenance pass instead of the ingestion run: files under the cuisine they
+          actually serve the restaurants stuck in "Otros" (Google types most of them as
+          nothing more than "restaurant"). Reads the name and the description already in
+          the CMS — no Google request — so it only needs "paid" for the model. Scoped by
+          "section". "plan" only prints what it would move.
+        type: choice
+        required: false
+        options:
+          - "no"
+          - plan
+          - apply
+        default: "no"
       purge_foreign_events:
         description: >-
           Maintenance pass instead of the ingestion run: sends to the recycle bin
@@ -271,6 +285,7 @@ jobs:
           SECTION: ${{ inputs.section }}
           APPLY: ${{ inputs.apply }}
           RECATEGORIZE: ${{ inputs.recategorize_events }}
+          RECATEGORIZE_PLACES: ${{ inputs.recategorize_places }}
           PURGE_FOREIGN: ${{ inputs.purge_foreign_events }}
           REGROUP: ${{ inputs.regroup_malls }}
           LINK: ${{ inputs.link_malls }}
@@ -322,6 +337,10 @@ jobs:
             dotnet run -c Release -- --translate --apply $section_flag $paid_flag
           elif [ "$RECATEGORIZE" = "true" ]; then
             dotnet run -c Release -- --recategorize-events --apply $paid_flag
+          elif [ "$RECATEGORIZE_PLACES" = "plan" ] || [ "$RECATEGORIZE_PLACES" = "apply" ]; then
+            apply_flag=""
+            if [ "$RECATEGORIZE_PLACES" = "apply" ]; then apply_flag="--apply"; fi
+            dotnet run -c Release -- --recategorize-places $apply_flag $section_flag $paid_flag
           elif [ "$PURGE_FOREIGN" = "plan" ]; then
             dotnet run -c Release -- --purge-foreign-events $paid_flag
           elif [ "$PURGE_FOREIGN" = "apply" ]; then

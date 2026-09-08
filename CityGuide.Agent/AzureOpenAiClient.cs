@@ -49,6 +49,14 @@ public class AzureOpenAiClient(HttpClient http, AzureOpenAiConfig config) : IEnr
         return arguments is null ? [] : EventCategories.Parse(arguments.Value, events.Count);
     }
 
+    public async Task<Dictionary<int, string>> ClassifyCuisinesAsync(IReadOnlyList<CuisineCandidate> places)
+    {
+        JsonElement? arguments = await CallToolAsync(
+            PlaceCuisines.ToolName, PlaceCuisines.ToolDescription, PlaceCuisines.Schema,
+            PlaceCuisines.UserMessage(places), "cocinas", temperature: 0);
+        return arguments is null ? [] : PlaceCuisines.Parse(arguments.Value, places.Count);
+    }
+
     public async Task<StructuredMenu?> StructureMenuAsync(
         string placeName, string cityName, string menuText)
     {
