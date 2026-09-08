@@ -412,7 +412,11 @@ does). Both shapes reach the page the same way: a button beside the opening hour
 thing consulted before going, opening a modal. The scanned pages get a button carrying the
 first page as its thumbnail and the page count (`MenuViewer`), and open the same viewer
 the gallery opens — that viewer is now `ImageViewer`, shared by both, since it is the same
-images seen large and a second copy would only let the two drift apart. The written carta
+images seen large and a second copy would only let the two drift apart. That viewer zooms
+(buttons, wheel, pinch, double tap, and a drag to pan once zoomed, clamped to the frame),
+because the print on a photographed carta is not legible at frame size; the zoom labels are
+the viewer's own, read from the dictionary rather than passed by the caller, and every
+change of image returns it to size. The written carta
 gets a button carrying cutlery and the number of dishes (`MenuDialog`, with `MenuSections`
 as the list inside it): a carta of thirty dishes rendered into the page pushes the map and
 "¿Qué está cerca?" off the screen, and it is consulted when it is wanted, not in passing.
