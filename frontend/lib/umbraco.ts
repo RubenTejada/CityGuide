@@ -84,6 +84,16 @@ export function isComingSoon(item: UmbracoItem): boolean {
   return item.properties["comingSoon"] === true;
 }
 
+/**
+ * Whether an item sits inside a container (a subcategory, a company, a mall).
+ * Delivery API route paths may or may not carry a trailing slash, so the
+ * container's is normalized before the prefix comparison.
+ */
+export function isUnder(container: UmbracoItem, item: UmbracoItem): boolean {
+  const prefix = `${container.route.path.replace(/\/+$/, "")}/`;
+  return item.route.path.startsWith(prefix);
+}
+
 /** Last non-empty segment of a route path (the item's own slug). */
 export function slugOf(item: UmbracoItem): string {
   const segments = item.route.path.split("/").filter(Boolean);

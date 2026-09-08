@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { notFound } from "next/navigation";
@@ -12,12 +13,11 @@ import JsonLd from "@/components/JsonLd";
 import ArticleCard, { articleDate } from "@/components/ArticleCard";
 import FacilityBadges, { FACILITY_ICONS } from "@/components/FacilityBadges";
 import AttractionCard from "@/components/AttractionCard";
-import ListingViews, {
-  type FilterGroup,
-  type ListingEntry,
-} from "@/components/ListingViews";
+import ListingViews from "@/components/ListingViews";
+import ListingPagination from "@/components/ListingPagination";
+import SubcategoryLinks from "@/components/SubcategoryLinks";
 import { type MapMarker } from "@/components/MarkersMap";
-import PaginatedList from "@/components/PaginatedList";
+import { type ListingView } from "@/components/ViewToggle";
 import PlaceCard from "@/components/PlaceCard";
 import MenuDialog from "@/components/MenuDialog";
 import MenuViewer from "@/components/MenuViewer";
@@ -29,7 +29,13 @@ import Cartelera from "@/components/cine/Cartelera";
 import DateTabs from "@/components/cine/DateTabs";
 import MovieReviewBadges from "@/components/cine/MovieReviewBadges";
 import MovieShowtimes from "@/components/cine/MovieShowtimes";
-import EventsList, { type EventEntry } from "@/components/EventsList";
+import {
+  EventCard,
+  eventMarkers,
+  isPastEvent,
+  monthLabel,
+  type EventEntry,
+} from "@/components/EventsList";
 import ThingsToDoExplorer, {
   type GuideSection,
 } from "@/components/ThingsToDoExplorer";
@@ -57,11 +63,24 @@ import { getTopMoviesToday } from "@/lib/movieCatalog";
 import { canonicalSlug, localizedSectionPath } from "@/lib/sectionSlugs";
 import {
   categoryPath,
+  eventCategoryIcon,
   mapPinIcon,
   navIcon,
   sectionListImage,
   subcategoryIcon,
 } from "@/lib/sections";
+import {
+  filterEntries,
+  listingPage,
+  pageEntries,
+  LISTING_PAGE_SIZE,
+  selectedFilters,
+  canonicalListingPath,
+  withPage,
+  PAGE_PARAM,
+  type FilterGroup,
+  type ListingQuery,
+} from "@/lib/listing";
 import {
   absoluteUrl,
   articleJsonLd,
@@ -89,6 +108,7 @@ import {
 import {
   byRating,
   facilities,
+  isUnder,
   num,
   photoUrl,
   photoUrls,
@@ -110,24 +130,26 @@ export default async function ContentPage({
   const { lang, city, slug } = await params;
   const locale = lang as Locale;
   const path = `/${city}/${slug.join("/")}`;
-  const item = await getItem(path);
+  // Which entries a listing shows, and which day a cartelera is read for, are
+  // both in the query string and both settled on the server.
+  const [item, query] = await Promise.all([getItem(path), searchParams]);
   if (!item) notFound();
+  const fecha = typeof query.fecha === "string" ? query.fecha : undefined;
 
   switch (item.contentType) {
-    case "categoryPage": {
-      const { fecha } = await searchParams;
+    case "categoryPage":
       return (
         <CategoryView
           item={item}
           citySlug={city}
-          fecha={typeof fecha === "string" ? fecha : undefined}
+          query={query}
+          fecha={fecha}
         />
       );
-    }
     case "subcategory":
-      return <SubcategoryView item={item} />;
+      return <SubcategoryView item={item} query={query} />;
     case "company":
-      return <CompanyView item={item} />;
+      return <CompanyView item={item} query={query} />;
     case "mall":
       return <MallView item={item} />;
     case "place": {
@@ -136,7 +158,6 @@ export default async function ContentPage({
         ? cinemaByName(city, item.name)
         : null;
       if (cinema) {
-        const { fecha } = await searchParams;
         return (
           <>
             <PlaceView item={item} />
@@ -144,7 +165,7 @@ export default async function ContentPage({
               <Cartelera
                 citySlug={city}
                 basePath={item.route.path}
-                selectedDate={typeof fecha === "string" ? fecha : undefined}
+                selectedDate={fecha}
                 cinema={cinema}
                 locale={locale}
               />
@@ -154,24 +175,16 @@ export default async function ContentPage({
       }
       return <PlaceView item={item} />;
     }
-    case "movie": {
-      const { fecha } = await searchParams;
-      return (
-        <MovieView
-          item={item}
-          citySlug={city}
-          fecha={typeof fecha === "string" ? fecha : undefined}
-        />
-      );
-    }
+    case "movie":
+      return <MovieView item={item} citySlug={city} fecha={fecha} />;
     case "eventsPage":
-      return <EventsView item={item} />;
+      return <EventsView item={item} query={query} />;
     case "eventItem":
       return <EventView item={item} />;
     case "thingsToDoPage":
-      return <ThingsToDoView item={item} citySlug={city} />;
+      return <ThingsToDoView item={item} citySlug={city} query={query} />;
     case "articlesPage":
-      return <ArticlesView item={item} />;
+      return <ArticlesView item={item} query={query} />;
     case "article":
       return <ArticleView item={item} />;
     default:
@@ -193,19 +206,62 @@ async function parentOf(item: UmbracoItem): Promise<UmbracoItem | null> {
 }
 
 /**
+ * How many pages the listing of this item holds — what tells a `?pagina=` URL
+ * apart from one that is simply out of range and belongs to no page at all.
+ * Only the types that paginate answer with more than one.
+ */
+async function listingPageCount(item: UmbracoItem): Promise<number> {
+  const entries = await (async () => {
+    switch (item.contentType) {
+      case "categoryPage":
+      case "subcategory":
+        return listingCount(item.route.path);
+      case "company":
+      case "articlesPage":
+        return (await getChildren(item.route.path)).filter((child) =>
+          item.contentType === "company"
+            ? child.contentType === "place"
+            : child.contentType === "article",
+        ).length;
+      case "eventsPage":
+        return (await getChildren(item.route.path)).length;
+      default:
+        return 0;
+    }
+  })();
+  return Math.max(1, Math.ceil(entries / LISTING_PAGE_SIZE));
+}
+
+/**
  * Title/description per document type. Everything is derived from the item and
  * its ancestors, so a new place or article is optimised the moment it is
  * published; editors can still override any of it from the SEO tab.
  */
 export async function generateMetadata({
   params,
+  searchParams,
 }: {
   params: Promise<{ lang: string; city: string; slug: string[] }>;
+  searchParams: Promise<ListingQuery>;
 }): Promise<Metadata> {
   const { lang, city: citySlug, slug } = await params;
   const locale = lang as Locale;
-  const item = await getItem(`/${citySlug}/${slug.join("/")}`);
+  const [item, query] = await Promise.all([
+    getItem(`/${citySlug}/${slug.join("/")}`),
+    searchParams,
+  ]);
   if (!item) return {};
+
+  // Page 2 of a listing is a page of its own and says so; a ticked filter, the
+  // map view and the day of a cartelera all fold into the bare URL.
+  const canonical = canonicalListingPath(
+    item.route.path,
+    query,
+    await listingPageCount(item),
+  );
+  const pageNumber = canonical.includes(`${PAGE_PARAM}=`)
+    ? Number(canonical.slice(canonical.lastIndexOf("=") + 1))
+    : 1;
 
   const [cityItem, parent] = await Promise.all([cityOf(item), parentOf(item)]);
   const cityName = cityItem?.name ?? "";
@@ -379,12 +435,24 @@ export async function generateMetadata({
       description = seoDescription(item, text(item, "description"));
   }
 
+  if (pageNumber > 1) {
+    // Sixty-eight pages sharing one title are sixty-eight duplicates.
+    title = `${title}${t(locale).listing.pageSuffix(pageNumber)}`;
+  }
+  const alternate = await alternateOf(item, locale);
+
   return pageMetadata({
     title,
     description,
-    path: item.route.path,
+    path: canonical,
     locale,
-    alternate: await alternateOf(item, locale),
+    alternate:
+      alternate && pageNumber > 1
+        ? {
+            ...alternate,
+            path: withPage(alternate.path, pageNumber),
+          }
+        : alternate,
     image,
     type,
     publishedTime,
@@ -494,11 +562,8 @@ async function listingEntries(path: string): Promise<UmbracoItem[]> {
     getDescendantsOfType(path, "company"),
     getDescendantsOfType(path, "mall"),
   ]);
-  // Delivery API route paths may or may not carry a trailing slash — normalize.
   const under = (containers: UmbracoItem[], item: UmbracoItem) =>
-    containers.some((c) =>
-      item.route.path.startsWith(`${c.route.path.replace(/\/+$/, "")}/`),
-    );
+    containers.some((container) => isUnder(container, item));
   const standaloneCompanies = companies.filter((c) => !under(malls, c));
   const standalonePlaces = places.filter(
     (p) => !under(companies, p) && !under(malls, p),
@@ -688,12 +753,12 @@ function subcategoryFilter(
   entries: UmbracoItem[],
   subcategories: UmbracoItem[],
 ): FilterGroup {
-  const under = (sub: UmbracoItem, entry: UmbracoItem) =>
-    entry.route.path.startsWith(`${sub.route.path.replace(/\/+$/, "")}/`);
   const valuesByEntry = Object.fromEntries(
     entries.map((entry) => [
       entry.id,
-      subcategories.filter((sub) => under(sub, entry)).map((sub) => sub.name),
+      subcategories
+        .filter((sub) => isUnder(sub, entry))
+        .map((sub) => sub.name),
     ]),
   );
   const present = new Set(Object.values(valuesByEntry).flat());
@@ -764,13 +829,103 @@ async function listingMarkers(
   );
 }
 
+/** A listing whose entries are not places and never reach a map. */
+const NO_MARKERS = new Map<string, MapMarker[]>();
+
+/**
+ * A listing, settled on the server: the dropdowns the query string has ticked
+ * narrow the entries, the page it asks for takes twelve of them, and only
+ * those twelve are drawn. The map view draws none — it wants the pins of every
+ * entry the filters kept, and the cards would only be weight nobody sees.
+ *
+ * `card` says how one entry is rendered, which is the only thing the three
+ * listings of the portal disagree about (a place card, an attraction card, a
+ * branch card qualified with its company).
+ */
+function Listing({
+  name,
+  locale,
+  basePath,
+  query,
+  entries,
+  groups = [],
+  markersById,
+  card,
+  emptyLabel,
+  gridClassName,
+}: {
+  /** The listing's own name, for its ItemList. */
+  name: string;
+  locale: Locale;
+  basePath: string;
+  query: ListingQuery;
+  entries: UmbracoItem[];
+  groups?: FilterGroup[];
+  markersById: Map<string, MapMarker[]>;
+  card: (entry: UmbracoItem) => ReactNode;
+  emptyLabel?: string;
+  gridClassName?: string;
+}) {
+  const filters = groups.filter((group) => group.options.length > 0);
+  const selected = selectedFilters(filters, query);
+  const shown = filterEntries(entries, filters, selected);
+  const { page, pageCount } = listingPage(shown.length, query);
+  const view: ListingView = query.vista === "mapa" ? "mapa" : "lista";
+  const onMap = view === "mapa";
+  const drawn = pageEntries(shown, page);
+
+  return (
+    <>
+      {/* The ItemList describes the page it is on, not the whole section:
+          twelve entries, numbered from where this page starts. */}
+      <JsonLd
+        data={itemListJsonLd(name, drawn, (page - 1) * LISTING_PAGE_SIZE + 1)}
+      />
+      <ListingViews
+        cards={onMap ? null : drawn.map(card)}
+        pagination={
+          onMap ? null : (
+            <ListingPagination
+              locale={locale}
+              basePath={basePath}
+              query={query}
+              page={page}
+              pageCount={pageCount}
+            />
+          )
+        }
+        markers={
+          onMap ? shown.flatMap((entry) => markersById.get(entry.id) ?? []) : []
+        }
+        hasMap={entries.some(
+          (entry) => (markersById.get(entry.id)?.length ?? 0) > 0,
+        )}
+        filters={filters.map(({ key, label, options, icons }) => ({
+          key,
+          label,
+          options,
+          icons,
+        }))}
+        selected={selected}
+        view={view}
+        total={shown.length}
+        overall={entries.length}
+        emptyLabel={emptyLabel}
+        gridClassName={gridClassName}
+      />
+    </>
+  );
+}
+
 async function CategoryView({
   item,
   citySlug,
+  query,
   fecha,
 }: {
   item: UmbracoItem;
   citySlug?: string;
+  query: ListingQuery;
   fecha?: string;
 }) {
   const locale = await activeLocale();
@@ -785,13 +940,10 @@ async function CategoryView({
   );
   const showCartelera =
     categorySlug === "cines" && !!citySlug && citySlug in CINEMAS_BY_CITY;
+  const subcategoryLabel = subcategoryFilterLabel(categorySlug, locale);
   const subFilter =
     subcategories.length > 0
-      ? subcategoryFilter(
-          subcategoryFilterLabel(categorySlug, locale),
-          entries,
-          subcategories,
-        )
+      ? subcategoryFilter(subcategoryLabel, entries, subcategories)
       : null;
   const filters: FilterGroup[] = [
     ...(FACILITY_FILTER_SLUGS.has(categorySlug)
@@ -814,21 +966,16 @@ async function CategoryView({
       locale,
       named: false,
     });
-  const listing: ListingEntry[] = entries.map((entry) => ({
-    id: entry.id,
-    card: showsAttractions ? (
-      <AttractionCard key={entry.id} place={entry} compact locale={locale} />
-    ) : (
-      <PlaceCard key={entry.id} place={entry} locale={locale} />
-    ),
-    markers: markers.get(entry.id) ?? [],
-  }));
 
   return (
     <PageShell item={item}>
-      <JsonLd data={itemListJsonLd(item.name, entries)} />
       <h1 className="mt-4 text-3xl font-bold">{item.name}</h1>
       {lead && <p className="mt-2 max-w-2xl text-neutral-600">{lead}</p>}
+      <SubcategoryLinks
+        label={subcategoryLabel}
+        subcategories={subcategories}
+        entries={entries}
+      />
       {showCartelera && (
         <Cartelera
           citySlug={citySlug!}
@@ -839,9 +986,26 @@ async function CategoryView({
       )}
       {/* The cartelera stands on its own when the section has no places yet. */}
       {(entries.length > 0 || !showCartelera) && (
-        <ListingViews
-          entries={listing}
-          filters={filters}
+        <Listing
+          name={item.name}
+          locale={locale}
+          basePath={item.route.path}
+          query={query}
+          entries={entries}
+          groups={filters}
+          markersById={markers}
+          card={(entry) =>
+            showsAttractions ? (
+              <AttractionCard
+                key={entry.id}
+                place={entry}
+                compact
+                locale={locale}
+              />
+            ) : (
+              <PlaceCard key={entry.id} place={entry} locale={locale} />
+            )
+          }
           gridClassName={
             showsAttractions
               ? "mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
@@ -965,7 +1129,13 @@ async function MovieView({
   );
 }
 
-async function SubcategoryView({ item }: { item: UmbracoItem }) {
+async function SubcategoryView({
+  item,
+  query,
+}: {
+  item: UmbracoItem;
+  query: ListingQuery;
+}) {
   const locale = await activeLocale();
   const [entries, city, parent] = await Promise.all([
     listingEntriesOrdered(item.route.path),
@@ -973,11 +1143,6 @@ async function SubcategoryView({ item }: { item: UmbracoItem }) {
     parentOf(item),
   ]);
   const markers = await listingMarkers(item.route.path, entries);
-  const listing: ListingEntry[] = entries.map((entry) => ({
-    id: entry.id,
-    card: <PlaceCard key={entry.id} place={entry} locale={locale} />,
-    markers: markers.get(entry.id) ?? [],
-  }));
   const lead =
     text(item, "intro") ||
     listingLead({
@@ -990,10 +1155,19 @@ async function SubcategoryView({ item }: { item: UmbracoItem }) {
     });
   return (
     <PageShell item={item}>
-      <JsonLd data={itemListJsonLd(item.name, entries)} />
       <h1 className="mt-4 text-3xl font-bold">{item.name}</h1>
       {lead && <p className="mt-2 max-w-2xl text-neutral-600">{lead}</p>}
-      <ListingViews entries={listing} />
+      <Listing
+        name={item.name}
+        locale={locale}
+        basePath={item.route.path}
+        query={query}
+        entries={entries}
+        markersById={markers}
+        card={(entry) => (
+          <PlaceCard key={entry.id} place={entry} locale={locale} />
+        )}
+      />
     </PageShell>
   );
 }
@@ -1287,27 +1461,27 @@ async function MallView({ item }: { item: UmbracoItem }) {
   );
 }
 
-async function CompanyView({ item }: { item: UmbracoItem }) {
+async function CompanyView({
+  item,
+  query,
+}: {
+  item: UmbracoItem;
+  query: ListingQuery;
+}) {
   const locale = await activeLocale();
   const children = await getChildren(item.route.path);
   const logo = photoUrl(item);
   const branches = children.filter((c) => c.contentType === "place");
   const website = text(item, "website");
-  const branchEntries: ListingEntry[] = branches.map((branch) => ({
-    id: branch.id,
-    card: (
-      <PlaceCard
-        key={branch.id}
-        place={branch}
-        fallbackPhoto={logo}
-        company={item}
-        locale={locale}
-      />
-    ),
-    markers: [
-      markerOf(branch, branchDisplayName(branch.name, item.name), logo),
-    ].filter(isPlaced),
-  }));
+  // A branch pins itself, drawn with the company logo like everywhere else.
+  const branchMarkers = new Map(
+    branches.map((branch) => [
+      branch.id,
+      [markerOf(branch, branchDisplayName(branch.name, item.name), logo)].filter(
+        isPlaced,
+      ),
+    ]),
+  );
   const cityItem = await cityOf(item);
 
   return (
@@ -1387,8 +1561,22 @@ async function CompanyView({ item }: { item: UmbracoItem }) {
       <h2 className="mt-10 text-lg font-semibold">
         Sucursales {branches.length > 0 && `(${branches.length})`}
       </h2>
-      <ListingViews
-        entries={branchEntries}
+      <Listing
+        name={item.name}
+        locale={locale}
+        basePath={item.route.path}
+        query={query}
+        entries={branches}
+        markersById={branchMarkers}
+        card={(branch) => (
+          <PlaceCard
+            key={branch.id}
+            place={branch}
+            fallbackPhoto={logo}
+            company={item}
+            locale={locale}
+          />
+        )}
         emptyLabel={t(locale).place.branchesEmpty}
       />
     </PageShell>
@@ -1641,10 +1829,9 @@ function formatDate(value: unknown, locale: Locale): string {
   }).format(date);
 }
 
-async function EventsView({ item }: { item: UmbracoItem }) {
-  const locale = await activeLocale();
-  const events = await getChildren(item.route.path);
-  const entries: EventEntry[] = events.map((event) => ({
+/** A published `eventItem` as the cards, the map and the guide read it. */
+function eventEntry(event: UmbracoItem): EventEntry {
+  return {
     id: event.id,
     href: event.route.path,
     name: event.name,
@@ -1662,12 +1849,144 @@ async function EventsView({ item }: { item: UmbracoItem }) {
     photo: photoUrl(event),
     latitude: num(event, "latitude"),
     longitude: num(event, "longitude"),
-  }));
+  };
+}
+
+async function EventsView({
+  item,
+  query,
+}: {
+  item: UmbracoItem;
+  query: ListingQuery;
+}) {
+  const locale = await activeLocale();
+  const words = t(locale);
+  const events = await getChildren(item.route.path);
+  const byId = new Map(events.map((event) => [event.id, event]));
+  const entries: EventEntry[] = events
+    .map((event) => eventEntry(event))
+    .sort(
+      (a, b) =>
+        new Date(a.startDate).getTime() - new Date(b.startDate).getTime(),
+    );
+
+  const categories = [
+    ...new Set(entries.map((entry) => entry.category).filter(Boolean)),
+  ].sort((a, b) => a.localeCompare(b, INTL_LOCALE[locale]));
+  // One category each, so ticking two widens the listing instead of emptying it.
+  const groups: FilterGroup[] =
+    categories.length > 1
+      ? [
+          {
+            key: "categoria",
+            label: words.map.category,
+            options: categories,
+            valuesByEntry: Object.fromEntries(
+              entries.map((entry) => [
+                entry.id,
+                entry.category ? [entry.category] : [],
+              ]),
+            ),
+            match: "any",
+            icons: Object.fromEntries(
+              categories.map((category) => [
+                category,
+                eventCategoryIcon(category),
+              ]),
+            ),
+          },
+        ]
+      : [];
+  const selected = selectedFilters(groups, query);
+  const shown = filterEntries(entries, groups, selected);
+  // What is still to come, in date order, and then what is over: the order the
+  // page has always read in, and the order the pages cut through.
+  const ordered = [
+    ...shown.filter((entry) => !isPastEvent(entry)),
+    ...shown.filter(isPastEvent),
+  ];
+  const { page, pageCount } = listingPage(ordered.length, query);
+  const drawn = pageEntries(ordered, page);
+  const view: ListingView = query.vista === "mapa" ? "mapa" : "lista";
+
+  const byMonth = new Map<string, EventEntry[]>();
+  for (const event of drawn.filter((entry) => !isPastEvent(entry))) {
+    const label = monthLabel(event.startDate, locale);
+    const group = byMonth.get(label);
+    if (group) group.push(event);
+    else byMonth.set(label, [event]);
+  }
+  const past = drawn.filter(isPastEvent);
+
   return (
     <PageShell item={item}>
-      <JsonLd data={itemListJsonLd(item.name, events)} />
-      <h1 className="mt-4 text-3xl font-bold">{t(locale).map.events}</h1>
-      <EventsList events={entries} />
+      <JsonLd
+        data={itemListJsonLd(
+          item.name,
+          drawn.flatMap((entry) => {
+            const event = byId.get(entry.id);
+            return event ? [event] : [];
+          }),
+          (page - 1) * LISTING_PAGE_SIZE + 1,
+        )}
+      />
+      <h1 className="mt-4 text-3xl font-bold">{words.map.events}</h1>
+      <ListingViews
+        cards={
+          view === "mapa" ? null : (
+            <>
+              {[...byMonth.entries()].map(([label, group]) => (
+                <section key={label} className="mt-8">
+                  <h2 className="text-lg font-semibold text-neutral-800">
+                    {label}
+                  </h2>
+                  <div className="mt-4 grid gap-4 md:grid-cols-2">
+                    {group.map((event) => (
+                      <EventCard key={event.id} event={event} locale={locale} />
+                    ))}
+                  </div>
+                </section>
+              ))}
+              {past.length > 0 && (
+                <section className="mt-10">
+                  <h2 className="text-lg font-semibold text-neutral-500">
+                    {words.events.past}
+                  </h2>
+                  <div className="mt-4 grid gap-4 opacity-70 md:grid-cols-2">
+                    {past.map((event) => (
+                      <EventCard key={event.id} event={event} locale={locale} />
+                    ))}
+                  </div>
+                </section>
+              )}
+            </>
+          )
+        }
+        pagination={
+          <ListingPagination
+            locale={locale}
+            basePath={item.route.path}
+            query={query}
+            page={page}
+            pageCount={pageCount}
+          />
+        }
+        markers={view === "mapa" ? eventMarkers(shown) : []}
+        hasMap={eventMarkers(entries).length > 0}
+        filters={groups.map(({ key, label, options, icons }) => ({
+          key,
+          label,
+          options,
+          icons,
+        }))}
+        selected={selected}
+        view={view}
+        total={ordered.length}
+        overall={entries.length}
+        emptyLabel={words.events.empty}
+        noMatchesLabel={words.events.noMatches}
+        gridClassName=""
+      />
     </PageShell>
   );
 }
@@ -1840,27 +2159,36 @@ function byPublishDateDesc(a: UmbracoItem, b: UmbracoItem): number {
   return time(b) - time(a);
 }
 
-async function ArticlesView({ item }: { item: UmbracoItem }) {
+async function ArticlesView({
+  item,
+  query,
+}: {
+  item: UmbracoItem;
+  query: ListingQuery;
+}) {
   const locale = await activeLocale();
   const articles = (await getChildren(item.route.path))
     .filter((c) => c.contentType === "article")
     .sort(byPublishDateDesc);
   return (
     <PageShell item={item}>
-      <JsonLd data={itemListJsonLd(item.name, articles)} />
       <h1 className="mt-4 text-3xl font-bold">{item.name}</h1>
       {text(item, "intro") && (
         <p className="mt-2 max-w-2xl text-neutral-600">{text(item, "intro")}</p>
       )}
-      {articles.length === 0 ? (
-        <p className="mt-8 text-neutral-500">{t(locale).article.empty}</p>
-      ) : (
-        <PaginatedList className="mt-8 space-y-5">
-          {articles.map((article) => (
-            <ArticleCard key={article.id} article={article} locale={locale} />
-          ))}
-        </PaginatedList>
-      )}
+      <Listing
+        name={item.name}
+        locale={locale}
+        basePath={item.route.path}
+        query={query}
+        entries={articles}
+        markersById={NO_MARKERS}
+        card={(article) => (
+          <ArticleCard key={article.id} article={article} locale={locale} />
+        )}
+        emptyLabel={t(locale).article.empty}
+        gridClassName="mt-8 space-y-5"
+      />
     </PageShell>
   );
 }
@@ -2016,9 +2344,11 @@ const GUIDE_MOVIES = 6;
 async function ThingsToDoView({
   item,
   citySlug,
+  query,
 }: {
   item: UmbracoItem;
   citySlug: string;
+  query: ListingQuery;
 }) {
   const locale = await activeLocale();
   const cityPath = `/${citySlug}`;
@@ -2050,25 +2380,7 @@ async function ThingsToDoView({
         new Date(text(a, "startDate")).getTime() -
         new Date(text(b, "startDate")).getTime(),
     );
-  const eventEntries: EventEntry[] = upcoming.map((event) => ({
-    id: event.id,
-    href: event.route.path,
-    name: event.name,
-    category: text(event, "category"),
-    startDate:
-      typeof event.properties["startDate"] === "string"
-        ? event.properties["startDate"]
-        : "",
-    endDate:
-      typeof event.properties["endDate"] === "string"
-        ? event.properties["endDate"]
-        : "",
-    venueName: text(event, "venueName"),
-    description: text(event, "description"),
-    photo: photoUrl(event),
-    latitude: num(event, "latitude"),
-    longitude: num(event, "longitude"),
-  }));
+  const eventEntries: EventEntry[] = upcoming.map(eventEntry);
 
   const attractionsSection = sections.find(
     (s) =>
@@ -2132,6 +2444,8 @@ async function ThingsToDoView({
       )}
 
       <ThingsToDoExplorer
+        locale={locale}
+        query={query}
         events={eventEntries}
         attractions={attractions}
         attractionMarkers={attractionMarkers}

@@ -1,13 +1,7 @@
-"use client";
-
 import Image from "next/image";
-import { useWords } from "@/components/LocaleProvider";
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { eventCategoryIcon } from "@/lib/sections";
-import FilterDropdown from "./FilterDropdown";
-import MarkersMap, { type MapMarker } from "./MarkersMap";
-import ViewToggle, { type ListingView } from "./ViewToggle";
+import { INTL_LOCALE, type Locale } from "@/lib/i18n";
+import { type MapMarker } from "./MarkersMap";
 
 export interface EventEntry {
   id: string;
@@ -41,28 +35,31 @@ export function eventMarkers(events: EventEntry[]): MapMarker[] {
     }));
 }
 
-const monthFormat = new Intl.DateTimeFormat("es-DO", {
-  month: "long",
-  year: "numeric",
-});
-const dateFormat = new Intl.DateTimeFormat("es-DO", { dateStyle: "long" });
-
-function formatDate(value: string): string {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "" : dateFormat.format(date);
-}
-
-function monthLabel(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  const label = monthFormat.format(date);
-  return label.charAt(0).toUpperCase() + label.slice(1);
-}
-
-function isPast(event: EventEntry): boolean {
+/** Whether the event is over, which is what files it under "Eventos pasados". */
+export function isPastEvent(event: EventEntry): boolean {
   const end = new Date(event.endDate || event.startDate);
   if (Number.isNaN(end.getTime())) return false;
   return end.getTime() < Date.now();
+}
+
+function formatDate(value: string, locale: Locale): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? ""
+    : new Intl.DateTimeFormat(INTL_LOCALE[locale], {
+        dateStyle: "long",
+      }).format(date);
+}
+
+/** The heading one month's events sit under ("Octubre 2026"). */
+export function monthLabel(value: string, locale: Locale): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const label = new Intl.DateTimeFormat(INTL_LOCALE[locale], {
+    month: "long",
+    year: "numeric",
+  }).format(date);
+  return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
 /**
@@ -71,9 +68,11 @@ function isPast(event: EventEntry): boolean {
  */
 export function EventCard({
   event,
+  locale,
   compact = false,
 }: {
   event: EventEntry;
+  locale: Locale;
   compact?: boolean;
 }) {
   return (
@@ -114,7 +113,7 @@ export function EventCard({
         <p
           className={`text-brand-700 ${compact ? "mt-0.5 text-xs" : "mt-1 text-sm"}`}
         >
-          {formatDate(event.startDate)}
+          {formatDate(event.startDate, locale)}
         </p>
         <p
           className={`truncate text-neutral-500 ${
@@ -132,118 +131,5 @@ export function EventCard({
         </p>
       </div>
     </Link>
-  );
-}
-
-export default function EventsList({ events }: { events: EventEntry[] }) {
-  const words = useWords();
-  // Empty = every category, which is what the dropdown shows unticked.
-  const [categoryPicks, setCategoryPicks] = useState<string[]>([]);
-  const [view, setView] = useState<ListingView>("lista");
-
-  const categories = useMemo(
-    () =>
-      [...new Set(events.map((e) => e.category).filter(Boolean))].sort((a, b) =>
-        a.localeCompare(b, "es"),
-      ),
-    [events],
-  );
-
-  const sorted = useMemo(
-    () =>
-      [...events].sort(
-        (a, b) =>
-          new Date(a.startDate).getTime() - new Date(b.startDate).getTime(),
-      ),
-    [events],
-  );
-
-  const filtered = categoryPicks.length
-    ? sorted.filter((e) => categoryPicks.includes(e.category))
-    : sorted;
-
-  const upcoming = filtered.filter((e) => !isPast(e));
-  const past = filtered.filter(isPast);
-
-  const byMonth = new Map<string, EventEntry[]>();
-  for (const event of upcoming) {
-    const label = monthLabel(event.startDate);
-    const group = byMonth.get(label);
-    if (group) group.push(event);
-    else byMonth.set(label, [event]);
-  }
-
-  const markers = eventMarkers(filtered);
-  const mappable = eventMarkers(events).length > 0;
-
-  return (
-    <div>
-      {(categories.length > 1 || mappable) && (
-        <div className="mt-6 flex flex-wrap items-center gap-2">
-          {categories.length > 1 && (
-            <FilterDropdown
-              label={words.map.category}
-              options={categories}
-              selected={categoryPicks}
-              onToggle={(value) =>
-                setCategoryPicks((picks) =>
-                  picks.includes(value)
-                    ? picks.filter((p) => p !== value)
-                    : [...picks, value],
-                )
-              }
-              icons={Object.fromEntries(
-                categories.map((c) => [c, eventCategoryIcon(c)]),
-              )}
-              className="relative"
-            />
-          )}
-          {mappable && <ViewToggle value={view} onChange={setView} />}
-        </div>
-      )}
-
-      {view === "mapa" && filtered.length > 0 && (
-        <div className="mt-8">
-          {markers.length === 0 ? (
-            <p className="text-neutral-500">{words.events.noneOnMap}</p>
-          ) : (
-            <MarkersMap
-              markers={markers}
-              locate
-              heightClass="h-[26rem] lg:h-[34rem]"
-            />
-          )}
-        </div>
-      )}
-
-      {view === "lista" &&
-        [...byMonth.entries()].map(([label, group]) => (
-          <section key={label} className="mt-8">
-            <h2 className="text-lg font-semibold text-neutral-800">{label}</h2>
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
-              {group.map((event) => (
-                <EventCard key={event.id} event={event} />
-              ))}
-            </div>
-          </section>
-        ))}
-
-      {view === "lista" && past.length > 0 && (
-        <section className="mt-10">
-          <h2 className="text-lg font-semibold text-neutral-500">
-            Eventos pasados
-          </h2>
-          <div className="mt-4 grid gap-4 opacity-70 md:grid-cols-2">
-            {past.map((event) => (
-              <EventCard key={event.id} event={event} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {filtered.length === 0 && (
-        <p className="mt-8 text-neutral-500">{words.events.empty}</p>
-      )}
-    </div>
   );
 }

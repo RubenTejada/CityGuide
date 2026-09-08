@@ -103,22 +103,35 @@ export async function getChildren(
   return data.items;
 }
 
-/** Fetch all descendants of a content item filtered to one content type. */
+/**
+ * Every descendant of a content item of one type, paged through the Delivery
+ * API — `max` is a ceiling for the callers that only want the first few (the
+ * city front page's four events), not the size of one request. Paging is what
+ * the rest need: a single `take` silently returned the first slice and nothing
+ * said so, which left the restaurants of Santo Domingo listing 363 of 994, its
+ * count, its filters, its map and its ItemList all agreeing on the wrong
+ * number, and the search index blind to the same places.
+ */
 export async function getDescendantsOfType(
   path: string,
   contentType: string,
-  take = 500,
+  max = 5000,
   locale?: Locale,
 ): Promise<UmbracoItem[]> {
-  const res = await api(
-    `/content?fetch=${encodeURIComponent(`descendants:${path}`)}&filter=${encodeURIComponent(
-      `contentType:${contentType}`,
-    )}&take=${take}`,
-    locale,
-  );
-  if (!res.ok) return [];
-  const data: UmbracoList = await res.json();
-  return data.items;
+  const query =
+    `/content?fetch=${encodeURIComponent(`descendants:${path}`)}` +
+    `&filter=${encodeURIComponent(`contentType:${contentType}`)}`;
+  const pageSize = 500;
+  const items: UmbracoItem[] = [];
+  while (items.length < max) {
+    const take = Math.min(pageSize, max - items.length);
+    const res = await api(`${query}&skip=${items.length}&take=${take}`, locale);
+    if (!res.ok) break;
+    const data: UmbracoList = await res.json();
+    items.push(...data.items);
+    if (data.items.length === 0 || items.length >= data.total) break;
+  }
+  return items;
 }
 
 /**
