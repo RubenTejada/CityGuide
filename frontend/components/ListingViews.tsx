@@ -1,98 +1,102 @@
 "use client";
 
 import { type ReactNode } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useWords } from "@/components/LocaleProvider";
-import { useUrlQuery } from "./urlQuery";
+import { PendingArea, usePendingNavigate } from "@/components/LoadingOverlay";
+import { PAGE_PARAM, type FilterControl } from "@/lib/listing";
 import FilterDropdown from "./FilterDropdown";
 import MarkersMap, { type MapMarker } from "./MarkersMap";
-import PaginatedList from "./PaginatedList";
 import ViewToggle, { type ListingView } from "./ViewToggle";
-
-/**
- * One dropdown's worth of filtering. `valuesByEntry` is precomputed on the
- * server (so companies/malls can match through their branches) and `options`
- * carries the order the values are listed in. `match` is how several picks
- * inside the same dropdown combine: "all" for facilities (a place must have
- * every one), "any" for taxonomies like the cuisine type (italiana *or*
- * china). Different dropdowns always combine with "and".
- */
-export type FilterGroup = {
-  key: string;
-  label: string;
-  options: string[];
-  valuesByEntry: Record<string, string[]>;
-  match: "all" | "any";
-  icons?: Record<string, string>;
-};
-
-/**
- * One listing result: its server-rendered card and the pins it puts on the
- * map. A place or mall contributes one pin, a company one per branch, and an
- * entry with no coordinates contributes none.
- */
-export interface ListingEntry {
-  id: string;
-  card: ReactNode;
-  markers: MapMarker[];
-}
 
 /**
  * A listing in its two views — the paginated grid of cards and the map of the
  * same results — with one multi-select dropdown per filter group, rendered in
  * a single row. Filters narrow both views at once.
+ *
+ * What the visitor picked lives in the query string (one parameter per filter
+ * group, plus `vista` and the page), so a narrowed listing is a link someone
+ * can share and Back walks the picks instead of leaving the site. The values
+ * are the CMS names the dropdowns list, which is why such a link does not
+ * carry across languages — neither does the path it hangs from.
+ *
+ * The server owns that state: it filters, it slices, and it renders the twelve
+ * cards of the page being read, which arrive here already drawn. So a click
+ * navigates rather than mutating state in place — covered by the overlay of
+ * the `PendingArea` around the whole block — instead of the page carrying a
+ * rendered card for every entry so the browser could pick twelve. The filter
+ * controls stay buttons, not links: a crawlable URL per combination of
+ * facilities is a thousand near-identical pages, which is the opposite of what
+ * the pagination links are for.
+ *
  * `gridClassName` is the grid the cards sit in: two wide columns by default,
  * overridden by listings whose cards are the narrower "Qué Hacer" ones.
  * `emptyLabel` is what an empty listing says; a listing that is not of places
  * (a company's branches) overrides it.
- *
- * What the visitor picked lives in the query string (one parameter per filter
- * group plus `vista`), so a narrowed listing is a link someone can share and
- * Back walks the picks instead of leaving the site. The values are the CMS
- * names the dropdowns list, which is why such a link does not carry across
- * languages — neither does the path it hangs from.
  */
-export default function ListingViews({
-  entries,
-  filters = [],
-  emptyLabel,
-  gridClassName = "mt-8 grid gap-4 md:grid-cols-2",
-}: {
-  entries: ListingEntry[];
-  filters?: FilterGroup[];
-  emptyLabel?: string;
-  gridClassName?: string;
-}) {
-  const words = useWords();
-  const { params, set } = useUrlQuery();
-  const view: ListingView = params.get("vista") === "mapa" ? "mapa" : "lista";
-
-  const groups = filters.filter((group) => group.options.length > 0);
-  const selected = Object.fromEntries(
-    groups.map((group) => [
-      group.key,
-      params.getAll(group.key).filter((value) => group.options.includes(value)),
-    ]),
+export default function ListingViews(props: ListingProps) {
+  return (
+    <PendingArea>
+      <ListingBody {...props} />
+    </PendingArea>
   );
-  const active = groups.filter((group) => selected[group.key]!.length > 0);
+}
 
-  const filtered = active.length
-    ? entries.filter((entry) =>
-        active.every((group) => {
-          const has = group.valuesByEntry[entry.id] ?? [];
-          const picks = selected[group.key]!;
-          return group.match === "all"
-            ? picks.every((value) => has.includes(value))
-            : picks.some((value) => has.includes(value));
-        }),
-      )
-    : entries;
+interface ListingProps {
+  /** The cards of the page being read, rendered on the server. */
+  cards: ReactNode;
+  /** Its page links, also server-rendered; absent when there is one page. */
+  pagination?: ReactNode;
+  /** Pins for every entry the filters kept, however many pages they span. */
+  markers: MapMarker[];
+  /** Whether any entry at all has coordinates, which is what offers the map. */
+  hasMap: boolean;
+  filters?: FilterControl[];
+  selected?: Record<string, string[]>;
+  view: ListingView;
+  /** Entries after filtering, and before it — an empty listing and a listing
+   * narrowed to nothing say different things. */
+  total: number;
+  overall: number;
+  emptyLabel?: string;
+  /** What a listing narrowed to nothing says; the default speaks of places. */
+  noMatchesLabel?: string;
+  gridClassName?: string;
+}
 
-  const markers = filtered.flatMap((entry) => entry.markers);
-  const mappable = entries.some((entry) => entry.markers.length > 0);
+function ListingBody({
+  cards,
+  pagination,
+  markers,
+  hasMap,
+  filters = [],
+  selected = {},
+  view,
+  total,
+  overall,
+  emptyLabel,
+  noMatchesLabel,
+  gridClassName = "mt-8 grid gap-4 md:grid-cols-2",
+}: ListingProps) {
+  const words = useWords();
+  const navigate = usePendingNavigate();
+  const pathname = usePathname();
+  const params = useSearchParams();
 
-  // Narrowing the list restarts it at page 1: the page lives in the URL too.
+  const go = (update: (query: URLSearchParams) => void) => {
+    const next = new URLSearchParams(params.toString());
+    update(next);
+    // Whatever changes, the listing restarts at page 1: the page it was on
+    // holds different entries now, or none.
+    next.delete(PAGE_PARAM);
+    const query = next.toString();
+    navigate(query ? `${pathname}?${query}` : pathname);
+  };
+
+  const active = filters.filter((group) => selected[group.key]?.length);
+
   const toggle = (key: string, value: string) =>
-    set((next) => {
+    go((next) => {
       const picks = selected[key] ?? [];
       next.delete(key);
       for (const pick of picks.includes(value)
@@ -100,26 +104,24 @@ export default function ListingViews({
         : [...picks, value]) {
         next.append(key, pick);
       }
-      next.delete("pagina");
     });
 
   const clear = () =>
-    set((next) => {
-      for (const group of groups) next.delete(group.key);
-      next.delete("pagina");
+    go((next) => {
+      for (const group of filters) next.delete(group.key);
     });
 
   const setView = (value: ListingView) =>
-    set((next) => {
+    go((next) => {
       if (value === "mapa") next.set("vista", "mapa");
       else next.delete("vista");
     });
 
   return (
     <div>
-      {(groups.length > 0 || mappable) && (
+      {(filters.length > 0 || hasMap) && (
         <div className="mt-6 flex flex-wrap items-center gap-2">
-          {groups.map((group) => (
+          {filters.map((group) => (
             <FilterDropdown
               key={group.key}
               label={group.label}
@@ -140,15 +142,15 @@ export default function ListingViews({
             </button>
           )}
 
-          {mappable && <ViewToggle value={view} onChange={setView} />}
+          {hasMap && <ViewToggle value={view} onChange={setView} />}
         </div>
       )}
 
-      {filtered.length === 0 ? (
+      {total === 0 ? (
         <p className="mt-8 text-neutral-500">
-          {entries.length === 0
+          {overall === 0
             ? (emptyLabel ?? words.listing.empty)
-            : words.listing.noMatches}
+            : (noMatchesLabel ?? words.listing.noMatches)}
         </p>
       ) : view === "mapa" ? (
         <div className="mt-8">
@@ -163,9 +165,10 @@ export default function ListingViews({
           )}
         </div>
       ) : (
-        <PaginatedList className={gridClassName}>
-          {filtered.map((entry) => entry.card)}
-        </PaginatedList>
+        <>
+          <div className={gridClassName}>{cards}</div>
+          {pagination}
+        </>
       )}
     </div>
   );

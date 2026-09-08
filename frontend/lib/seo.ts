@@ -278,6 +278,8 @@ export function breadcrumbJsonLd(
 export function itemListJsonLd(
   name: string,
   entries: { name: string; route: { path: string } }[],
+  /** Position of the first entry, for a page other than the first. */
+  start = 1,
 ): JsonLd {
   return {
     "@context": "https://schema.org",
@@ -286,7 +288,7 @@ export function itemListJsonLd(
     numberOfItems: entries.length,
     itemListElement: entries.map((entry, index) => ({
       "@type": "ListItem",
-      position: index + 1,
+      position: start + index,
       name: entry.name,
       url: absoluteUrl(entry.route.path),
     })),

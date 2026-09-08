@@ -117,6 +117,17 @@ export function PendingArea({
   );
 }
 
+/**
+ * Navigates the way a `PendingLink` does, for the controls of a `PendingArea`
+ * that are not links: a filter checkbox, a segmented switch. Outside a
+ * provider it still navigates, only without covering anything.
+ */
+export function usePendingNavigate(): (href: string) => void {
+  const navigate = useContext(NavigateContext);
+  const router = useRouter();
+  return navigate ?? ((href: string) => router.push(href, { scroll: false }));
+}
+
 /** Link that keeps its `PendingArea` covered until the new page is ready. */
 export function PendingLink({
   href,

@@ -443,6 +443,13 @@ Content model (all created in code, not in the backoffice):
 
 Company inheritance: a `place` under a `company` stores only its own data (name, address, coordinates); empty fields (phone, website, hours, description, photo) fall back to the parent company **in the frontend** (`PlaceView` in the catch-all page). Category/subcategory listings show companies as single cards and never flatten their branch places (`listingEntries`); branches appear only inside the company page. Every listing (category, subcategory, mall groups) is ordered best rated first by `listingEntriesByRating`: a company or mall carries no rating of its own, so it ranks by its best-rated nested place, and unrated entries keep their original order at the end.
 
+A section page also links its subcategories (`SubcategoryLinks`, a chip row carrying each
+one's glyph and how many entries it holds). The dropdown beside them narrows the same
+listing in place, which is what a visitor wants and what a crawler cannot follow — without
+the links every subcategory page, and every place under it, was reachable only from the
+sitemap, which is how a search engine decides a page is an orphan and indexes almost none
+of them.
+
 Frontend routing is a single catch-all (`frontend/app/[lang]/[city]/[...slug]/page.tsx`) that switches on the item's `contentType` — new document types need a new case there.
 
 A `movie` has its own page (`MovieView`): the CMS catalog entry (poster, sinopsis, trailer button, IMDb/Rotten Tomatoes badges) over the *live* Caribbean showings — every cinema in the city presenting it on the chosen date (`?fecha=`), its showtimes as booking links, and a map of those cinemas. Cartelera cards link into it whenever the catalog has the movie, matching on name (`getMovieCatalog`, keyed by lowercased name — the same join the trailer override and the badges use); a title the agent has not catalogued yet simply keeps the inline expander and no link. The per-cinema list and its map are `MovieShowtimes`, shared by the card's expanded body and the movie page, and the date pills are `DateTabs`, shared by the movie page and `Cartelera`. `getMovieShowings` asks for the billboard with `trailers: false` — the movie page reads its trailer from the CMS, so the slow YouTube fallback search must not run there.
@@ -454,11 +461,34 @@ cards — that is why `/api/nearby` returns `photo` (the real image) and `icon` 
 or null) separately, and why `MapMarker` has both.
 
 Every listing offers two views of the same results, switched by `ViewToggle`: the paginated
-grid of cards and a map of those very same (filtered) entries. `ListingViews` owns both — it
-holds the filter state, so narrowing the dropdowns narrows the map too; cards reach it
-already rendered on the server, and each entry carries the pins it puts on the map (a place
-or mall pins itself, a company pins every branch under it, an entry without coordinates pins
-nothing, and the toggle is hidden when no entry has any). `MarkersMap` is the one map of
+grid of cards and a map of those very same (filtered) entries. **The server owns that
+state**, and `lib/listing.ts` is where it is settled: the query string carries the ticked
+dropdowns, the page and the view, and the `Listing` helper in the catch-all filters the
+entries, slices twelve of them and renders only those cards — the map view renders none, it
+wants the pins. `ListingViews` receives them already drawn and is left with the controls,
+which navigate (`usePendingNavigate`, covered by the `PendingArea` overlay the cartelera
+already used for `?fecha=`) instead of mutating state in place. Doing it in the browser meant
+serialising a rendered card for every entry so the browser could pick twelve: on
+"Restaurantes" in Santo Domingo, 3.8 MB and a 2.2 s render to draw 12 places, against 176 KB
+and 0.19 s now. The pagination is `ListingPagination`, real `<a href>` links carrying
+`?pagina=`, because a listing past its first twelve entries is otherwise unreachable by a
+crawler and unbookmarkable by a visitor; the filter controls stay buttons, since a crawlable
+URL per combination of facilities is a thousand near-identical pages. Page 1 is always the
+bare URL, the links keep whatever else is picked, and the `ItemList` describes the twelve
+entries actually on the page, numbered from where that page starts. Each entry's pins are
+`listingMarkers` (a place or mall pins itself, a company pins every branch under it, an entry
+without coordinates pins nothing, and the toggle is hidden when no entry has any).
+Every listing of the portal goes through that one path, whatever it lists: the sections and
+subcategories, a company's branches, the articles, the events (`EventsView` keeps its month
+headings and its "Eventos pasados" block — it hands `ListingViews` the composed sections
+instead of a grid, and pages through upcoming-then-past as one ordered list) and the "Qué
+Hacer" guide (`ThingsToDoExplorer`, a server component now, whose "Actividad" dropdown picks
+whole blocks rather than entries and which has no pagination — each block is already a capped
+selection linking to the section that holds the rest). The one filter left in the browser is
+`PlaceMap`'s "¿Qué está cerca?" panel: it narrows pins fetched live from `/api/nearby`, which
+is a map tool rather than page content — nothing there is content a crawler should be reading
+on this page, and a navigation per tick would reload a place page to redraw a widget.
+`MarkersMap` is the one map of
 many places — listings, company branches, malls, attractions, cinemas showing a film: pins
 are clustered by `@googlemaps/markerclusterer` into a branded bubble carrying the count, and
 with `locate` the visitor can share their position to pin it and get the same places ranked
@@ -549,6 +579,27 @@ and every schema.org builder. `components/JsonLd.tsx` renders it.
   `noindex, follow`. **`app/[lang]/opengraph-image.tsx`** is the branded fallback card for pages without a photo.
 - **`NEXT_PUBLIC_SITE_URL`** must be set per environment — it is the origin of every canonical, OG URL
   and sitemap entry. It defaults to `https://quehacerrd.com`.
+- **Only that origin answers**: `redirects()` in `next.config.ts` sends `www`, any
+  `*.azurewebsites.net` host and anything arriving with `x-forwarded-proto: http` to it with a
+  308, keeping the path and the query. App Service kept serving all three, so the portal was
+  three copies of five thousand pages; the canonical tags said which one counted, but a
+  crawler had to fetch the other two to find out and links pointing at them passed nothing on.
+  `quehacerrd-web` has no health check path configured, which is what makes redirecting its
+  own hostname safe. Set `--https-only true` on the App Service as well; the redirect only
+  covers what already reached Node.
+- **A page of a listing is a page of its own**: `?pagina=3` self-references its canonical and
+  carries " — Página 3" in the title, or a crawler folds it into page 1 and stops coming back,
+  which is exactly what keeps everything past the first twelve entries out of the index.
+  `canonicalListingPath` owns the rule: out of range (`?pagina=999`) points at the bare URL, so
+  a bad link is not an indexable page; and a ticked filter, the map view or the day of a
+  cartelera folds into the bare URL, because those are the same page seen differently and a
+  crawlable URL per combination is a thousand near-identical pages. The hreflang pair carries
+  the same page number, and both sides drop the trailing slash the Delivery API puts on a route
+  path — `/restaurantes/?pagina=3` would be a second URL for a page that already has one.
+- **Internal links are what get a page indexed** — the sitemap alone does not. Two things fed
+  the crawler almost nothing until they were fixed: the subcategories of a section were only a
+  filter dropdown (now also `SubcategoryLinks`), and everything past the first twelve entries
+  of a listing was client state (now `?pagina=` links). Both are described under Architecture.
 - **Editor overrides**: the "SEO" tab (`metaTitle`, `metaDescription`, `noIndex`) exists on every
   indexable document type, added by `EnsureSeoSchemaAsync` in the seeder. Empty is the normal case for
   hand-made content.
@@ -787,4 +838,5 @@ validation are what actually guard the inbox.
 - Umbraco runtime state (SQLite DB, logs, media) is gitignored under `CityGuideWeb/umbraco/Data/` and `wwwroot/media/`. Deleting them is the supported "factory reset".
 - Agent config: one `Runs` entry in `CityGuide.Agent/appsettings.json` per Google query + target CMS content path (e.g. `/santo-domingo/restaurantes/china`).
 - Delivery API is public read; before exposing the CMS publicly set an `ApiKey` under `Umbraco:CMS:DeliveryApi`.
+- The Delivery API answers a list query with `total` and one page of `items`: read both. `getDescendantsOfType` used to send a single `take=500` and return whatever came back, so `/santo-domingo/restaurantes` (994 places) listed 363 of them and its count, filters, map, `ItemList` and the search index all agreed on the wrong number. It pages now; `max` is a ceiling for the callers that only want the first few, not the size of one request.
 - Deliberate v1 omissions (do not build unasked): user accounts/comments/favorites, agent photo upload, webhook-driven revalidation.
