@@ -3,16 +3,22 @@ import { subcategoryIcon } from "@/lib/sections";
 import { isUnder, type UmbracoItem } from "@/lib/umbraco";
 
 /**
- * The subcategories of a section, as links, above its listing.
+ * The subcategories of a section, as links, closing its listing.
  *
- * The dropdown beside them narrows the same listing in place, which is what a
+ * The dropdown above narrows the same listing in place, which is what a
  * visitor wants and what a crawler cannot follow: a filter is client state
- * written to the query string with `pushState`, so it puts no link in the HTML.
- * Without these the subcategory pages — and every place under them past the
- * first page of the section — are reachable only from the sitemap, which is
- * what makes a search engine treat them as orphans and index almost none of
- * them. Each chip carries how many entries the subcategory holds, which is
- * also what tells a visitor where the weight of the section is.
+ * written to the query string, so it puts no link in the HTML and every URL it
+ * makes canonicalises back to the bare listing. Without these the subcategory
+ * pages — and every place under them past the first page of the section — are
+ * reachable only from the sitemap, which is what makes a search engine treat
+ * them as orphans and index almost none of them.
+ *
+ * They sit under the pagination rather than under the heading: filtering here
+ * and leaving for another page are two different intentions, and stacked
+ * together above the cards they read as one control offered twice. A link is
+ * followed wherever it sits on the page. Each chip carries how many entries
+ * the subcategory holds, which is also what tells a visitor where the weight
+ * of the section is.
  *
  * A subcategory nothing is filed under yet is left out: an empty page is not
  * worth a link, and it is what the filter dropdown already does with its own
@@ -37,9 +43,11 @@ export default function SubcategoryLinks({
   if (listed.length === 0) return null;
 
   return (
-    <nav aria-label={label} className="mt-6">
-      <h2 className="sr-only">{label}</h2>
-      <ul className="flex flex-wrap gap-2">
+    <nav aria-label={label} className="mt-12 border-t border-neutral-200 pt-6">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+        {label}
+      </h2>
+      <ul className="mt-3 flex flex-wrap gap-2">
         {listed.map(({ sub, count }) => (
           <li key={sub.id}>
             <Link

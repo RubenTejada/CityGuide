@@ -169,6 +169,8 @@ const es = {
     venueType: "Tipo de local",
     shopType: "Tipo de tienda",
     serviceType: "Servicio",
+    /** Encabezado del bloque de enlaces a las subcategorías, bajo el listado. */
+    goToCategory: "Ir a la categoría",
     /** "12 lugares en Santo Domingo con dirección, teléfono…" */
     places: (count: number): string =>
       count === 1 ? "1 lugar" : `${count} lugares`,
@@ -525,6 +527,7 @@ const en: typeof es = {
     venueType: "Venue type",
     shopType: "Shop type",
     serviceType: "Service",
+    goToCategory: "Go to a category",
     places: (count: number): string =>
       count === 1 ? "1 place" : `${count} places`,
     inCity: (city: string): string => ` in ${city}`,

@@ -971,11 +971,6 @@ async function CategoryView({
     <PageShell item={item}>
       <h1 className="mt-4 text-3xl font-bold">{item.name}</h1>
       {lead && <p className="mt-2 max-w-2xl text-neutral-600">{lead}</p>}
-      <SubcategoryLinks
-        label={subcategoryLabel}
-        subcategories={subcategories}
-        entries={entries}
-      />
       {showCartelera && (
         <Cartelera
           citySlug={citySlug!}
@@ -1013,6 +1008,15 @@ async function CategoryView({
           }
         />
       )}
+      {/* The links to the subcategories close the page, under the pagination:
+          the dropdown above narrows this listing in place and these leave it,
+          so the two are no longer read as one duplicated control. A crawler
+          finds them wherever they sit — what matters is that they are links. */}
+      <SubcategoryLinks
+        label={t(locale).listing.goToCategory}
+        subcategories={subcategories}
+        entries={entries}
+      />
     </PageShell>
   );
 }

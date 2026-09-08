@@ -474,11 +474,14 @@ Content model (all created in code, not in the backoffice):
 Company inheritance: a `place` under a `company` stores only its own data (name, address, coordinates); empty fields (phone, website, hours, description, photo) fall back to the parent company **in the frontend** (`PlaceView` in the catch-all page). Category/subcategory listings show companies as single cards and never flatten their branch places (`listingEntries`); branches appear only inside the company page. Every listing (category, subcategory, mall groups) is ordered best rated first by `listingEntriesByRating`: a company or mall carries no rating of its own, so it ranks by its best-rated nested place, and unrated entries keep their original order at the end.
 
 A section page also links its subcategories (`SubcategoryLinks`, a chip row carrying each
-one's glyph and how many entries it holds). The dropdown beside them narrows the same
-listing in place, which is what a visitor wants and what a crawler cannot follow — without
-the links every subcategory page, and every place under it, was reachable only from the
-sitemap, which is how a search engine decides a page is an orphan and indexes almost none
-of them.
+one's glyph and how many entries it holds), under the pagination and headed "Ir a la
+categoría". The dropdown above the listing narrows that same listing in place, which is
+what a visitor wants and what a crawler cannot follow (the picks are query string, and
+`canonicalListingPath` folds any filter back into the bare URL) — without the links every
+subcategory page, and every place under it, was reachable only from the sitemap, which is
+how a search engine decides a page is an orphan and indexes almost none of them. The two
+sit apart rather than stacked together because they are two different intentions —
+narrowing this page, and leaving it for another — and a link is followed wherever it sits.
 
 Frontend routing is a single catch-all (`frontend/app/[lang]/[city]/[...slug]/page.tsx`) that switches on the item's `contentType` — new document types need a new case there.
 
