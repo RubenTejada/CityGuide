@@ -194,6 +194,35 @@ if (args.Contains("--recategorize-events"))
     return 0;
 }
 
+// Maintenance pass: file the restaurants stuck in "Otros" under the cuisine they
+// actually serve. Google types most restaurants as nothing more than "restaurant", so
+// the cuisine map had no answer for them and the fallback subcategory grew larger than
+// every cuisine put together. The name and the description already in the CMS say what
+// is cooked there; nothing here touches Google. Prints the plan and moves nothing
+// without --apply.
+if (args.Contains("--recategorize-places"))
+{
+    // The cuisine comes from the model and from nothing else, so this pass has no free
+    // half to run: say so instead of reporting a pass that classified nothing.
+    if (enricher is null)
+    {
+        Console.Error.WriteLine(
+            "--recategorize-places necesita el modelo de enriquecimiento, que se factura "
+            + "por token. Añade --paid para ejecutarlo.");
+        return 1;
+    }
+
+    // The categories the cuisine map governs: the ones an AutoCategorize run writes
+    // into, one per city, narrowed like every other pass by --section.
+    List<string> cuisineCategories =
+        [.. config.Runs
+            .Where(r => r.AutoCategorize && SectionSelected(r.ParentPath))
+            .Select(r => r.ParentPath)
+            .Distinct(StringComparer.OrdinalIgnoreCase)];
+    await new RestaurantCuisines(umbraco, enricher).RunAsync(args.Contains("--apply"), cuisineCategories);
+    return 0;
+}
+
 // Maintenance pass: fill the English side of the portal from the Spanish one. It writes
 // only what is missing, so the first pass covers the whole site and every one after it
 // only picks up what a discovery run has since created. Nothing here touches Google —
@@ -1452,6 +1481,32 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelec
         }
     }
 
+    // The cuisine of the restaurants Google types as nothing more than "restaurant".
+    // Most of them are, which is what used to file them under CuisineMap.Fallback and
+    // left "Otros" holding more places than every cuisine subcategory together. The
+    // model answers from the name, the address and the types in one batched call for
+    // the whole run — no Google request, and a handful of tokens — and only about the
+    // places this run would create: what the CMS already has keeps the subcategory it
+    // is in, and the maintenance pass (--recategorize-places) is what reviews those.
+    Dictionary<string, string> discoveredCuisines = new(StringComparer.Ordinal);
+    if (run.AutoCategorize && string.IsNullOrWhiteSpace(run.Subcategory) && enricher is not null)
+    {
+        List<DiscoveredPlace> generic =
+            [.. places.Where(p => !knownPlaceIds.ContainsKey(p.GooglePlaceId)
+                && cityConfig?.ExcludedPlaceIds.Contains(p.GooglePlaceId) != true
+                && CuisineMap.IsGeneric(p.Types))];
+        if (generic.Count > 0)
+        {
+            Dictionary<int, string> answered = await PlaceCuisines.ClassifyAsync(
+                enricher,
+                [.. generic.Select(p => new CuisineCandidate(p.Name, p.Address, p.Types, null))]);
+            foreach ((int position, string cuisine) in answered)
+            {
+                discoveredCuisines[generic[position].GooglePlaceId] = cuisine;
+            }
+        }
+    }
+
     // Discovered branches must land under their brand's node, never flat under the
     // category, or they lose the logo and the general info the frontend inherits.
     // Run.CompanyName pins the target explicitly; otherwise a place whose name
@@ -1582,7 +1637,11 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelec
             string? cuisine = companyId is not null || subcategories is null
                 ? null
                 : string.IsNullOrWhiteSpace(run.Subcategory)
-                    ? CuisineMap.SubcategoryFor(place.Types)
+                    // Google's own type wins when it names a cuisine — it is free and it
+                    // is what the place is filed as — and the model answers for the rest.
+                    ? CuisineMap.IsGeneric(place.Types)
+                        ? discoveredCuisines.GetValueOrDefault(place.GooglePlaceId, CuisineMap.Fallback)
+                        : CuisineMap.SubcategoryFor(place.Types)
                     : run.Subcategory;
             if (cuisine is not null)
             {

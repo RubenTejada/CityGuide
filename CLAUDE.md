@@ -92,6 +92,15 @@ cd CityGuide.Agent && dotnet run -- --purge-foreign-events
 # (reads the city node and Google; writes nothing).
 cd CityGuide.Agent && dotnet run -- --scrape-events
 
+# File under the cuisine they actually serve the restaurants stuck in "Otros": Google
+# types most restaurants as nothing more than "restaurant", so the cuisine map had no
+# answer and the fallback subcategory grew larger than every cuisine put together. The
+# name, the address and the description already in the CMS say what is cooked there, so
+# there is no Google request — only the model, which is what needs --paid. Plan until
+# --apply, and --section narrows it to one city.
+cd CityGuide.Agent && dotnet run -- --paid --recategorize-places
+cd CityGuide.Agent && dotnet run -- --paid --recategorize-places --section santiago --apply
+
 # Give the best-rated places of a section the photo gallery their detail page
 # rotates (a main photo over three or six tiles). Google names a place's photos
 # for free and bills only the download ($7 per 1.000), so the pass is capped by
@@ -175,6 +184,27 @@ for cuisines): the retail runs — ropa y moda, calzado, perfumerías y cosméti
 y accesorios, tiendas por departamento — need it because what a shop sells is what the
 query asks for and not what Google says about it, which types a perfume shop and a
 jeweller alike as "store". A branch is exempt, as always: it lives under its brand.
+**What a restaurant's cuisine is decided by.** `CuisineMap` reads it off the Google
+types, which is free and authoritative — but only when they say one, and for most
+restaurants they say "restaurant" and nothing more: that fallback ("Otros") ended up
+holding more places than every cuisine subcategory together. So an `AutoCategorize` run
+asks the model about exactly the places whose types are generic (`CuisineMap.IsGeneric`),
+once for the whole run and before it creates anything (`PlaceCuisines`, a batched
+classification over `CuisineMap.Options` — the closed list of the subcategory names the
+map itself files under, so an answer always names a node the CMS has or can create). It
+costs no Google request and a handful of tokens, and a place the model leaves out keeps
+the fallback. `--recategorize-places [--apply]` is the same classification over the
+restaurants already sitting in "Otros" — it reads the name, the address and the
+description an earlier enrichment paid for, moves what it can place and creates the
+cuisine node a city lacks, in both cultures. It only ever moves what the agent created,
+it never moves a `company` (the branches would travel with it), and a place it answers
+"Otros" for stays where it is: the fallback is a real answer for the gastropub whose
+cuisine nothing states. Moving a node changes its URL, and the old one stops answering:
+Umbraco does record the move in its redirect table, but the Delivery API does not serve
+that redirect for a Spanish path — the entry it stores has the city segment mangled
+("/ntiago/restaurantes/otros/…"), so the portal has no way to resolve the old address.
+The sitemap, the internal links and every canonical carry the new URL from the first
+publish, and the old one 404s until a crawler catches up.
 `Subcategory` and `CreatesCompanies` together are what fill a section the backoffice has
 no node for yet: the "Remesas y Envíos" runs under `/santo-domingo/empresas-y-servicios`
 create the subcategory on the first place that needs it and the brand node inside it
