@@ -49,7 +49,9 @@ bool SectionSelected(string path)
     }
 
     string[] segments = path.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
-    return sections.Any(selector => Enumerable
+    // A path shorter than the selector cannot contain it — the site root ("/") and the
+    // city above a "city/section" selector both have to answer no, not throw.
+    return sections.Any(selector => segments.Length >= selector.Length && Enumerable
         .Range(0, segments.Length - selector.Length + 1)
         .Any(start => selector
             .Select((segment, i) => segments[start + i].Equals(segment, StringComparison.OrdinalIgnoreCase))

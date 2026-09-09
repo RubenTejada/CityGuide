@@ -61,21 +61,29 @@ public class TranslateSync(UmbracoClient umbraco, IEnrichmentClient enricher)
         Dictionary<string, string> Known,
         Dictionary<string, string> ForModel);
 
+    /// <summary>
+    /// The types whose nodes have children. They go first, and what English already
+    /// exists is read again once they are done: the Delivery API only serves a culture
+    /// it can route, and a culture routes only when every ancestor is published in it —
+    /// so under a section nobody has translated yet, a place discovered in both
+    /// languages looks untranslated and would be paid for a second time, its English
+    /// prose overwritten with a translation of the Spanish.
+    /// </summary>
+    private static readonly string[] ParentTypes =
+    [
+        "site", "city", "categoryPage", "subcategory", "eventsPage", "thingsToDoPage",
+        "articlesPage", "company",
+    ];
+
     public async Task RunAsync(bool apply, Func<string, bool> sectionSelected)
     {
         Console.WriteLine();
         Console.WriteLine("== Traducción al inglés");
 
         List<UmbracoClient.PublishedNode> spanish = [];
-        var translated = new HashSet<Guid>();
         foreach (string type in TranslatableTypes)
         {
             spanish.AddRange(await umbraco.GetPublishedNodesAsync(type, ContentCultures.Spanish));
-            foreach (UmbracoClient.PublishedNode node in
-                await umbraco.GetPublishedNodesAsync(type, ContentCultures.English))
-            {
-                translated.Add(node.Id);
-            }
         }
 
         // Ancestors first: a culture only routes when everything above it is published in
@@ -85,17 +93,53 @@ public class TranslateSync(UmbracoClient umbraco, IEnrichmentClient enricher)
                 ? byDepth
                 : string.CompareOrdinal(a.Path, b.Path));
 
+        HashSet<Guid> selected = Selected(spanish, sectionSelected);
+        spanish.RemoveAll(n => !selected.Contains(n.Id));
+
+        HashSet<Guid> translated = await TranslatedAsync();
+        List<UmbracoClient.PublishedNode> parents = [.. spanish.Where(n => ParentTypes.Contains(n.ContentType))];
+        List<UmbracoClient.PublishedNode> content = [.. spanish.Where(n => !ParentTypes.Contains(n.ContentType))];
+
+        int structureWritten = await TranslateAsync("Estructura", parents, translated, apply);
+        if (structureWritten > 0)
+        {
+            translated = await TranslatedAsync();
+        }
+        else if (!apply && parents.Any(p => !translated.Contains(p.Id)))
+        {
+            Console.WriteLine(
+                "  (lo que ya esté en inglés bajo una sección sin traducir no se ve hasta "
+                + "traducirla: al aplicar, la pasada relee antes de seguir con el contenido)");
+        }
+
+        await TranslateAsync("Contenido", content, translated, apply);
+    }
+
+    private async Task<HashSet<Guid>> TranslatedAsync()
+    {
+        var translated = new HashSet<Guid>();
+        foreach (string type in TranslatableTypes)
+        {
+            foreach (UmbracoClient.PublishedNode node in
+                await umbraco.GetPublishedNodesAsync(type, ContentCultures.English))
+            {
+                translated.Add(node.Id);
+            }
+        }
+
+        return translated;
+    }
+
+    /// <summary>Plans and, with <paramref name="apply"/>, writes the English side of the
+    /// nodes not yet in it. Returns how many were written.</summary>
+    private async Task<int> TranslateAsync(
+        string label, List<UmbracoClient.PublishedNode> nodes, HashSet<Guid> translated, bool apply)
+    {
         var unnamed = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
         List<Pending> pending = [];
         var alreadyDone = 0;
-        HashSet<Guid> selected = Selected(spanish, sectionSelected);
-        foreach (UmbracoClient.PublishedNode node in spanish)
+        foreach (UmbracoClient.PublishedNode node in nodes)
         {
-            if (!selected.Contains(node.Id))
-            {
-                continue;
-            }
-
             if (translated.Contains(node.Id))
             {
                 alreadyDone++;
@@ -105,11 +149,10 @@ public class TranslateSync(UmbracoClient umbraco, IEnrichmentClient enricher)
             pending.Add(Plan(node, unnamed));
         }
 
-        Console.WriteLine($"  Ya en inglés: {alreadyDone}");
-        Console.WriteLine($"  Sin traducir: {pending.Count}");
+        Console.WriteLine($"  {label}: {alreadyDone} ya en inglés, {pending.Count} sin traducir");
         if (pending.Count == 0)
         {
-            return;
+            return 0;
         }
 
         if (unnamed.Count > 0)
@@ -138,7 +181,7 @@ public class TranslateSync(UmbracoClient umbraco, IEnrichmentClient enricher)
         if (!apply)
         {
             Console.WriteLine("  (nada se escribió: añade --apply)");
-            return;
+            return 0;
         }
 
         var written = 0;
@@ -191,6 +234,7 @@ public class TranslateSync(UmbracoClient umbraco, IEnrichmentClient enricher)
         }
 
         Console.WriteLine($"  {written} traducido(s), {skipped} pendiente(s)");
+        return written;
     }
 
     /// <summary>
