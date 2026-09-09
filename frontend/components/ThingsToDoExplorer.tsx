@@ -22,6 +22,8 @@ import { type MapMarker } from "./MarkersMap";
 import { EventCard, eventMarkers, type EventEntry } from "./EventsList";
 import PlaceCard from "./PlaceCard";
 import { type ListingView } from "./ViewToggle";
+import { WeatherForecast } from "./Weather";
+import { weatherOn, type CityWeather } from "@/lib/weather";
 
 /** The query parameter carrying the activity the guide is narrowed to. */
 export const ACTIVITY_PARAM = "actividad";
@@ -255,6 +257,7 @@ export default function ThingsToDoExplorer({
   date,
   today,
   picked,
+  weather,
   attractions,
   events,
   movies,
@@ -271,6 +274,8 @@ export default function ThingsToDoExplorer({
   today: string;
   /** The activities the URL narrowed the page to, already validated. */
   picked: string[];
+  /** El clima de la ciudad, del que la guía usa el día que se planifica. */
+  weather: CityWeather | null;
   attractions: GuideAttractions | null;
   events: GuideEvents | null;
   /** The day's most-shown movies: the cinemas section is a cartelera, not a list. */
@@ -410,6 +415,14 @@ export default function ThingsToDoExplorer({
               today={today}
               basePath={basePath}
               query={query}
+            />
+            {/* Si el plan del día es de playa o de plaza techada lo decide el
+                tiempo antes que cualquier otra cosa de la página, así que va
+                pegado a la fecha elegida. */}
+            <WeatherForecast
+              day={weatherOn(weather, date)}
+              now={date === today ? (weather?.now ?? null) : null}
+              locale={locale}
             />
             {tiles.length > 0 && (
               <div className="mt-5 border-t border-neutral-200 pt-5">

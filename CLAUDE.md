@@ -582,6 +582,22 @@ failed is not written to it, so the next pass offers it again. `.github/workflow
 exposes it as the `social` dispatch input (plan / apply, `social_posts` for the cap), with
 the three Meta credentials as repository secrets.
 
+**El clima de la ciudad** lo sirve `frontend/lib/weather.ts` desde Open-Meteo: gratis,
+sin clave que guardar ni rotar y consultado por coordenadas — las que el nodo `city` ya
+lleva (`latitude`/`longitude`), así que una ciudad nueva trae su clima sin tocar código
+ni configuración. Una sola petición por ciudad (`current` + siete días, en
+`America/Santo_Domingo`, revalidada cada 30 minutos) sirve las dos vistas, y como es la
+misma URL React la deduplica dentro de una renderización: la cabecera y la guía no pagan
+dos. Los códigos WMO se reducen a las ocho condiciones que el portal dibuja y nombra
+(`conditionOf`), y los dibujos son `components/Weather.tsx`, con luna en vez de sol de
+noche. En la cabecera va `WeatherBadge`, bajo el nombre de la ciudad en el emblema: es un
+dato de esa ciudad y de ninguna otra. En "Qué Hacer" va `WeatherForecast`, pegado a las
+pestañas de fecha, con el pronóstico del día que se está planificando — máxima, mínima y
+probabilidad de lluvia a partir del 20 %, más la temperatura de ahora cuando el día es
+hoy — porque si el plan es de playa o de plaza techada lo decide el tiempo antes que
+cualquier otra cosa de la página. Sin dato no se dibuja nada: la fuente caída, o una
+ciudad sin coordenadas, dejan la página exactamente como estaba.
+
 ## SEO
 
 All of it is derived from the CMS item, so content published later is covered without code changes.

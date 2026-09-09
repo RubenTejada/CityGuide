@@ -125,6 +125,7 @@ import {
   text,
   type UmbracoItem,
 } from "@/lib/umbraco";
+import { getCityWeather } from "@/lib/weather";
 
 export const revalidate = 600;
 
@@ -2367,6 +2368,12 @@ async function ThingsToDoView({
     getTopMovies(citySlug, date, GUIDE_FOCUSED, locale),
   ]);
 
+  // El pronóstico del día que se planifica. La petición es la misma URL que ya
+  // pidió la cabecera, así que no cuesta una segunda: React la deduplica.
+  const weather = cityItem
+    ? await getCityWeather(num(cityItem, "latitude"), num(cityItem, "longitude"))
+    : null;
+
   const category = (slug: string) =>
     sections.find(
       (s) =>
@@ -2497,6 +2504,7 @@ async function ThingsToDoView({
         date={date}
         today={today}
         picked={picked}
+        weather={weather}
         attractions={attractions}
         events={events}
         movies={movies}
