@@ -11,10 +11,12 @@ import SectionTabs from "@/components/SectionTabs";
 import SiteLogo from "@/components/SiteLogo";
 import SocialLinks from "@/components/SocialLinks";
 import LanguageToggle from "@/components/LanguageToggle";
-import { getChildren, getCities, getItem } from "@/lib/cms";
+import { getChildren, getCities, getItem, type UmbracoItem } from "@/lib/cms";
 import { contentSegments, localeHref, t, type Locale } from "@/lib/i18n";
-import { isComingSoon, slugOf } from "@/lib/umbraco";
+import { isComingSoon, num, slugOf } from "@/lib/umbraco";
 import ThemeToggle from "@/components/ThemeToggle";
+import WeatherBadge from "@/components/Weather";
+import { getCityWeather } from "@/lib/weather";
 
 // Etiquetas cortas solo para la barra de navegación (el nombre real en el CMS
 // no cambia); clave = slug de la sección, en el idioma de la página.
@@ -39,8 +41,16 @@ export default async function CityLayout({
   // A city still under construction has nothing to browse or search yet, so the
   // header keeps only the logo and the city switcher.
   const comingSoon = isComingSoon(city);
+  // El clima cuelga de las coordenadas que el nodo de la ciudad ya lleva, así
+  // que viaja con la cabecera de cualquier ciudad sin configurar nada.
+  const [cityChildren, weather] = await Promise.all([
+    comingSoon
+      ? Promise.resolve<UmbracoItem[]>([])
+      : getChildren(city.route.path),
+    getCityWeather(num(city, "latitude"), num(city, "longitude")),
+  ]);
   // "Qué Hacer" goes right after "Inicio", regardless of CMS sort order.
-  const sections = (comingSoon ? [] : await getChildren(city.route.path)).sort(
+  const sections = cityChildren.sort(
     (a, b) =>
       Number(b.contentType === "thingsToDoPage") -
       Number(a.contentType === "thingsToDoPage"),
@@ -101,12 +111,20 @@ export default async function CityLayout({
               />
             )}
             {/* El emblema de la ciudad es el selector: dice dónde estás y
-                despliega las demás sin pasar por el portal. */}
-            <CitySwitcher
-              current={current}
-              cities={cityOptions}
-              allCitiesHref={localeHref(locale, "/")}
-            />
+                despliega las demás sin pasar por el portal. Bajo su nombre va
+                el clima, que es un dato de esa ciudad y de ninguna otra. */}
+            <div className="flex shrink-0 flex-col items-center gap-2">
+              <CitySwitcher
+                current={current}
+                cities={cityOptions}
+                allCitiesHref={localeHref(locale, "/")}
+              />
+              <WeatherBadge
+                weather={weather}
+                cityName={current.name}
+                locale={locale}
+              />
+            </div>
           </div>
           {!comingSoon && (
             <SectionTabs

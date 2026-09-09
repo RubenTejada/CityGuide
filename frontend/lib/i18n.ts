@@ -6,6 +6,8 @@
 // field for, and the closed vocabularies the agent deliberately leaves in Spanish
 // because they are keys rather than prose (a place's facilities).
 
+import type { WeatherCondition } from "@/lib/weather";
+
 /** URL segment of each language. Spanish is the portal's own and carries none. */
 export const LOCALES = ["es", "en"] as const;
 export type Locale = (typeof LOCALES)[number];
@@ -175,6 +177,27 @@ const es = {
     comingSoonHeading: (city: string): string => `${city} está en construcción`,
     comingSoonBody: (city: string): string =>
       `Todavía estamos armando la guía de ${city}. Vuelve pronto.`,
+  },
+  weather: {
+    /** El dato de la cabecera es el de este momento, no el del día. */
+    now: "Ahora",
+    nowTemperature: (temperature: string): string => `Ahora ${temperature}`,
+    conditions: {
+      clear: "Despejado",
+      partlyCloudy: "Parcialmente nublado",
+      cloudy: "Nublado",
+      fog: "Neblina",
+      drizzle: "Llovizna",
+      rain: "Lluvia",
+      thunderstorm: "Tormenta",
+      snow: "Nieve",
+    } as Record<WeatherCondition, string>,
+    /** Lo que lee un lector de pantalla del termómetro de la cabecera. */
+    inCity: (city: string, temperature: string, condition: string): string =>
+      `Clima en ${city}: ${temperature}, ${condition.toLowerCase()}`,
+    range: (max: string, min: string): string => `Máx ${max} · Mín ${min}`,
+    rainChance: (percent: number): string =>
+      `${percent} % de probabilidad de lluvia`,
   },
   listing: {
     clearFilters: "Limpiar filtros",
@@ -539,6 +562,24 @@ const en: typeof es = {
       `${city} is under construction`,
     comingSoonBody: (city: string): string =>
       `We are still putting the ${city} guide together. Come back soon.`,
+  },
+  weather: {
+    now: "Now",
+    nowTemperature: (temperature: string): string => `Now ${temperature}`,
+    conditions: {
+      clear: "Clear",
+      partlyCloudy: "Partly cloudy",
+      cloudy: "Cloudy",
+      fog: "Fog",
+      drizzle: "Drizzle",
+      rain: "Rain",
+      thunderstorm: "Thunderstorm",
+      snow: "Snow",
+    },
+    inCity: (city: string, temperature: string, condition: string): string =>
+      `Weather in ${city}: ${temperature}, ${condition.toLowerCase()}`,
+    range: (max: string, min: string): string => `High ${max} · Low ${min}`,
+    rainChance: (percent: number): string => `${percent}% chance of rain`,
   },
   listing: {
     clearFilters: "Clear filters",
