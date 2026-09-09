@@ -1333,10 +1333,18 @@ if (args.Contains("--regroup-companies"))
                 string bare = createdHere.TryGetValue(company.Id, out string? chainName)
                     ? chainName
                     : Unnumbered(company.Name);
-                if (bare != company.Name)
+                // The number may survive in one culture only: an earlier apply repaired
+                // the Spanish name while the rename reached nothing else, and the English
+                // page is still "Western Union (1)". A name that differs for any other
+                // reason is left alone — only the numbered form of the bare name counts.
+                string? numbered = bare != company.Name
+                    ? company.Name
+                    : (await umbraco.GetNamesAsync(company.Id)).Values
+                        .FirstOrDefault(n => n != bare && Unnumbered(n) == bare);
+                if (numbered is not null)
                 {
                     renamed++;
-                    Console.WriteLine($"  ~ empresa '{company.Name}' -> '{bare}'");
+                    Console.WriteLine($"  ~ empresa '{numbered}' -> '{bare}'");
                     if (applyRegroup)
                     {
                         try
