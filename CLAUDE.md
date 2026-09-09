@@ -473,7 +473,7 @@ same Enterprise search (`EventVenues` caches by venue name). Every event pass �
 and each maintenance one — covers every city in `Events:Cities`, and `--section` narrows it: a city slug is a segment of its paths, so `--section santiago` is how one city is run on its own, for the discovery runs and the two syncs alike. Every external request goes through `ThrottlingHandler` (min interval + jitter per host, `Throttle:SecondsBetweenRequests`) so the agent is slow on purpose and never trips rate limiters.
 
 Content model (all created in code, not in the backoffice):
-`site` → `city` → `categoryPage` → `subcategory` → `place`, plus `eventsPage`/`eventItem` and `thingsToDoPage` (“Qué Hacer”: aggregation-only guide page — upcoming events by category, attractions open today, today’s six most-shown movies (live cartelera cards, not a list of theaters — that is why “cines” is excluded from the idea sections), idea sections per category; no child content) under each city, and `movie` (agent-maintained cartelera catalog) under `categoryPage`. `categoryPage` accepts `subcategory`, `place`, and `company` children; `subcategory` accepts `place` and `company`; `company` (empresa: logo + general info) accepts only `place` (its branches/sucursales).
+`site` → `city` → `categoryPage` → `subcategory` → `place`, plus `eventsPage`/`eventItem` and `thingsToDoPage` (“Qué Hacer”: aggregation-only guide page, planned for a day — the attractions open that day, its events (or the next ones), its most-shown movies (live cartelera cards, not a list of theaters — that is why “cines” is excluded from the idea sections), idea sections per category, every block capped at six with a link to its section; no child content) under each city, and `movie` (agent-maintained cartelera catalog) under `categoryPage`. `categoryPage` accepts `subcategory`, `place`, and `company` children; `subcategory` accepts `place` and `company`; `company` (empresa: logo + general info) accepts only `place` (its branches/sucursales).
 
 Company inheritance: a `place` under a `company` stores only its own data (name, address, coordinates); empty fields (phone, website, hours, description, photo) fall back to the parent company **in the frontend** (`PlaceView` in the catch-all page). Category/subcategory listings show companies as single cards and never flatten their branch places (`listingEntries`); branches appear only inside the company page. Every listing (category, subcategory, mall groups) is ordered best rated first by `listingEntriesByRating`: a company or mall carries no rating of its own, so it ranks by its best-rated nested place, and unrated entries keep their original order at the end.
 
@@ -519,9 +519,11 @@ Every listing of the portal goes through that one path, whatever it lists: the s
 subcategories, a company's branches, the articles, the events (`EventsView` keeps its month
 headings and its "Eventos pasados" block — it hands `ListingViews` the composed sections
 instead of a grid, and pages through upcoming-then-past as one ordered list) and the "Qué
-Hacer" guide (`ThingsToDoExplorer`, a server component now, whose "Actividad" dropdown picks
-whole blocks rather than entries and which has no pagination — each block is already a capped
-selection linking to the section that holds the rest). The one filter left in the browser is
+Hacer" guide (`ThingsToDoExplorer`, a server component: `?fecha=` picks the day being planned
+through the cartelera's `DateTabs`, and a row of activity chips — one per block, each carrying
+its count for that day — narrows the page to one block with `?actividad=<slug>`, which then
+shows twenty-four of itself instead of six; both are links, and there is no pagination, since
+each block links to the section that holds the rest). The one filter left in the browser is
 `PlaceMap`'s "¿Qué está cerca?" panel: it narrows pins fetched live from `/api/nearby`, which
 is a map tool rather than page content — nothing there is content a crawler should be reading
 on this page, and a navigation per tick would reload a place page to redraw a widget.
@@ -751,7 +753,8 @@ URL segment (`/santo-domingo/restaurantes` and `/en/santo-domingo/restaurants`).
   Umbraco already served the page's language. Two closed vocabularies do get translated on
   render, because they are keys rather than prose: a place's `facilities` and an event's
   category. Dates and numbers are formatted with `INTL_LOCALE`, and the free-text "Horario"
-  parses in either language (`DAY_TOKENS` in `lib/seo.ts`, `DAY_INDEX` in the catch-all).
+  parses in either language (`DAY_TOKENS` in `lib/seo.ts`, read by both the JSON-LD parser
+  and the guide's `openOn` in the catch-all).
 - **Section configuration is keyed by the Spanish slug.** Section images, map glyphs,
   schema.org business types and the "subcategory is the category" rule are all looked up by
   slug, and English URLs carry translated ones — `lib/sectionSlugs.ts` maps them back

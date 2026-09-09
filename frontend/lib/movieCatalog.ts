@@ -6,8 +6,8 @@ import {
   CINEMAS_BY_CITY,
   getMovieBillboard,
   movieReviews,
+  resolveTrailers,
   toMovieCards,
-  todayInDR,
   type CatalogMovie,
   type MovieCardProps,
 } from "@/lib/cinema";
@@ -40,17 +40,27 @@ export async function getMovieCatalog(
   return catalog;
 }
 
-/** Today's richest movies in a city, ready to render. */
-export async function getTopMoviesToday(
+/**
+ * The richest movies of a city on a date, ready to render, and how many the
+ * billboard holds that day. The whole billboard is read to count it; only the
+ * movies shown go through the trailer lookup, which is the slow part.
+ */
+export async function getTopMovies(
   citySlug: string,
+  date: string,
   limit: number,
   locale: Locale,
-): Promise<MovieCardProps[]> {
-  if (!CINEMAS_BY_CITY[citySlug]) return [];
+): Promise<{ movies: MovieCardProps[]; total: number }> {
+  if (!CINEMAS_BY_CITY[citySlug]) return { movies: [], total: 0 };
   const catalog = await getMovieCatalog(citySlug, locale);
-  const billboard = await getMovieBillboard(citySlug, todayInDR(), {
+  const billboard = await getMovieBillboard(citySlug, date, {
     catalog,
-    limit,
+    trailers: false,
   });
-  return toMovieCards(citySlug, billboard, locale, catalog);
+  const top = billboard.slice(0, limit);
+  await resolveTrailers(top, catalog);
+  return {
+    movies: toMovieCards(citySlug, top, locale, catalog),
+    total: billboard.length,
+  };
 }

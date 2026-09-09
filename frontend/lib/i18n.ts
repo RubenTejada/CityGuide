@@ -70,6 +70,31 @@ export function withoutLocale(path: string): string {
   return path === "/en" ? "/" : path.startsWith("/en/") ? path.slice(3) : path;
 }
 
+/**
+ * The day the "Qué Hacer" guide is planning: whether it is today or tomorrow —
+ * which each language names rather than dates — and the formatted date
+ * otherwise ("sábado, 12 de septiembre", "Saturday, September 12").
+ */
+export type GuideDay = {
+  relative: "today" | "tomorrow" | null;
+  formatted: string;
+};
+
+/** "hoy" / "mañana" / "el sábado, 12 de…", or with "de" for a heading that owns it. */
+function dayEs(day: GuideDay, article: "el" | "del"): string {
+  if (day.relative === "today") return article === "del" ? "de hoy" : "hoy";
+  if (day.relative === "tomorrow")
+    return article === "del" ? "de mañana" : "mañana";
+  return `${article} ${day.formatted}`;
+}
+
+/** "today" / "tomorrow" / "on Saturday, September 12". */
+function dayEn(day: GuideDay): string {
+  if (day.relative === "today") return "today";
+  if (day.relative === "tomorrow") return "tomorrow";
+  return `on ${day.formatted}`;
+}
+
 // ---- dictionary ----
 //
 // The text the frontend writes itself: chrome, empty states, and the labels no CMS
@@ -137,12 +162,14 @@ const es = {
   },
   city: {
     lookingFor: "¿Qué buscas?",
-    featured: "Lugares destacados",
+    bestRated: "Lugares mejores valorados",
     upcomingEvents: "Próximos eventos",
     noEvents: "No hay eventos publicados todavía.",
     latestArticles: "Últimos artículos",
-    seeAll: "Ver todos",
-    readMore: "Leer más…",
+    // One button per block, each naming what it opens: two "Ver todos" on the
+    // same page say nothing about which listing they lead to.
+    seeAllEvents: "Ver eventos",
+    seeAllArticles: "Ver artículos",
     otherCity: "Elegir otra ciudad",
     comingSoon: "En construcción",
     comingSoonHeading: (city: string): string => `${city} está en construcción`,
@@ -211,6 +238,9 @@ const es = {
     company: "Empresa",
     category: "Categoría",
     filterByFacilities: "Filtrar por facilidades",
+    /** La opción del filtro de facilidades que deja solo los lugares cuya carta
+     *  está en el portal. */
+    filterWithMenu: "Con menú",
     website: "Sitio Web",
     phone: "Teléfono",
     address: "Dirección",
@@ -236,17 +266,19 @@ const es = {
   },
   thingsToDo: {
     heading: (city: string): string => `Qué Hacer en ${city}`,
-    upcomingEvents: "Eventos próximos",
-    noUpcomingEvents: "No hay eventos próximos publicados todavía.",
-    openToday: "Parques y atracciones abiertos hoy",
-    noneOpenToday: "No hay atracciones abiertas hoy.",
-    showingToday: "En cartelera hoy",
-    fullListings: "Ver cartelera completa",
-    seeAllFeminine: "Ver todas",
-    seeAll: "Ver todos",
-    noneOnMap: "Ninguna de estas actividades tiene ubicación en el mapa.",
-    noMatches:
-      "No encontramos actividades con esos filtros. Prueba con otra actividad.",
+    when: "¿Cuándo?",
+    what: "¿Qué quieres hacer?",
+    all: "Todo",
+    openOn: (day: GuideDay): string =>
+      `Parques y atracciones abiertos ${dayEs(day, "el")}`,
+    eventsOn: (day: GuideDay): string => `Eventos ${dayEs(day, "del")}`,
+    upcomingEvents: "Próximos eventos",
+    showingOn: (day: GuideDay): string => `En cartelera ${dayEs(day, "el")}`,
+    /** The chip of the cartelera: what it counts is films, not theaters. */
+    movies: "Películas",
+    seeAll: (feminine = false): string => `Ver ${feminine ? "todas" : "todos"}`,
+    seeAllCount: (count: number, feminine = false): string =>
+      `Ver ${feminine ? "las" : "los"} ${count.toLocaleString("es-DO")}`,
   },
   movies: {
     whereToWatch: "¿Dónde verla?",
@@ -281,7 +313,6 @@ const es = {
     locateUse: "Usar mi ubicación",
     categories: "Categorías",
     category: "Categoría",
-    activity: "Actividad",
     attractions: "Atracciones",
     events: "Eventos",
     cinemas: "Cines",
@@ -496,15 +527,16 @@ const en: typeof es = {
   },
   city: {
     lookingFor: "What are you looking for?",
-    featured: "Featured places",
+    bestRated: "Best rated places",
     upcomingEvents: "Upcoming events",
     noEvents: "No events published yet.",
     latestArticles: "Latest articles",
-    seeAll: "See all",
-    readMore: "Read more…",
+    seeAllEvents: "See events",
+    seeAllArticles: "See articles",
     otherCity: "Choose another city",
     comingSoon: "Coming soon",
-    comingSoonHeading: (city: string): string => `${city} is under construction`,
+    comingSoonHeading: (city: string): string =>
+      `${city} is under construction`,
     comingSoonBody: (city: string): string =>
       `We are still putting the ${city} guide together. Come back soon.`,
   },
@@ -565,6 +597,7 @@ const en: typeof es = {
     company: "Company",
     category: "Category",
     filterByFacilities: "Filter by amenities",
+    filterWithMenu: "With menu",
     website: "Website",
     phone: "Phone",
     address: "Address",
@@ -590,16 +623,18 @@ const en: typeof es = {
   },
   thingsToDo: {
     heading: (city: string): string => `Things to Do in ${city}`,
+    when: "When?",
+    what: "What do you want to do?",
+    all: "All",
+    openOn: (day: GuideDay): string =>
+      `Parks and attractions open ${dayEn(day)}`,
+    eventsOn: (day: GuideDay): string => `Events ${dayEn(day)}`,
     upcomingEvents: "Upcoming events",
-    noUpcomingEvents: "No upcoming events published yet.",
-    openToday: "Parks and attractions open today",
-    noneOpenToday: "No attractions open today.",
-    showingToday: "Showing today",
-    fullListings: "See all showtimes",
-    seeAllFeminine: "See all",
-    seeAll: "See all",
-    noneOnMap: "None of these activities has a location on the map.",
-    noMatches: "No activities match those filters. Try another one.",
+    showingOn: (day: GuideDay): string => `Showing ${dayEn(day)}`,
+    movies: "Movies",
+    seeAll: (): string => "See all",
+    seeAllCount: (count: number): string =>
+      `See all ${count.toLocaleString("en-US")}`,
   },
   movies: {
     whereToWatch: "Where to watch",
@@ -634,7 +669,6 @@ const en: typeof es = {
     locateUse: "Use my location",
     categories: "Categories",
     category: "Category",
-    activity: "Activity",
     attractions: "Attractions",
     events: "Events",
     cinemas: "Movie theaters",

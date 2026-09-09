@@ -1,5 +1,5 @@
 import type { Locale } from "@/lib/i18n";
-import type { UmbracoItem } from "@/lib/umbraco";
+import { photoUrls, type UmbracoItem } from "@/lib/umbraco";
 
 /** Un plato de la carta. El precio es la línea que escribe el menú ("RD$450",
  *  "Desde RD$284"), no un número: un menú dice más que una cifra. */
@@ -69,4 +69,14 @@ export function placeMenu(item: UmbracoItem, locale: Locale): MenuGroup[] {
       };
     })
     .filter((group): group is MenuGroup => group !== null);
+}
+
+/**
+ * Si el portal tiene la carta de este lugar, en cualquiera de sus dos formas: las
+ * páginas escaneadas o la carta que el modelo estructuró. Es lo que decide el filtro
+ * "Con menú" de los listados, y no depende del idioma — un plato se llama igual en
+ * los dos, y el listado se lee tal cual en la página inglesa.
+ */
+export function hasMenu(item: UmbracoItem): boolean {
+  return photoUrls(item, "menu").length > 0 || placeMenu(item, "es").length > 0;
 }

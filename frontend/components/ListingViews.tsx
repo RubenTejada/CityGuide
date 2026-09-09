@@ -32,7 +32,10 @@ import ViewToggle, { type ListingView } from "./ViewToggle";
  * `gridClassName` is the grid the cards sit in: two wide columns by default,
  * overridden by listings whose cards are the narrower "Qué Hacer" ones.
  * `emptyLabel` is what an empty listing says; a listing that is not of places
- * (a company's branches) overrides it.
+ * (a company's branches) overrides it. `header` is whatever controls sit above
+ * the filter row and navigate like it — the day pills and activity chips of
+ * the guide, server-rendered links — placed inside this same `PendingArea` so
+ * one overlay covers them and the cards alike.
  */
 export default function ListingViews(props: ListingProps) {
   return (
@@ -43,6 +46,8 @@ export default function ListingViews(props: ListingProps) {
 }
 
 interface ListingProps {
+  /** Controls above the filter row, sharing its overlay. */
+  header?: ReactNode;
   /** The cards of the page being read, rendered on the server. */
   cards: ReactNode;
   /** Its page links, also server-rendered; absent when there is one page. */
@@ -65,6 +70,7 @@ interface ListingProps {
 }
 
 function ListingBody({
+  header,
   cards,
   pagination,
   markers,
@@ -119,6 +125,7 @@ function ListingBody({
 
   return (
     <div>
+      {header}
       {(filters.length > 0 || hasMap) && (
         <div className="mt-6 flex flex-wrap items-center gap-2">
           {filters.map((group) => (
@@ -127,6 +134,7 @@ function ListingBody({
               label={group.label}
               options={group.options}
               icons={group.icons}
+              labels={group.labels}
               selected={selected[group.key] ?? []}
               onToggle={(value) => toggle(group.key, value)}
             />
