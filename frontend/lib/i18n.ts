@@ -182,6 +182,8 @@ const es = {
     /** El dato de la cabecera es el de este momento, no el del día. */
     now: "Ahora",
     nowTemperature: (temperature: string): string => `Ahora ${temperature}`,
+    /** El termómetro y lo que se siente al salir se alejan mucho en el Caribe. */
+    feelsLike: (temperature: string): string => `sensación ${temperature}`,
     conditions: {
       clear: "Despejado",
       partlyCloudy: "Parcialmente nublado",
@@ -566,6 +568,7 @@ const en: typeof es = {
   weather: {
     now: "Now",
     nowTemperature: (temperature: string): string => `Now ${temperature}`,
+    feelsLike: (temperature: string): string => `feels like ${temperature}`,
     conditions: {
       clear: "Clear",
       partlyCloudy: "Partly cloudy",

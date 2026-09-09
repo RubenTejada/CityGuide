@@ -114,8 +114,14 @@ export function WeatherIcon({
 
 /**
  * El termómetro de la cabecera: el icono y los grados que hace ahora mismo en
- * la ciudad que se está mirando, bajo su emblema. Sin dato no se dibuja nada —
- * el clima acompaña la página, no la ocupa.
+ * la ciudad que se está mirando, junto a su emblema. Al pasar el ratón se abre
+ * el resto — la sensación, la máxima, la mínima y la lluvia del día — porque en
+ * la cabecera no cabe y aquí es donde se busca. Sin dato no se dibuja nada: el
+ * clima acompaña la página, no la ocupa.
+ *
+ * El desplegable es CSS puro (`group-hover`), así que la insignia sigue siendo
+ * un componente de servidor sin JavaScript; lo que dice está además en el texto
+ * oculto que lee un lector de pantalla, y por eso el panel es decorativo.
  */
 export default function WeatherBadge({
   weather,
@@ -130,9 +136,22 @@ export default function WeatherBadge({
 }) {
   if (!weather) return null;
   const words = t(locale).weather;
-  const { condition, night, temperature } = weather.now;
+  const { condition, night, temperature, feelsLike } = weather.now;
   const degrees = formatTemperature(temperature);
-  const label = words.inCity(cityName, degrees, words.conditions[condition]);
+  const name = words.conditions[condition];
+  // Las dos fuentes empiezan su pronóstico en el día de hoy, así que el primero
+  // de la lista es el día que la insignia resume.
+  const today = weather.days[0] ?? null;
+  const lines = [
+    words.nowTemperature(degrees),
+    ...(feelsLike === null ? [] : [words.feelsLike(formatTemperature(feelsLike))]),
+    ...(today
+      ? [words.range(formatTemperature(today.max), formatTemperature(today.min))]
+      : []),
+    ...(today?.rainChance != null && today.rainChance >= RAIN_WORTH_SAYING
+      ? [words.rainChance(today.rainChance)]
+      : []),
+  ];
   // El sol y el sol entre nubes van del amarillo del logo; lo demás, del gris
   // claro de la cabecera, que es donde vive esta insignia.
   const tone =
@@ -141,17 +160,39 @@ export default function WeatherBadge({
       : "text-neutral-300";
 
   return (
-    <div
-      title={label}
-      className={`flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-white ${className}`}
-    >
-      <WeatherIcon
-        condition={condition}
-        night={night}
-        className={`h-4 w-4 ${tone}`}
-      />
-      <span className="text-sm font-semibold tabular-nums">{degrees}</span>
-      <span className="sr-only">{label}</span>
+    <div className={`group relative ${className}`}>
+      <div className="flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-white">
+        <WeatherIcon
+          condition={condition}
+          night={night}
+          className={`h-4 w-4 ${tone}`}
+        />
+        <span className="text-sm font-semibold tabular-nums">{degrees}</span>
+        <span className="sr-only">
+          {`${words.inCity(cityName, degrees, name)}. ${lines.join(". ")}.`}
+        </span>
+      </div>
+      {/* Se abre bajo la insignia y por encima de la barra de secciones, y se
+          engancha a su borde derecho para no salirse de la cabecera. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute top-full right-0 z-30 mt-2 w-max max-w-[15rem] rounded-xl border border-neutral-200 bg-white px-3 py-2 text-left text-xs text-neutral-600 opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100"
+      >
+        <p className="flex items-center gap-1.5 text-sm font-semibold text-neutral-900">
+          <WeatherIcon
+            condition={condition}
+            night={night}
+            className="h-4 w-4 shrink-0 text-neutral-500"
+          />
+          {name}
+        </p>
+        <p className="mt-0.5 text-neutral-500">{cityName}</p>
+        <ul className="mt-1.5 space-y-0.5 tabular-nums">
+          {lines.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 }
@@ -189,6 +230,13 @@ export function WeatherForecast({
       {now && (
         <span className="font-semibold text-neutral-900 tabular-nums">
           {words.nowTemperature(formatTemperature(now.temperature))}
+        </span>
+      )}
+      {/* Lo que se siente al salir, que en el Caribe está grados por encima de
+          lo que marca el termómetro y es lo que decide si un plan es de calle. */}
+      {now?.feelsLike != null && (
+        <span className="tabular-nums">
+          {words.feelsLike(formatTemperature(now.feelsLike))}
         </span>
       )}
       <span>{words.conditions[day.condition]}</span>

@@ -582,21 +582,42 @@ failed is not written to it, so the next pass offers it again. `.github/workflow
 exposes it as the `social` dispatch input (plan / apply, `social_posts` for the cap), with
 the three Meta credentials as repository secrets.
 
-**El clima de la ciudad** lo sirve `frontend/lib/weather.ts` desde Open-Meteo: gratis,
-sin clave que guardar ni rotar y consultado por coordenadas — las que el nodo `city` ya
-lleva (`latitude`/`longitude`), así que una ciudad nueva trae su clima sin tocar código
-ni configuración. Una sola petición por ciudad (`current` + siete días, en
-`America/Santo_Domingo`, revalidada cada 30 minutos) sirve las dos vistas, y como es la
-misma URL React la deduplica dentro de una renderización: la cabecera y la guía no pagan
-dos. Los códigos WMO se reducen a las ocho condiciones que el portal dibuja y nombra
-(`conditionOf`), y los dibujos son `components/Weather.tsx`, con luna en vez de sol de
-noche. En la cabecera va `WeatherBadge`, bajo el nombre de la ciudad en el emblema: es un
-dato de esa ciudad y de ninguna otra. En "Qué Hacer" va `WeatherForecast`, pegado a las
-pestañas de fecha, con el pronóstico del día que se está planificando — máxima, mínima y
-probabilidad de lluvia a partir del 20 %, más la temperatura de ahora cuando el día es
-hoy — porque si el plan es de playa o de plaza techada lo decide el tiempo antes que
-cualquier otra cosa de la página. Sin dato no se dibuja nada: la fuente caída, o una
-ciudad sin coordenadas, dejan la página exactamente como estaba.
+**El clima de la ciudad** lo sirve `frontend/lib/weather.ts`, de dos fuentes por lo que
+cada una hace mejor. WeatherAPI.com da el dato de ahora mezclando observaciones de
+estaciones — el número que reporta el aeropuerto y que enseñan las apps del teléfono —
+pero necesita una clave (`WEATHER_API_KEY`, gratis, un millón de llamadas al mes) y su
+plan gratuito solo pronostica tres días (la prueba inicial responde con siete).
+Open-Meteo es un modelo puro, sin clave ni
+cuenta y con siete días, pero en la costa se queda uno o dos grados corto de lo
+observado (medido contra METAR: Santo Domingo 30,2° frente a 32°, Punta Cana 29,8°
+frente a 31°, Santiago clavado). Así que WeatherAPI manda en el "ahora" y en los días
+que alcanza, Open-Meteo completa del cuarto al séptimo, y sin clave o ante una caída
+Open-Meteo responde sola: el portal nunca se queda sin clima, y en desarrollo funciona
+sin configurar nada. La clave es de servidor, no `NEXT_PUBLIC_`, así que se lee en
+tiempo de ejecución (ajuste de aplicación en App Service, no secreto de compilación).
+Las coordenadas son las que el nodo `city` ya lleva (`latitude`/`longitude`, el centro
+del mapa), de modo que una ciudad nueva trae su clima sin tocar código — y por eso ese
+centro importa más que antes: WeatherAPI lo resuelve a la celda más cercana, y la que
+respondía al centro original de Punta Cana daba el día entero entre 28 y 29 grados, sin
+madrugada. `CityCenterFixes` en el seeder lo mueve sobre Bávaro, donde está el grueso
+del contenido de esa ciudad, con la misma guarda que `AtraccionPinFixes`: solo toca el
+nodo que aún guarda el par exacto que sembró la versión anterior. Una petición por fuente y ciudad,
+revalidada cada 30 minutos, sirve las dos vistas: es la misma URL, así que React la
+deduplica y la cabecera y la guía no pagan dos. Los códigos de cada fuente —la escala
+WMO y la lista de WeatherAPI— se reducen a las ocho condiciones que el portal dibuja y
+nombra (`conditionOf`, `weatherApiConditionOf`), y los dibujos son
+`components/Weather.tsx`, con luna en vez de sol de noche. En la cabecera va
+`WeatherBadge`, junto al emblema de la ciudad y a media altura: es un dato de esa
+ciudad y de ninguna otra. La insignia lleva el icono y los grados, y al pasar el ratón
+abre el resto —condición, sensación, máxima, mínima y lluvia del día— en un panel de
+CSS puro (`group-hover`), sin JavaScript ni componente de cliente; lo mismo va en el
+texto oculto que lee un lector de pantalla, por lo que el panel es decorativo
+(`aria-hidden`). En "Qué Hacer" va `WeatherForecast`, pegado a las pestañas de
+fecha, con el pronóstico del día que se está planificando — máxima, mínima y
+probabilidad de lluvia a partir del 20 %, más la temperatura de ahora y la sensación
+térmica cuando el día es hoy, que en el Caribe se separan cinco grados y es la segunda
+la que dice si el plan es de calle. Sin dato no se dibuja nada: una ciudad sin
+coordenadas, o un día fuera de la ventana, dejan la página exactamente como estaba.
 
 ## SEO
 
