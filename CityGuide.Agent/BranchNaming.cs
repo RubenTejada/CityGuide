@@ -21,18 +21,24 @@ public static class BranchNaming
     private static string Distinguisher(string placeName, string? address, string companyName)
     {
         string trimmed = placeName.Trim();
-        // "Vimenca y Western Union" minus the chain is "y Western Union"; "MoneyGram inside
-        // Banreservas" minus the chain is "inside Banreservas". The connector goes too.
-        string local = PlaceNaming.TrimConnectors(StripCompany(trimmed, companyName));
-
-        // Stripping shortened the name, so what is left is this branch's own part.
-        // When it removed nothing the name carries no chain to subtract (Google
-        // calls APAP's branches "Asociación Popular de Ahorros y Préstamos"), and
-        // the name is the chain's however it is spelled — fall back to the address.
-        // What is left has to say something: "(1)" — Umbraco's suffix on a twin — does not.
-        if (local.Length > 0 && local.Length < trimmed.Length && local.Any(char.IsLetter))
+        // The chain under every name Google gives it: a branch the company node calls
+        // "Banco Popular Dominicano" is named "Banco Popular" outside the capital, and
+        // subtracting the node's own spelling would leave the chain in the branch name.
+        foreach (string name in ChainNames.Of(companyName))
         {
-            return local;
+            // "Vimenca y Western Union" minus the chain is "y Western Union"; "MoneyGram inside
+            // Banreservas" minus the chain is "inside Banreservas". The connector goes too.
+            string local = PlaceNaming.TrimConnectors(StripCompany(trimmed, name));
+
+            // Stripping shortened the name, so what is left is this branch's own part.
+            // When it removed nothing the name carries no chain to subtract (Google
+            // calls APAP's branches "Asociación Popular de Ahorros y Préstamos"), and
+            // the name is the chain's however it is spelled — fall back to the address.
+            // What is left has to say something: "(1)" — Umbraco's suffix on a twin — does not.
+            if (local.Length > 0 && local.Length < trimmed.Length && local.Any(char.IsLetter))
+            {
+                return local;
+            }
         }
 
         return PlaceNaming.AddressLine(address) ?? "Sucursal";

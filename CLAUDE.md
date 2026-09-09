@@ -222,6 +222,20 @@ of consecutive words, compared with their spaces removed ("DHL" matches "D H L �
 Mall", "BM Cargo" matches "BM Cargo Gazcue" and never "Transporte RC Cargo Express") —
 the token match `TextMatch.Matches` uses drops short words and takes the rest in any
 order, which is right for recognising one place under two names and wrong for a brand.
+**A chain answers to more than one name, and `ChainNames` is where the others are
+written down**: Google spells a chain differently from city to city — the branches in
+the capital come back as "Banco Popular Dominicano" and the ones in Santiago as plain
+"Banco Popular", "Banreservas" as "Banco de Reservas", "Banco BHD" as "BHD" — so the run
+that filled one city's company node left the other city's places flat beside it, without
+the logo, the description or the phone the company carries (Santiago had thirteen loose
+Banco Popular branches and no Banco Popular node at all). Every place where the phrase
+rule decides a branch — discovery nesting a place under an existing company, a chain run
+creating its brand node, `--regroup-companies` — asks `ChainNames.NamesBranch`, and
+`BranchNaming` subtracts the name Google used rather than the node's own, or the branch
+would be named "Banco Popular Dominicano — Banco Popular …". The names are national facts
+about the chains, so they live in code beside the matcher and not in `appsettings`. An
+alias has to name the chain and nothing else: "BHD" is only ever BHD León, while
+"Popular" alone would take APAP ("Asociación Popular de Ahorros y Préstamos") with it.
 Ria is still left to the broad runs (its name is a word inside "panadería" and
 "joyería"). A chain run creates the brand node on the first location it finds, so every
 location a *previous* run had already stored stays flat beside the company;
