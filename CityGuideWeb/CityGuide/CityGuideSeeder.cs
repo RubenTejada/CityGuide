@@ -1389,6 +1389,9 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         new("Tiendas", "Tiendas y centros comerciales.",
             ["Plazas Comerciales y Malls", "Supermercados", "Farmacias"]),
         new("Cines", "Carteleras y salas de cine.", []),
+        // Its subcategories ("Bancos", "Remesas y Envíos") are created by the agent runs
+        // that write under it (Subcategory), like the cuisines under "Restaurantes".
+        new("Empresas y Servicios", "Empresas y servicios locales.", []),
     ];
 
     private static readonly SeedCity[] SeedCities =
