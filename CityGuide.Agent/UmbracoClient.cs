@@ -1119,10 +1119,57 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
     /// with a name already taken by a sibling: both are renamed to say where they are,
     /// instead of letting Umbraco number one of them.
     /// </summary>
+    /// <summary>
+    /// Renames a document in every culture it has. A place, a chain or a plaza is called
+    /// what it is called in either language — its name is a name, not a translation — so
+    /// a rename that reached Spanish alone left the English page under the old one
+    /// ("Western Union (1)" in English beside the repaired Spanish "Western Union", and
+    /// an English URL still carrying the number). Every culture that was published is
+    /// published again; one nobody has created is left that way.
+    /// </summary>
     public async Task RenameDocumentAsync(Guid id, string name)
     {
-        (_, string state, Dictionary<string, object?> values) = await ReadDocumentAsync(id);
-        await WriteDocumentAsync(id, name, values, state);
+        foreach ((string culture, bool published) in await CulturesAsync(id))
+        {
+            await PutDocumentAsync(id, name, [], culture);
+            if (published)
+            {
+                await PublishAsync(id, culture);
+            }
+        }
+    }
+
+    /// <summary>The cultures a document exists in, and whether each one is published.
+    /// A variant with no culture is content that varies by nothing, written as Spanish
+    /// like everywhere else in this client.</summary>
+    private async Task<List<(string Culture, bool Published)>> CulturesAsync(Guid id)
+    {
+        HttpRequestMessage request = await AuthorizedRequestAsync(
+            HttpMethod.Get, $"/umbraco/management/api/v1/document/{id}");
+        HttpResponseMessage response = await http.SendAsync(request);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException(
+                $"Read document {id} failed ({(int)response.StatusCode}): {await response.Content.ReadAsStringAsync()}");
+        }
+
+        using JsonDocument doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var cultures = new List<(string, bool)>();
+        foreach (JsonElement variant in doc.RootElement.GetProperty("variants").EnumerateArray())
+        {
+            string state = variant.GetProperty("state").GetString() ?? "";
+            if (state == "NotCreated")
+            {
+                continue;
+            }
+
+            string culture = variant.TryGetProperty("culture", out JsonElement own) && own.GetString() is { } c
+                ? c
+                : ContentCultures.Spanish;
+            cultures.Add((culture, state.StartsWith("Published", StringComparison.Ordinal)));
+        }
+
+        return cultures;
     }
 
     /// <summary>The address stored on a place, or null when it has none.</summary>
