@@ -242,6 +242,14 @@ export function todayInDR(): string {
   }).format(new Date());
 }
 
+/** That date (YYYY-MM-DD) some days later: calendar arithmetic, no timezone. */
+export function addDays(date: string, days: number): string {
+  const [year, month, day] = date.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day + days))
+    .toISOString()
+    .slice(0, 10);
+}
+
 /** A city's cinema by its exact name ("Downtown Center"), or null. */
 export function cinemaByName(citySlug: string, name: string): Cinema | null {
   return CINEMAS_BY_CITY[citySlug]?.find((c) => c.name === name) ?? null;
@@ -424,26 +432,32 @@ export async function getMovieBillboard(
       a.name.localeCompare(b.name, "es"),
   );
   const billboard = limit === undefined ? sorted : sorted.slice(0, limit);
-
-  // Swap Caribbean Cinemas' watermarked trailer uploads for an official
-  // YouTube trailer: the agent-maintained CMS catalog first (knownTrailers,
-  // keyed by lowercased movie name), then a live search; the cinema's own id
-  // stays as last resort.
-  if (trailers) {
-    await Promise.all(
-      billboard.map(async (movie) => {
-        const known = catalog?.[movie.name.toLowerCase()]?.trailerYoutubeId;
-        if (known) {
-          movie.trailerYoutubeId = known;
-          return;
-        }
-        const id = await findYoutubeTrailer(movie.name);
-        if (id) movie.trailerYoutubeId = id;
-      }),
-    );
-  }
-
+  if (trailers) await resolveTrailers(billboard, catalog);
   return billboard;
+}
+
+/**
+ * Swap Caribbean Cinemas' watermarked trailer uploads for an official YouTube
+ * trailer: the agent-maintained CMS catalog first (keyed by lowercased movie
+ * name), then a live search; the cinema's own id stays as last resort. The
+ * search is the slow part, so a caller that only shows a few movies cuts the
+ * billboard before handing it over.
+ */
+export async function resolveTrailers(
+  billboard: MovieBillboard[],
+  catalog?: Record<string, CatalogMovie>,
+): Promise<void> {
+  await Promise.all(
+    billboard.map(async (movie) => {
+      const known = catalog?.[movie.name.toLowerCase()]?.trailerYoutubeId;
+      if (known) {
+        movie.trailerYoutubeId = known;
+        return;
+      }
+      const id = await findYoutubeTrailer(movie.name);
+      if (id) movie.trailerYoutubeId = id;
+    }),
+  );
 }
 
 // ---- link/image helpers ----

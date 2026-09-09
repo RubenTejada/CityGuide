@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { INTL_LOCALE, type Locale } from "@/lib/i18n";
+import { num, photoUrl, text, type UmbracoItem } from "@/lib/umbraco";
 import { type MapMarker } from "./MarkersMap";
 
 export interface EventEntry {
@@ -15,6 +16,29 @@ export interface EventEntry {
   photo: string | null;
   latitude: number;
   longitude: number;
+}
+
+/** A published `eventItem` as the cards, the map and the guide read it. */
+export function eventEntry(event: UmbracoItem): EventEntry {
+  return {
+    id: event.id,
+    href: event.route.path,
+    name: event.name,
+    category: text(event, "category"),
+    startDate:
+      typeof event.properties["startDate"] === "string"
+        ? event.properties["startDate"]
+        : "",
+    endDate:
+      typeof event.properties["endDate"] === "string"
+        ? event.properties["endDate"]
+        : "",
+    venueName: text(event, "venueName"),
+    description: text(event, "description"),
+    photo: photoUrl(event),
+    latitude: num(event, "latitude"),
+    longitude: num(event, "longitude"),
+  };
 }
 
 /** The events that carry coordinates, as map pins. */
@@ -91,9 +115,12 @@ export function EventCard({
             alt={event.name}
             fill
             className="object-cover"
+            // A compact card is never wider than a third of the 6xl grid, and
+            // the home page's column is narrower still: asking for viewport
+            // fractions there downloaded a 1080px poster for a 320px card.
             sizes={
               compact
-                ? "(min-width: 1280px) 33vw, (min-width: 640px) 50vw, 100vw"
+                ? "(min-width: 640px) 360px, 100vw"
                 : "(min-width: 768px) 50vw, 100vw"
             }
           />
@@ -101,7 +128,15 @@ export function EventCard({
       )}
       <div className={compact ? "p-3" : "p-5"}>
         <div className="flex items-start justify-between gap-3">
-          <h3 className={`font-semibold ${compact ? "text-sm" : ""}`}>
+          {/* Two lines, whether the title fills them or not: a compact card is
+              one slot of the home page's ticker and one cell of the guide's
+              grid, and both read straight only when every card is the same
+              height. `min-h-10` is those two lines of `text-sm`. */}
+          <h3
+            className={`font-semibold ${
+              compact ? "line-clamp-2 min-h-10 text-sm" : ""
+            }`}
+          >
             {event.name}
           </h3>
           {event.category && (
@@ -124,7 +159,9 @@ export function EventCard({
         </p>
         <p
           className={`text-neutral-600 ${
-            compact ? "mt-1 line-clamp-2 text-xs" : "mt-2 line-clamp-3 text-sm"
+            compact
+              ? "mt-1 line-clamp-2 min-h-8 text-xs"
+              : "mt-2 line-clamp-3 text-sm"
           }`}
         >
           {event.description}

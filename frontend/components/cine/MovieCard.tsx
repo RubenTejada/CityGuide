@@ -15,15 +15,19 @@ import { type MovieCardProps } from "@/lib/cinema";
  * The title links to the movie's own page when the CMS catalog has it.
  * `compact` stacks the poster over the text so the card fits a grid column,
  * which is how both the cartelera and "Qué Hacer" lay their movies out.
+ * `brief` is the guide's overview, six posters to a row: the synopsis and the
+ * action row go, and the poster and the title are what lead to the movie.
  */
 export default function MovieCard({
   movie,
   showMap = true,
   compact = false,
+  brief = false,
 }: {
   movie: MovieCardProps;
   showMap?: boolean;
   compact?: boolean;
+  brief?: boolean;
 }) {
   const words = useWords();
   const locale = useLocale();
@@ -97,7 +101,7 @@ export default function MovieCard({
             {movie.cinemas.length === 1 ? "cine" : "cines"} · {totalShowtimes}{" "}
             {totalShowtimes === 1 ? "función" : "funciones"}
           </p>
-          {movie.synopsis && (
+          {movie.synopsis && !brief && (
             <p
               className={
                 compact
@@ -108,31 +112,33 @@ export default function MovieCard({
               {movie.synopsis}
             </p>
           )}
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setOpen((o) => !o)}
-              aria-expanded={open}
-              className={`inline-flex items-center gap-1.5 rounded-lg bg-neutral-900 font-medium text-white hover:bg-neutral-700 ${
-                compact ? "px-3 py-1.5 text-xs" : "px-4 py-1.5 text-sm"
-              }`}
-            >
-              {open ? words.movies.hideShowtimes : words.movies.showtimes}
-              <span aria-hidden className="text-xs">
-                {open ? "▲" : "▼"}
-              </span>
-            </button>
-            {movie.path && (
-              <Link
-                href={movie.path}
-                className={`inline-flex items-center rounded-lg border border-neutral-300 bg-white font-medium hover:border-brand-500 hover:text-brand-600 ${
+          {!brief && (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setOpen((o) => !o)}
+                aria-expanded={open}
+                className={`inline-flex items-center gap-1.5 rounded-lg bg-neutral-900 font-medium text-white hover:bg-neutral-700 ${
                   compact ? "px-3 py-1.5 text-xs" : "px-4 py-1.5 text-sm"
                 }`}
               >
-                Ver detalle
-              </Link>
-            )}
-          </div>
+                {open ? words.movies.hideShowtimes : words.movies.showtimes}
+                <span aria-hidden className="text-xs">
+                  {open ? "▲" : "▼"}
+                </span>
+              </button>
+              {movie.path && (
+                <Link
+                  href={movie.path}
+                  className={`inline-flex items-center rounded-lg border border-neutral-300 bg-white font-medium hover:border-brand-500 hover:text-brand-600 ${
+                    compact ? "px-3 py-1.5 text-xs" : "px-4 py-1.5 text-sm"
+                  }`}
+                >
+                  Ver detalle
+                </Link>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

@@ -21,6 +21,7 @@ export default function FilterDropdown({
   selected,
   onToggle,
   icons,
+  labels,
   className = "relative ml-2",
 }: {
   label: string;
@@ -28,6 +29,8 @@ export default function FilterDropdown({
   selected: string[];
   onToggle: (value: string) => void;
   icons?: Record<string, string>;
+  /** What an option reads as; the option itself when the caller passes none. */
+  labels?: Record<string, string>;
   className?: string;
 }) {
   const words = useWords();
@@ -78,7 +81,7 @@ export default function FilterDropdown({
                 >
                   {icons?.[option] ?? "•"}
                 </span>
-                {option}
+                {labels?.[option] ?? option}
               </label>
             ))}
           </div>

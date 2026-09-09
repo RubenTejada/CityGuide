@@ -1,5 +1,6 @@
 import { PendingLink } from "@/components/LoadingOverlay";
 import { INTL_LOCALE, t as dictionary, type Locale } from "@/lib/i18n";
+import { withParam, type ListingQuery } from "@/lib/listing";
 
 function dateLabel(date: string, today: string, locale: Locale): string {
   if (date === today) return dictionary(locale).movies.today;
@@ -16,9 +17,11 @@ function dateLabel(date: string, today: string, locale: Locale): string {
 }
 
 /**
- * The days a cartelera can be read for, as links carrying `?fecha=`. The first
- * date is the page's own default, so it links to the bare path and keeps the
- * canonical URL free of a query string.
+ * The days a cartelera — or the "Qué Hacer" guide — can be read for, as links
+ * carrying `?fecha=`. The first date is the page's own default, so it links to
+ * the bare path and keeps the canonical URL free of a query string. `query` is
+ * what the page is already showing (an activity, the map view), kept across
+ * the day change.
  */
 export default function DateTabs({
   locale,
@@ -26,12 +29,14 @@ export default function DateTabs({
   selected,
   today,
   basePath,
+  query = {},
 }: {
   locale: Locale;
   dates: string[];
   selected: string;
   today: string;
   basePath: string;
+  query?: ListingQuery;
 }) {
   if (dates.length === 0) return null;
   return (
@@ -39,7 +44,12 @@ export default function DateTabs({
       {dates.map((date) => (
         <PendingLink
           key={date}
-          href={date === dates[0] ? basePath : `${basePath}?fecha=${date}`}
+          href={withParam(
+            basePath,
+            query,
+            "fecha",
+            date === dates[0] ? null : date,
+          )}
           className={
             date === selected
               ? "rounded-full bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white"

@@ -354,7 +354,12 @@ const SECTION_BUSINESS_TYPES: Record<string, string> = {
 };
 
 /** The types schema.org lets carry a menu: a shop with a "hasMenu" is invalid data. */
-const MENU_TYPES = new Set(["Restaurant", "BarOrPub", "CafeOrCoffeeShop", "FoodEstablishment"]);
+const MENU_TYPES = new Set([
+  "Restaurant",
+  "BarOrPub",
+  "CafeOrCoffeeShop",
+  "FoodEstablishment",
+]);
 
 export function businessType(routePath: string): string {
   const section = canonicalPath(routePath).split("/").filter(Boolean)[1] ?? "";
@@ -368,7 +373,10 @@ export function businessType(routePath: string): string {
  * nothing to a search engine about what is on them, so it declares the address it was
  * read from and no more.
  */
-function menuJsonLd(sections: MenuGroup[] | undefined, url: string | undefined) {
+function menuJsonLd(
+  sections: MenuGroup[] | undefined,
+  url: string | undefined,
+) {
   if (!sections?.length) return url;
   return prune({
     "@type": "Menu",
@@ -426,11 +434,14 @@ const DAY_NAMES = [
 /**
  * "Horario" is free text and arrives in either language: Google's own
  * "lunes: 11:00–23:00" and the English the translation pass writes from it, plus
- * the abbreviations an editor types by hand ("Lun - Sáb", "Mon - Sun").
+ * the abbreviations an editor types by hand ("Lun - Sáb", "Mon - Sun"). The
+ * "Qué Hacer" guide reads the same table to tell whether a place opens on the
+ * day being planned (`openOn` in the catch-all page).
  */
-const DAY_TOKENS: Record<string, number> = {
+export const DAY_TOKENS: Record<string, number> = {
   dom: 0,
   domingo: 0,
+  domingos: 0,
   sun: 0,
   sunday: 0,
   lun: 1,
@@ -464,6 +475,8 @@ const DAY_TOKENS: Record<string, number> = {
   sáb: 6,
   sabado: 6,
   sábado: 6,
+  sabados: 6,
+  sábados: 6,
   sat: 6,
   saturday: 6,
 };

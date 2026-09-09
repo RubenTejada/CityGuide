@@ -13,6 +13,12 @@ export type FilterControl = {
   label: string;
   options: string[];
   icons?: Record<string, string>;
+  /**
+   * What each option reads as, when that is not the value itself. A facility is
+   * stored as a Spanish key both the agent and the backoffice write, so the
+   * English page shows it translated while the URL keeps carrying the key.
+   */
+  labels?: Record<string, string>;
 };
 
 /**
@@ -48,7 +54,7 @@ export function withPage(path: string, page: number): string {
 }
 
 /** The values of one query parameter, however many times it is repeated. */
-function values(query: ListingQuery, key: string): string[] {
+export function queryValues(query: ListingQuery, key: string): string[] {
   const raw = query[key];
   if (raw === undefined) return [];
   return Array.isArray(raw) ? raw : [raw];
@@ -66,7 +72,9 @@ export function selectedFilters(
   return Object.fromEntries(
     groups.map((group) => [
       group.key,
-      values(query, group.key).filter((value) => group.options.includes(value)),
+      queryValues(query, group.key).filter((value) =>
+        group.options.includes(value),
+      ),
     ]),
   );
 }
@@ -96,7 +104,7 @@ export function listingPage(
   query: ListingQuery,
 ): { page: number; pageCount: number } {
   const pageCount = Math.max(1, Math.ceil(count / LISTING_PAGE_SIZE));
-  const asked = Number(values(query, PAGE_PARAM)[0]) || 1;
+  const asked = Number(queryValues(query, PAGE_PARAM)[0]) || 1;
   return { page: Math.min(Math.max(1, asked), pageCount), pageCount };
 }
 
@@ -104,6 +112,29 @@ export function listingPage(
 export function pageEntries<T>(entries: T[], page: number): T[] {
   const from = (page - 1) * LISTING_PAGE_SIZE;
   return entries.slice(from, from + LISTING_PAGE_SIZE);
+}
+
+/**
+ * This page with one parameter set — or dropped, with `null` — and the page
+ * number gone: whatever changes, a listing restarts at page 1, since the page
+ * it was on holds different entries now, or none. The pagination links, the
+ * day pills of a cartelera and the activity chips of the guide all build their
+ * URLs here, so each keeps what the others picked.
+ */
+export function withParam(
+  basePath: string,
+  query: ListingQuery,
+  key: string,
+  value: string | null,
+): string {
+  const params = new URLSearchParams();
+  for (const name of Object.keys(query)) {
+    if (name === PAGE_PARAM || name === key) continue;
+    for (const item of queryValues(query, name)) params.append(name, item);
+  }
+  if (value !== null) params.set(key, value);
+  const search = params.toString();
+  return search ? `${base(basePath)}?${search}` : base(basePath);
 }
 
 /**
@@ -116,14 +147,7 @@ export function pageHref(
   query: ListingQuery,
   page: number,
 ): string {
-  const params = new URLSearchParams();
-  for (const key of Object.keys(query)) {
-    if (key === PAGE_PARAM) continue;
-    for (const value of values(query, key)) params.append(key, value);
-  }
-  if (page > 1) params.set(PAGE_PARAM, String(page));
-  const search = params.toString();
-  return search ? `${base(basePath)}?${search}` : base(basePath);
+  return withParam(basePath, query, PAGE_PARAM, page > 1 ? String(page) : null);
 }
 
 /**
@@ -146,9 +170,9 @@ export function canonicalListingPath(
   pageCount: number,
 ): string {
   const others = Object.keys(query).filter(
-    (key) => key !== PAGE_PARAM && values(query, key).length > 0,
+    (key) => key !== PAGE_PARAM && queryValues(query, key).length > 0,
   );
   if (others.length > 0) return base(basePath);
-  const asked = Number(values(query, PAGE_PARAM)[0]) || 1;
+  const asked = Number(queryValues(query, PAGE_PARAM)[0]) || 1;
   return withPage(basePath, asked <= pageCount ? asked : 1);
 }

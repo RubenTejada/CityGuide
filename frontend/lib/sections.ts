@@ -243,6 +243,27 @@ export function sectionListImage(routePath: string): string {
   );
 }
 
+/** The sections with a conceptual drawing of their own for the guide's tiles. */
+const SECTION_TILE_SLUGS = new Set([
+  "restaurantes",
+  "bares-y-clubes",
+  "tiendas",
+  "cines",
+  "atracciones",
+  "eventos",
+  "que-hacer",
+]);
+
+/**
+ * The drawing of an activity on the "Qué Hacer" tiles, in the logo's own
+ * language (the sun, the palm, the waves, on the ink of the header) rather
+ * than a photo, so the row reads as one set. A section without one takes the
+ * guide's own scene.
+ */
+export function sectionTileArt(slug: string): string {
+  return `/sections/tiles/${SECTION_TILE_SLUGS.has(slug) ? slug : "que-hacer"}.svg`;
+}
+
 /** Map-pin icon of the section a content path belongs to. */
 export function sectionMapIcon(routePath: string): string {
   const section = sectionSlug(routePath);

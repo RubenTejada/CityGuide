@@ -38,7 +38,7 @@ export default function ArticleCard({
     >
       <div
         className={`relative flex-none bg-neutral-200 sm:h-auto ${
-          compact ? "h-28 sm:w-32 md:w-40" : "h-40 sm:w-48 md:w-56"
+          compact ? "h-24 sm:w-24 md:w-32" : "h-40 sm:w-48 md:w-56"
         }`}
       >
         <Image
@@ -49,7 +49,7 @@ export default function ArticleCard({
           className="object-cover transition duration-300 group-hover:scale-105"
           sizes={
             compact
-              ? "(min-width: 640px) 160px, 100vw"
+              ? "(min-width: 640px) 128px, 100vw"
               : "(min-width: 640px) 224px, 100vw"
           }
         />

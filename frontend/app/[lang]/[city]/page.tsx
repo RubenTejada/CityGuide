@@ -3,6 +3,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import ArticleCard from "@/components/ArticleCard";
+import { eventEntry } from "@/components/EventsList";
+import EventTicker from "@/components/EventTicker";
 import HeroCarousel, { type HeroSlide } from "@/components/HeroCarousel";
 import JsonLd from "@/components/JsonLd";
 import PlaceCard from "@/components/PlaceCard";
@@ -16,11 +18,12 @@ import {
 import {
   byRating,
   isComingSoon,
+  num,
   photoUrl,
   text,
   type UmbracoItem,
 } from "@/lib/umbraco";
-import { INTL_LOCALE, localeHref, t, type Locale } from "@/lib/i18n";
+import { localeHref, t, type Locale } from "@/lib/i18n";
 import { sectionListImage } from "@/lib/sections";
 import {
   absoluteImage,
@@ -35,6 +38,11 @@ import {
 } from "@/lib/seo";
 
 export const revalidate = 600;
+
+/** What the home page's ticker rotates through: three windows of three. */
+const HOME_EVENTS = 9;
+/** What a place needs before its rating means anything for the front page. */
+const MIN_REVIEWS = 100;
 
 export async function generateMetadata({
   params,
@@ -77,15 +85,6 @@ function sectionImage(section: UmbracoItem, places: UmbracoItem[]): string {
     if (photo) return photo;
   }
   return sectionListImage(section.route.path);
-}
-
-function formatDate(value: unknown, locale: Locale): string {
-  if (typeof value !== "string") return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat(INTL_LOCALE[locale], {
-    dateStyle: "long",
-  }).format(date);
 }
 
 /** A city announced in the switcher whose guide is not written yet. */
@@ -134,12 +133,32 @@ export default async function CityLandingPage({
 
   if (isComingSoon(city)) return <ComingSoon city={city} />;
 
-  const [sections, allPlaces, events, allArticles] = await Promise.all([
+  const [sections, allPlaces, allEvents, allArticles] = await Promise.all([
     getChildren(city.route.path),
-    getDescendantsOfType(city.route.path, "place", 200),
-    getDescendantsOfType(city.route.path, "eventItem", 4),
+    // The whole city, because the section cards take the first photo they find
+    // under each one and the best-rated block ranks every place there is.
+    getDescendantsOfType(city.route.path, "place"),
+    getDescendantsOfType(city.route.path, "eventItem", 60),
     getDescendantsOfType(city.route.path, "article", 20),
   ]);
+
+  // The Delivery API answers in tree order, so which events are the next ones is
+  // decided here: what has not ended yet, soonest first. The ticker shows three
+  // at a time and rotates through the rest.
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const events = allEvents
+    .filter((event) => {
+      const end = new Date(text(event, "endDate") || text(event, "startDate"));
+      return !Number.isNaN(end.getTime()) && end >= todayStart;
+    })
+    .sort(
+      (a, b) =>
+        new Date(text(a, "startDate")).getTime() -
+        new Date(text(b, "startDate")).getTime(),
+    )
+    .slice(0, HOME_EVENTS)
+    .map(eventEntry);
 
   const categories = sections.filter((s) => s.contentType === "categoryPage");
   const eventsSection = sections.find((s) => s.contentType === "eventsPage");
@@ -164,9 +183,15 @@ export default async function CityLandingPage({
     photo: sectionImage(section, allPlaces),
   }));
 
-  // Best rated first, so the home page leads with the strongest places.
-  const featured = allPlaces
-    .filter((p) => photoUrl(p))
+  // Best rated first, and only among places enough people have rated: a 5.0
+  // from eleven reviews is not what the city is known for.
+  const bestRated = allPlaces
+    .filter(
+      (p) =>
+        photoUrl(p) !== null &&
+        num(p, "googleRating") > 0 &&
+        num(p, "googleRatingCount") > MIN_REVIEWS,
+    )
     .sort(byRating)
     .slice(0, 6);
 
@@ -211,7 +236,7 @@ export default async function CityLandingPage({
         </div>
       </section>
 
-      <section className="mx-auto grid max-w-6xl gap-8 px-6 pt-4 pb-10 lg:grid-cols-[1fr_320px]">
+      <section className="mx-auto grid max-w-6xl gap-8 px-6 pt-4 pb-10 lg:grid-cols-[1fr_352px] lg:gap-12">
         <div>
           <HeroCarousel slides={slides} />
 
@@ -246,47 +271,41 @@ export default async function CityLandingPage({
           </div>
         </div>
 
-        <aside>
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold">
-              {words.city.upcomingEvents}
-            </h2>
-            {eventsSection && (
-              <Link
-                href={eventsSection.route.path}
-                className="rounded bg-neutral-900 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-neutral-700"
-              >
-                {words.city.seeAll}
-              </Link>
-            )}
-          </div>
-          <div className="mt-5 space-y-4">
-            {events.map((event) => (
-              <Link
-                key={event.id}
-                href={event.route.path}
-                className="block rounded-xl border border-neutral-200 bg-white p-4 shadow-sm transition hover:shadow-md"
-              >
-                <h3 className="font-semibold">{event.name}</h3>
-                <p className="mt-0.5 text-xs font-medium uppercase tracking-wide text-brand-600">
-                  {formatDate(event.properties["startDate"], locale)}
+        {/* Beside the sections grid the events column is taken out of the flow,
+            so the row is as tall as the sections are and the column has a height
+            to fill — in the flow its own height would be what decided the row's,
+            and the ticker would measure the space it had just taken. It hangs
+            3rem above the row (the heading line plus the gap under it), so the
+            first event card starts level with the carousel; the rule down its
+            left is what keeps the two columns of photos apart. */}
+        <div className="lg:relative">
+          <aside className="border-t border-neutral-200 pt-8 lg:absolute lg:inset-x-0 lg:-top-12 lg:bottom-0 lg:flex lg:flex-col lg:border-t-0 lg:border-l lg:pt-0 lg:pl-8">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-semibold">
+                {words.city.upcomingEvents}
+              </h2>
+              {eventsSection && (
+                <Link
+                  href={eventsSection.route.path}
+                  className="rounded bg-neutral-900 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-neutral-700"
+                >
+                  {words.city.seeAllEvents}
+                </Link>
+              )}
+            </div>
+            {/* Beside the sections grid the column has a height of its own, and the
+                ticker takes what is left of it so both columns end level. */}
+            <div className="mt-5 lg:min-h-0 lg:flex-1">
+              {events.length > 0 ? (
+                <EventTicker events={events} locale={locale} />
+              ) : (
+                <p className="text-sm text-neutral-500">
+                  {words.city.noEvents}
                 </p>
-                <p className="mt-0.5 text-sm text-neutral-500">
-                  {text(event, "venueName")}
-                </p>
-                <p className="mt-2 line-clamp-3 text-sm text-neutral-600">
-                  {text(event, "description")}
-                </p>
-                <p className="mt-2 text-sm font-medium text-brand-600">
-                  {words.city.readMore}
-                </p>
-              </Link>
-            ))}
-            {events.length === 0 && (
-              <p className="text-sm text-neutral-500">{words.city.noEvents}</p>
-            )}
-          </div>
-        </aside>
+              )}
+            </div>
+          </aside>
+        </div>
       </section>
 
       {articles.length > 0 && (
@@ -300,7 +319,7 @@ export default async function CityLandingPage({
                 href={articlesSection.route.path}
                 className="rounded bg-neutral-900 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-neutral-700"
               >
-                {words.city.seeAll}
+                {words.city.seeAllArticles}
               </Link>
             )}
           </div>
@@ -317,11 +336,11 @@ export default async function CityLandingPage({
         </section>
       )}
 
-      {featured.length > 0 && (
+      {bestRated.length > 0 && (
         <section className="mx-auto max-w-6xl px-6 py-12">
-          <h2 className="text-xl font-semibold">{words.city.featured}</h2>
+          <h2 className="text-xl font-semibold">{words.city.bestRated}</h2>
           <div className="mt-5 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {featured.map((place) => (
+            {bestRated.map((place) => (
               <PlaceCard key={place.id} place={place} locale={locale} />
             ))}
           </div>

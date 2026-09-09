@@ -31,12 +31,17 @@ import MovieReviewBadges from "@/components/cine/MovieReviewBadges";
 import MovieShowtimes from "@/components/cine/MovieShowtimes";
 import {
   EventCard,
+  eventEntry,
   eventMarkers,
   isPastEvent,
   monthLabel,
   type EventEntry,
 } from "@/components/EventsList";
 import ThingsToDoExplorer, {
+  guidePicks,
+  type GuideAttractions,
+  type GuideEvents,
+  type GuideMovies,
   type GuideSection,
 } from "@/components/ThingsToDoExplorer";
 import TrailerModal from "@/components/cine/TrailerModal";
@@ -44,6 +49,7 @@ import { branchDisplayName } from "@/lib/branches";
 import { itemDirectionsUrl } from "@/lib/directions";
 import {
   CINEMAS_BY_CITY,
+  addDays,
   cinemaByName,
   cinemaSiteIds,
   getAvailableDates,
@@ -54,12 +60,13 @@ import {
 import {
   INTL_LOCALE,
   contentSegments,
+  facilityLabel,
   type Locale,
   localeHref,
   t,
 } from "@/lib/i18n";
-import { placeMenu } from "@/lib/menu";
-import { getTopMoviesToday } from "@/lib/movieCatalog";
+import { hasMenu, placeMenu } from "@/lib/menu";
+import { getTopMovies } from "@/lib/movieCatalog";
 import { canonicalSlug, localizedSectionPath } from "@/lib/sectionSlugs";
 import {
   categoryPath,
@@ -82,6 +89,7 @@ import {
   type ListingQuery,
 } from "@/lib/listing";
 import {
+  DAY_TOKENS,
   absoluteUrl,
   articleJsonLd,
   breadcrumbJsonLd,
@@ -139,12 +147,7 @@ export default async function ContentPage({
   switch (item.contentType) {
     case "categoryPage":
       return (
-        <CategoryView
-          item={item}
-          citySlug={city}
-          query={query}
-          fecha={fecha}
-        />
+        <CategoryView item={item} citySlug={city} query={query} fecha={fecha} />
       );
     case "subcategory":
       return <SubcategoryView item={item} query={query} />;
@@ -666,29 +669,44 @@ const FACILITY_FILTER_SLUGS = new Set([
 ]);
 
 /**
- * Facilities each listing entry can be filtered by: a place's own facilities;
- * for companies and malls, the union with those of every place nested under
- * them (branches, establishments).
+ * Having a menu on the portal is offered inside the "Facilidades" dropdown, as
+ * one more thing a visitor picks a restaurant by — but it is not a facility the
+ * CMS stores, so it travels as a value of its own, lowercase where the stored
+ * vocabulary is capitalised Spanish and therefore never colliding with one.
+ */
+const MENU_FILTER_VALUE = "menu";
+
+/**
+ * Facilities each listing entry can be filtered by: a place's own facilities
+ * plus the menu pseudo-facility; for companies and malls, the union with those
+ * of every place nested under them (branches, establishments).
  */
 async function listingFacilities(
   path: string,
   entries: UmbracoItem[],
 ): Promise<Record<string, string[]>> {
   const allPlaces = await getDescendantsOfType(path, "place");
+  const valuesOf = (item: UmbracoItem): string[] =>
+    hasMenu(item) ? [...facilities(item), MENU_FILTER_VALUE] : facilities(item);
   return Object.fromEntries(
     entries.map((entry) => {
-      const own = facilities(entry);
+      const own = valuesOf(entry);
       if (entry.contentType === "place") return [entry.id, own];
       const prefix = `${entry.route.path.replace(/\/+$/, "")}/`;
       const nested = allPlaces
         .filter((p) => p.route.path.startsWith(prefix))
-        .flatMap(facilities);
+        .flatMap(valuesOf);
       return [entry.id, [...new Set([...own, ...nested])]];
     }),
   );
 }
 
-/** The "Facilidades" dropdown: canonical facility order first, then the rest. */
+/**
+ * The "Facilidades" dropdown: the menu first, then the canonical facility
+ * order, then the rest. The values are the Spanish keys the CMS stores, so the
+ * options carry their own labels — that is what the English page reads, while
+ * the URL keeps carrying the key.
+ */
 async function facilityFilter(
   path: string,
   entries: UmbracoItem[],
@@ -698,16 +716,29 @@ async function facilityFilter(
   const present = new Set(Object.values(valuesByEntry).flat());
   const known = Object.keys(FACILITY_ICONS).filter((f) => present.has(f));
   const extra = [...present]
-    .filter((f) => !(f in FACILITY_ICONS))
+    .filter((f) => f !== MENU_FILTER_VALUE && !(f in FACILITY_ICONS))
     .sort((a, b) => a.localeCompare(b, "es"));
+  const options = [
+    ...(present.has(MENU_FILTER_VALUE) ? [MENU_FILTER_VALUE] : []),
+    ...known,
+    ...extra,
+  ];
   return {
     key: "facilidades",
     label: t(locale).place.filterByFacilities,
-    options: [...known, ...extra],
+    options,
     valuesByEntry,
     // A place must offer every facility that is ticked.
     match: "all",
-    icons: FACILITY_ICONS,
+    icons: { ...FACILITY_ICONS, [MENU_FILTER_VALUE]: "\u{1F37D}" },
+    labels: Object.fromEntries(
+      options.map((option) => [
+        option,
+        option === MENU_FILTER_VALUE
+          ? t(locale).place.filterWithMenu
+          : facilityLabel(locale, option),
+      ]),
+    ),
   };
 }
 
@@ -756,9 +787,7 @@ function subcategoryFilter(
   const valuesByEntry = Object.fromEntries(
     entries.map((entry) => [
       entry.id,
-      subcategories
-        .filter((sub) => isUnder(sub, entry))
-        .map((sub) => sub.name),
+      subcategories.filter((sub) => isUnder(sub, entry)).map((sub) => sub.name),
     ]),
   );
   const present = new Set(Object.values(valuesByEntry).flat());
@@ -900,11 +929,12 @@ function Listing({
         hasMap={entries.some(
           (entry) => (markersById.get(entry.id)?.length ?? 0) > 0,
         )}
-        filters={filters.map(({ key, label, options, icons }) => ({
+        filters={filters.map(({ key, label, options, icons, labels }) => ({
           key,
           label,
           options,
           icons,
+          labels,
         }))}
         selected={selected}
         view={view}
@@ -1481,9 +1511,9 @@ async function CompanyView({
   const branchMarkers = new Map(
     branches.map((branch) => [
       branch.id,
-      [markerOf(branch, branchDisplayName(branch.name, item.name), logo)].filter(
-        isPlaced,
-      ),
+      [
+        markerOf(branch, branchDisplayName(branch.name, item.name), logo),
+      ].filter(isPlaced),
     ]),
   );
   const cityItem = await cityOf(item);
@@ -1614,7 +1644,8 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
   const menuSections = placeMenu(item, locale);
   // El día que el portal leyó la carta, no el día del menú: con la fecha delante, y la
   // advertencia al lado, un precio viejo se lee por lo que es.
-  const menuCaptured = formatDate(item.properties["menuUpdated"], locale) || null;
+  const menuCaptured =
+    formatDate(item.properties["menuUpdated"], locale) || null;
   const ownPhoto = photoUrl(item);
   const inheritedPhoto = ownPhoto ?? (company ? photoUrl(company) : null);
   // No photo and no company logo: fall back to the section's image.
@@ -1833,29 +1864,6 @@ function formatDate(value: unknown, locale: Locale): string {
   }).format(date);
 }
 
-/** A published `eventItem` as the cards, the map and the guide read it. */
-function eventEntry(event: UmbracoItem): EventEntry {
-  return {
-    id: event.id,
-    href: event.route.path,
-    name: event.name,
-    category: text(event, "category"),
-    startDate:
-      typeof event.properties["startDate"] === "string"
-        ? event.properties["startDate"]
-        : "",
-    endDate:
-      typeof event.properties["endDate"] === "string"
-        ? event.properties["endDate"]
-        : "",
-    venueName: text(event, "venueName"),
-    description: text(event, "description"),
-    photo: photoUrl(event),
-    latitude: num(event, "latitude"),
-    longitude: num(event, "longitude"),
-  };
-}
-
 async function EventsView({
   item,
   query,
@@ -1977,11 +1985,12 @@ async function EventsView({
         }
         markers={view === "mapa" ? eventMarkers(shown) : []}
         hasMap={eventMarkers(entries).length > 0}
-        filters={groups.map(({ key, label, options, icons }) => ({
+        filters={groups.map(({ key, label, options, icons, labels }) => ({
           key,
           label,
           options,
           icons,
+          labels,
         }))}
         selected={selected}
         view={view}
@@ -2275,54 +2284,27 @@ async function ArticleView({ item }: { item: UmbracoItem }) {
 // ---- "Qué Hacer" guide ----
 
 /**
- * JS getDay() index for each day name a "hours" text may carry. "Horario" is free
- * text and arrives in either language — Google writes it out in Spanish, the
- * translation pass rewrites it in English, and an editor may type either — so the
- * three-letter prefix of every form is listed.
+ * Whether a free-text "Horario" (e.g. "Mar - Dom 9:00AM - 5:00PM", "Abierto 24
+ * horas") includes a day of the week (JS getDay index). Each line is read word
+ * by word against the day table the JSON-LD parser uses, so "marzo" or "month"
+ * is not a day, and consecutive days on a line read as a range. Fails open:
+ * an empty text, or one with no recognizable day, counts as open.
  */
-const DAY_INDEX: Record<string, number> = {
-  dom: 0,
-  sun: 0,
-  lun: 1,
-  mon: 1,
-  mar: 2,
-  tue: 2,
-  mie: 3,
-  mié: 3,
-  wed: 3,
-  jue: 4,
-  thu: 4,
-  vie: 5,
-  fri: 5,
-  sab: 6,
-  sáb: 6,
-  sat: 6,
-};
-
-/**
- * Whether a free-text "Horario" (e.g. "Mar - Dom 9:00AM - 5:00PM",
- * "Abierto 24 horas") includes today. Fails open: texts without a
- * recognizable day pattern count as open.
- */
-function openToday(hours: string): boolean {
+function openOn(hours: string, day: number): boolean {
   if (!hours.trim()) return true;
   const normalized = hours.toLowerCase();
-  if (/24\s*(?:horas|hours)/.test(normalized)) return true;
-  const today = new Date().getDay();
+  if (/24\s*(?:horas|hours)|24\/7/.test(normalized)) return true;
   let sawDays = false;
   for (const line of normalized.split("\n")) {
-    // The prefix, so "lunes", "lun" and "Monday" all read the same.
-    const days = [
-      ...line.matchAll(
-        /\b(dom|sun|lun|mon|mar|tue|mie|mié|wed|jue|thu|vie|fri|sab|sáb|sat)[a-záéíó]*/g,
-      ),
-    ].map((m) => DAY_INDEX[m[1]]);
+    const days = [...line.matchAll(/[a-záéíóúñ]+/g)]
+      .map((match) => DAY_TOKENS[match[0]])
+      .filter((index): index is number => index !== undefined);
     if (days.length === 0) continue;
     sawDays = true;
-    if (days.includes(today)) return true;
+    if (days.includes(day)) return true;
     // Consecutive pairs read as ranges ("Lun - Vie"), Monday-based to wrap Sunday.
     const mondayBased = (d: number) => (d + 6) % 7;
-    const t = mondayBased(today);
+    const t = mondayBased(day);
     for (let i = 0; i + 1 < days.length; i += 1) {
       const from = mondayBased(days[i]);
       const to = mondayBased(days[i + 1]);
@@ -2342,8 +2324,18 @@ const IDEAS_EXCLUDED_SLUGS = new Set([
   "cines",
 ]);
 
-/** How many of today's most-shown movies the guide puts on screen. */
-const GUIDE_MOVIES = 6;
+/** How many entries each block shows in the overview, and alone when picked. */
+const GUIDE_PREVIEW = 6;
+const GUIDE_FOCUSED = 24;
+/** The days the guide can be planned for: today and the six after it. */
+const GUIDE_DAYS = 7;
+/** How far past the day the events block looks when nothing happens on it. */
+const GUIDE_EVENT_DAYS = 15;
+
+/** The calendar day of a CMS date, which arrives as wall-clock text without an offset. */
+function calendarDay(value: string): string | null {
+  return /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : null;
+}
 
 async function ThingsToDoView({
   item,
@@ -2355,70 +2347,126 @@ async function ThingsToDoView({
   query: ListingQuery;
 }) {
   const locale = await activeLocale();
+  const words = t(locale);
   const cityPath = `/${citySlug}`;
-  const [cityItem, sections, events, movies] = await Promise.all([
+
+  // The day being planned, in the city's own time — a server past midnight in
+  // UTC must not open tomorrow's guide — and its weekday for the opening hours.
+  const today = todayInDR();
+  const dates = Array.from({ length: GUIDE_DAYS }, (_, i) => addDays(today, i));
+  const date =
+    typeof query.fecha === "string" && dates.includes(query.fecha)
+      ? query.fecha
+      : today;
+  const weekday = new Date(`${date}T12:00:00Z`).getUTCDay();
+
+  const [cityItem, sections, allEvents, top] = await Promise.all([
     getItem(cityPath),
     getChildren(cityPath),
     getDescendantsOfType(cityPath, "eventItem", 100),
-    getTopMoviesToday(citySlug, GUIDE_MOVIES, locale),
+    getTopMovies(citySlug, date, GUIDE_FOCUSED, locale),
   ]);
 
-  const now = new Date();
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  // Only events happening within the next 15 days.
-  const horizon = new Date(todayStart);
-  horizon.setDate(horizon.getDate() + 15);
-  const upcoming = events
-    .filter((event) => {
-      const start = new Date(text(event, "startDate"));
-      const end = new Date(text(event, "endDate") || text(event, "startDate"));
-      return (
-        !Number.isNaN(end.getTime()) &&
-        end >= todayStart &&
-        !Number.isNaN(start.getTime()) &&
-        start <= horizon
-      );
-    })
-    .sort(
-      (a, b) =>
-        new Date(text(a, "startDate")).getTime() -
-        new Date(text(b, "startDate")).getTime(),
+  const category = (slug: string) =>
+    sections.find(
+      (s) =>
+        s.contentType === "categoryPage" && canonicalSlug(slugOf(s)) === slug,
     );
-  const eventEntries: EventEntry[] = upcoming.map(eventEntry);
-
-  const attractionsSection = sections.find(
-    (s) =>
-      s.contentType === "categoryPage" &&
-      canonicalSlug(slugOf(s)) === "atracciones",
-  );
-  const attractions = attractionsSection
-    ? (await listingEntriesOrdered(attractionsSection.route.path)).filter(
-        (entry) => openToday(text(entry, "hours")),
-      )
-    : [];
-  const attractionMarkers = attractionsSection
-    ? [
-        ...(
-          await listingMarkers(attractionsSection.route.path, attractions)
-        ).values(),
-      ].flat()
-    : [];
-
-  const cinemasSection = sections.find(
-    (s) => s.contentType === "categoryPage" && canonicalSlug(slugOf(s)) === "cines",
-  );
-
+  const attractionsSection = category("atracciones");
+  const cinemasSection = category("cines");
+  const eventsSection = sections.find((s) => s.contentType === "eventsPage");
   const ideaSections = sections.filter(
     (s) =>
       s.contentType === "categoryPage" &&
       !IDEAS_EXCLUDED_SLUGS.has(canonicalSlug(slugOf(s))),
   );
+
+  // Whole sections come back, so every count the chips carry is free.
+  const [allAttractions, ideaEntries] = await Promise.all([
+    attractionsSection
+      ? listingEntriesOrdered(attractionsSection.route.path)
+      : Promise.resolve([] as UmbracoItem[]),
+    Promise.all(
+      ideaSections.map((section) => listingEntriesOrdered(section.route.path)),
+    ),
+  ]);
+  const openAttractions = allAttractions.filter((entry) =>
+    openOn(text(entry, "hours"), weekday),
+  );
+
+  // The events of the day lead; when there are none, the next ones after it.
+  const dated = allEvents
+    .flatMap((event) => {
+      const start = calendarDay(text(event, "startDate"));
+      if (!start) return [];
+      return [
+        { event, start, end: calendarDay(text(event, "endDate")) ?? start },
+      ];
+    })
+    .sort((a, b) => a.start.localeCompare(b.start));
+  const onDate = dated.filter(({ start, end }) => start <= date && date <= end);
+  const horizon = addDays(date, GUIDE_EVENT_DAYS);
+  const upcoming =
+    onDate.length > 0
+      ? onDate
+      : dated.filter(({ start }) => start > date && start <= horizon);
+
+  // What the day offers decides which activities a URL may narrow the page to,
+  // and how much of one block is shown: alone, it gets more of itself.
+  const offered = [
+    ...(openAttractions.length > 0 ? ["atracciones"] : []),
+    ...(upcoming.length > 0 ? ["eventos"] : []),
+    ...(top.total > 0 ? ["cines"] : []),
+    ...ideaSections
+      .filter((_, i) => ideaEntries[i].length > 0)
+      .map((section) => canonicalSlug(slugOf(section))),
+  ];
+  const picked = guidePicks(query, offered);
+  const cap = picked.length === 1 ? GUIDE_FOCUSED : GUIDE_PREVIEW;
+
+  const attractionEntries = openAttractions.slice(0, cap);
+  const attractions: GuideAttractions | null =
+    attractionsSection && attractionEntries.length > 0
+      ? {
+          entries: attractionEntries,
+          markers: [
+            ...(
+              await listingMarkers(
+                attractionsSection.route.path,
+                attractionEntries,
+              )
+            ).values(),
+          ].flat(),
+          total: openAttractions.length,
+          href: attractionsSection.route.path,
+        }
+      : null;
+
+  const eventEntries = upcoming
+    .slice(0, cap)
+    .map(({ event }) => eventEntry(event));
+  const events: GuideEvents | null =
+    eventEntries.length > 0
+      ? {
+          entries: eventEntries,
+          total: upcoming.length,
+          href: eventsSection?.route.path ?? null,
+          onDate: onDate.length > 0,
+        }
+      : null;
+
+  const movies: GuideMovies | null =
+    top.total > 0
+      ? {
+          cards: top.movies.slice(0, cap),
+          total: top.total,
+          href: cinemasSection?.route.path ?? null,
+        }
+      : null;
+
   const ideas: GuideSection[] = await Promise.all(
-    ideaSections.map(async (section) => {
-      const entries = (await listingEntriesOrdered(section.route.path)).slice(
-        0,
-        6,
-      );
+    ideaSections.map(async (section, i) => {
+      const entries = ideaEntries[i].slice(0, cap);
       return {
         id: section.id,
         name: section.name,
@@ -2428,35 +2476,31 @@ async function ThingsToDoView({
         markers: [
           ...(await listingMarkers(section.route.path, entries)).values(),
         ].flat(),
+        total: ideaEntries[i].length,
       };
     }),
   );
 
+  const heading = words.thingsToDo.heading(cityItem?.name ?? item.name);
   return (
     <PageShell item={item}>
-      <JsonLd
-        data={itemListJsonLd(
-          `Qué hacer en ${cityItem?.name ?? item.name}`,
-          ideaSections,
-        )}
-      />
-      <h1 className="mt-4 text-3xl font-bold">
-        {t(locale).thingsToDo.heading(cityItem?.name ?? item.name)}
-      </h1>
-      {text(item, "intro") && (
-        <p className="mt-2 max-w-2xl text-neutral-600">{text(item, "intro")}</p>
-      )}
+      {/* The intro is the page's meta description only: on the page itself the
+          planner's controls are what should sit under the title. */}
+      <h1 className="mt-4 text-3xl font-bold">{heading}</h1>
 
       <ThingsToDoExplorer
         locale={locale}
+        name={heading}
+        basePath={item.route.path}
         query={query}
-        events={eventEntries}
+        dates={dates}
+        date={date}
+        today={today}
+        picked={picked}
         attractions={attractions}
-        attractionMarkers={attractionMarkers}
-        attractionsHref={attractionsSection?.route.path ?? null}
+        events={events}
         movies={movies}
-        moviesHref={cinemasSection?.route.path ?? null}
-        sections={ideas}
+        sections={ideas.filter((section) => section.entries.length > 0)}
       />
     </PageShell>
   );
