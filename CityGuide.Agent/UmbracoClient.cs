@@ -1129,7 +1129,7 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
     /// </summary>
     public async Task RenameDocumentAsync(Guid id, string name)
     {
-        foreach ((string culture, bool published) in await CulturesAsync(id))
+        foreach ((string culture, _, bool published) in await VariantsAsync(id))
         {
             await PutDocumentAsync(id, name, [], culture);
             if (published)
@@ -1139,10 +1139,14 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         }
     }
 
-    /// <summary>The cultures a document exists in, and whether each one is published.
-    /// A variant with no culture is content that varies by nothing, written as Spanish
-    /// like everywhere else in this client.</summary>
-    private async Task<List<(string Culture, bool Published)>> CulturesAsync(Guid id)
+    /// <summary>A document's name in each culture it exists in.</summary>
+    public async Task<Dictionary<string, string>> GetNamesAsync(Guid id) =>
+        (await VariantsAsync(id)).ToDictionary(v => v.Culture, v => v.Name, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The cultures a document exists in, its name in each, and whether each
+    /// one is published. A variant with no culture is content that varies by nothing,
+    /// written as Spanish like everywhere else in this client.</summary>
+    private async Task<List<(string Culture, string Name, bool Published)>> VariantsAsync(Guid id)
     {
         HttpRequestMessage request = await AuthorizedRequestAsync(
             HttpMethod.Get, $"/umbraco/management/api/v1/document/{id}");
@@ -1154,7 +1158,7 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         }
 
         using JsonDocument doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        var cultures = new List<(string, bool)>();
+        var variants = new List<(string, string, bool)>();
         foreach (JsonElement variant in doc.RootElement.GetProperty("variants").EnumerateArray())
         {
             string state = variant.GetProperty("state").GetString() ?? "";
@@ -1166,10 +1170,11 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
             string culture = variant.TryGetProperty("culture", out JsonElement own) && own.GetString() is { } c
                 ? c
                 : ContentCultures.Spanish;
-            cultures.Add((culture, state.StartsWith("Published", StringComparison.Ordinal)));
+            variants.Add((culture, variant.GetProperty("name").GetString() ?? "",
+                state.StartsWith("Published", StringComparison.Ordinal)));
         }
 
-        return cultures;
+        return variants;
     }
 
     /// <summary>The address stored on a place, or null when it has none.</summary>
