@@ -1225,9 +1225,12 @@ if (args.Contains("--regroup-companies"))
 
         foreach ((Guid containerId, string containerName, bool isCategory, List<UmbracoClient.ChildDocument> children) in containers)
         {
+            // Keyed by the bare name: a brand node Umbraco numbered ("Western Union (1)",
+            // born beside a loose place carrying the chain's name) is still the chain's
+            // node, or the chain would be created a second time beside it.
             Dictionary<string, Guid> companies = children
                 .Where(c => c.DocumentTypeId == companyTypeId)
-                .GroupBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
+                .GroupBy(c => Unnumbered(c.Name), StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(g => g.Key, g => g.First().Id, StringComparer.OrdinalIgnoreCase);
 
             // The chains a run is allowed to create right here.
