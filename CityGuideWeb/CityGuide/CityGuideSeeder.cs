@@ -1442,7 +1442,11 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
                     19.4502m, -70.7066m,
                     []),
             ]),
-        new("Punta Cana", "República Dominicana", 18.5820m, -68.4055m,
+        // El centro del mapa va sobre Bávaro, no en el punto medio geográfico del
+        // destino: allí está el grueso del contenido (playas, hoteles, comercio) y
+        // es además el punto que el portal le pregunta al clima — la celda de la
+        // costa sur devolvía un día entero entre 28 y 29 grados, sin madrugada.
+        new("Punta Cana", "República Dominicana", 18.6500m, -68.4200m,
             "Playas, resorts, restaurantes y vida nocturna de Punta Cana y Bávaro. Ubícate con un clic.",
             "Punta Cana, República Dominicana",
             // De Cap Cana a Uvero Alto, la franja costera del este: Higüey queda fuera.
@@ -1523,7 +1527,46 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         }
 
         PublishSeeded(created);
-        return created.Count > 0;
+        bool repaired = RepairCityCenters(site);
+        return created.Count > 0 || repaired;
+    }
+
+    /// <summary>
+    /// El centro que una versión anterior sembró, cuando el de ahora es otro: solo
+    /// se toca el nodo que todavía guarda el par exacto de entonces, nunca un centro
+    /// que un editor haya movido. Es el mismo patrón que <see cref="AtraccionPinFixes"/>,
+    /// y existe porque el centro del mapa es además el punto por el que el portal
+    /// pregunta el clima: el de Punta Cana caía en una celda cuyos datos daban el día
+    /// entero entre 28 y 29 grados.
+    /// </summary>
+    private static readonly (string City, decimal StaleLatitude, decimal StaleLongitude,
+        decimal Latitude, decimal Longitude)[] CityCenterFixes =
+    [
+        ("Punta Cana", 18.5820m, -68.4055m, 18.6500m, -68.4200m),
+    ];
+
+    private bool RepairCityCenters(IContent site)
+    {
+        var repaired = false;
+        foreach ((string name, decimal staleLatitude, decimal staleLongitude,
+            decimal latitude, decimal longitude) in CityCenterFixes)
+        {
+            if (Descendant(site, "city", name) is not IContent city
+                || city.GetValue<decimal?>("latitude") != staleLatitude
+                || city.GetValue<decimal?>("longitude") != staleLongitude)
+            {
+                continue;
+            }
+
+            _logger.LogInformation("CityGuide: correcting the map center of '{City}'", name);
+            SetSeedValue(city, "latitude", latitude);
+            SetSeedValue(city, "longitude", longitude);
+            _contentService.Save(city);
+            _contentService.Publish(city, SeededCultures(city));
+            repaired = true;
+        }
+
+        return repaired;
     }
 
     /// <summary>

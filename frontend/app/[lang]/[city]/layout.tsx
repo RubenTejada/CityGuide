@@ -111,19 +111,28 @@ export default async function CityLayout({
               />
             )}
             {/* El emblema de la ciudad es el selector: dice dónde estás y
-                despliega las demás sin pasar por el portal. Bajo su nombre va
-                el clima, que es un dato de esa ciudad y de ninguna otra. */}
-            <div className="flex shrink-0 flex-col items-center gap-2">
+                despliega las demás sin pasar por el portal. A su derecha va el
+                clima, que es un dato de esa ciudad y de ninguna otra, a media
+                altura del emblema: la caja que lo sostiene mide lo que mide el
+                emblema (las mismas alturas que CityEmblem lleva abajo) y lo
+                centra, en vez de colgarlo de la línea del nombre. */}
+            <div className="flex shrink-0 items-start gap-2">
               <CitySwitcher
                 current={current}
                 cities={cityOptions}
                 allCitiesHref={localeHref(locale, "/")}
               />
-              <WeatherBadge
-                weather={weather}
-                cityName={current.name}
-                locale={locale}
-              />
+              {/* La caja mide lo que el emblema y centra la insignia en él: el
+                  relleno de 8px compensa —a mitad, que es como cuenta al
+                  centrar— los 4px que el botón deja sobre el emblema, y el
+                  margen la baja los 10px pedidos. */}
+              <div className="mt-[10px] flex h-20 items-center pt-2 sm:h-32">
+                <WeatherBadge
+                  weather={weather}
+                  cityName={current.name}
+                  locale={locale}
+                />
+              </div>
             </div>
           </div>
           {!comingSoon && (
