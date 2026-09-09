@@ -30,16 +30,34 @@ if (string.IsNullOrEmpty(config.Umbraco.ClientSecret))
 // it is any segment of a Run's ParentPath, so both a category ("tiendas") and a
 // subcategory ("farmacias") work; "cines" and "eventos" select those syncs.
 // Without it every run and sync executes, as before.
-var sections = new HashSet<string>(
+//
+// A selector may also name several segments in a row
+// ("santiago/empresas-y-servicios"), which is the only way to say one section of
+// one city: the city slug and the section slug are each a segment, so naming both
+// separately selects every section of that city *and* that section in every city,
+// and paying for Santo Domingo's queries is exactly what a run scoped to a new
+// city is trying to avoid.
+var sections = new List<string[]>(
     args.SkipWhile(a => a != "--section").Skip(1).Take(1)
         .SelectMany(a => a.Split(',', StringSplitOptions.RemoveEmptyEntries))
-        .Select(a => a.Trim()),
-    StringComparer.OrdinalIgnoreCase);
-bool SectionSelected(string path) => sections.Count == 0
-    || path.Trim('/').Split('/').Any(sections.Contains);
+        .Select(a => a.Trim().Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries)));
+bool SectionSelected(string path)
+{
+    if (sections.Count == 0)
+    {
+        return true;
+    }
+
+    string[] segments = path.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+    return sections.Any(selector => Enumerable
+        .Range(0, segments.Length - selector.Length + 1)
+        .Any(start => selector
+            .Select((segment, i) => segments[start + i].Equals(segment, StringComparison.OrdinalIgnoreCase))
+            .All(match => match)));
+}
 if (sections.Count > 0)
 {
-    Console.WriteLine($"Secciones seleccionadas: {string.Join(", ", sections)}");
+    Console.WriteLine($"Secciones seleccionadas: {string.Join(", ", sections.Select(s => string.Join('/', s)))}");
 }
 
 // The agent publishes what it writes ("Umbraco:PublishImmediately"), and at the end of
@@ -238,7 +256,7 @@ if (args.Contains("--translate"))
         return 1;
     }
 
-    await new TranslateSync(umbraco, enricher).RunAsync(args.Contains("--apply"), sections);
+    await new TranslateSync(umbraco, enricher).RunAsync(args.Contains("--apply"), SectionSelected);
     return 0;
 }
 

@@ -61,7 +61,7 @@ public class TranslateSync(UmbracoClient umbraco, IEnrichmentClient enricher)
         Dictionary<string, string> Known,
         Dictionary<string, string> ForModel);
 
-    public async Task RunAsync(bool apply, IReadOnlyCollection<string> sections)
+    public async Task RunAsync(bool apply, Func<string, bool> sectionSelected)
     {
         Console.WriteLine();
         Console.WriteLine("== Traducción al inglés");
@@ -88,7 +88,7 @@ public class TranslateSync(UmbracoClient umbraco, IEnrichmentClient enricher)
         var unnamed = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
         List<Pending> pending = [];
         var alreadyDone = 0;
-        HashSet<Guid> selected = Selected(spanish, sections);
+        HashSet<Guid> selected = Selected(spanish, sectionSelected);
         foreach (UmbracoClient.PublishedNode node in spanish)
         {
             if (!selected.Contains(node.Id))
@@ -286,20 +286,9 @@ public class TranslateSync(UmbracoClient umbraco, IEnrichmentClient enricher)
     /// above it would produce pages nobody can reach.
     /// </summary>
     private static HashSet<Guid> Selected(
-        List<UmbracoClient.PublishedNode> nodes, IReadOnlyCollection<string> sections)
+        List<UmbracoClient.PublishedNode> nodes, Func<string, bool> sectionSelected)
     {
-        if (sections.Count == 0)
-        {
-            return [.. nodes.Select(n => n.Id)];
-        }
-
-        string[] matched =
-        [
-            .. nodes
-                .Where(n => n.Path.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries)
-                    .Any(segment => sections.Contains(segment, StringComparer.OrdinalIgnoreCase)))
-                .Select(n => n.Path),
-        ];
+        string[] matched = [.. nodes.Where(n => sectionSelected(n.Path)).Select(n => n.Path)];
 
         return
         [

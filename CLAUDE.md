@@ -39,6 +39,10 @@ cd CityGuide.Agent && dotnet run -- --paid --force
 # One section only (shorter runs): matches any segment of a Run's ParentPath,
 # plus "cines"/"eventos" for those syncs. Comma-separated for several.
 cd CityGuide.Agent && dotnet run -- --section restaurantes
+# Several segments in a row name one section of one city, which two separate
+# slugs cannot: "santiago,empresas-y-servicios" would select every section of
+# Santiago and that section in every city, Santo Domingo's queries included.
+cd CityGuide.Agent && dotnet run -- --paid --section santiago/empresas-y-servicios
 # The agent publishes what it writes ("Umbraco:PublishImmediately", on by default) and,
 # when the run ends, releases the drafts earlier passes left under the sections it
 # covered. --publish forces that sweep on an installation configured to draft instead.
