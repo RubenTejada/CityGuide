@@ -124,6 +124,9 @@ cd CityGuide.Agent && dotnet run -- --menus 25 --section restaurantes --apply
 # are — putting the page through the model once per restaurant to get the carta the
 # detail page renders. Without it those places are reported and left for a later pass.
 cd CityGuide.Agent && dotnet run -- --paid --menus 25 --section restaurantes --apply
+# A place that already has a menu is skipped; --force reads its site again and replaces
+# the carta, for one that went stale or was read off the wrong page of the site.
+cd CityGuide.Agent && dotnet run -- --paid --menus 25 --section restaurantes --force --apply
 
 # The events a city's own places announce on their own sites, for the section no
 # ticket portal can fill: Juan Dolio has no box office, so every portal answers about
@@ -433,7 +436,18 @@ whose address or text says "carta" or "menú" — a file before a page, since th
 menu itself — and each candidate is followed once: a PDF is rasterized page by page
 (`PDFtoImage`, pdfium and SkiaSharp, natives for every platform the agent runs on), a page
 gives up the images whose own address or `alt` says they are the menu, and a page that
-only links the PDF is followed one step further. Nothing is taken on size alone, or every
+only links the PDF is followed one step further. A menu link is followed off the site as
+well — a subdomain is the same site (`WebFiles.SameSite`, which reads
+`menu-cabamar.clubnaco.org.do` as `clubnaco.org.do`), and a link to a menu host is still
+the restaurant's own carta, so the only hosts refused are the ones `MenuSources.CanRead`
+already refuses, and a menu page that is only a frame around a menu maker (iMenuPro,
+Flipsnack, a Drive viewer) is followed through that frame — one step, and only from a page
+that already said it was the menu. Which carta is read is decided by the place's own name:
+a club or a hotel publishes one per restaurant it feeds ("menu-cabamar",
+"menu-cafeteria"), and without that ranking the first link wins and Casa Marina Cabamar is
+given the cafeteria's menu. A word is a word and not a run of letters — "imenupro" carries
+"menu" and names no carta — so a link, a file name or an `alt` says "menú" only when it
+says it as a word of its own. Nothing is taken on size alone, or every
 menu would be the dining room and the chef. Three kinds of site are left alone: a social
 profile (`WebFiles.ReadableSite`, the same rule that governs the free photos), a delivery
 app or review portal storing somebody else's catalogue (`MenuSources.CanRead`), and a
@@ -457,9 +471,15 @@ particular, because a dish is called what it is called. That is why `menuData` i
 invariant like `facilities` rather than culture-variant — `lib/menu.ts` picks the side the
 page is in on render, falling back to the Spanish section name (a section must have one)
 but never showing a Spanish description on an English page. The translation pass never
-sees it. What this still does not reach is a menu drawn by JavaScript (Zola's, the Wix
-ones): the raw HTML carries no prices, and nothing short of a headless browser would find
-them. The pages are stored on
+sees it. A carta drawn in the browser is read from the page's own payload: a menu maker
+writes the dishes into the HTML and the prices only into the data its script renders from,
+so when the visible text carries no price the page's inline scripts are read with it
+(`MenuSources.ScriptText`). What this still does not reach is a menu the page fetches
+after loading (Zola's, the Wix ones): neither the text nor the payload carries a price,
+and nothing short of a headless browser would find them. A place that already carries a
+menu is skipped, so a pass costs nothing for the ones it filled before; `--force` reads
+their site again and replaces what it finds, which is how a carta that has gone stale — or
+one read off the wrong page — is redone. The pages are stored on
 `place` as `menu`, a third multi-image property (`EnsurePlaceMenuSchemaAsync`, with
 `menuSource` and `menuUpdated` beside it): images say the same thing in both languages, so
 none of the three varies by culture. The source is stored because a menu is the one thing

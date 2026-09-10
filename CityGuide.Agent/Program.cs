@@ -333,7 +333,8 @@ if (args.Contains("--menus"))
     await new PlaceMenus(
             new MenuSources(web, config.Menus.MaxPages, config.Menus.MaxTextCharacters),
             umbraco, enricher, config.Menus.MinReviews)
-        .RunAsync(args.Contains("--apply"), SectionSelected, menuPlaces);
+        .RunAsync(
+            args.Contains("--apply"), SectionSelected, menuPlaces, args.Contains("--force"));
     return 0;
 }
 

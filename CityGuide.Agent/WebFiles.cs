@@ -112,9 +112,17 @@ public partial class WebFiles(HttpClient http)
     /// <summary>Whether two addresses belong to the same site. "www" is not part of
     /// the answer: a site served at www.restaurante.com links its own carta as
     /// restaurante.com half the time, and reading that as another site is what would
-    /// leave the PDF unread.</summary>
-    public static bool SameSite(Uri url, Uri page) =>
-        Bare(url).Equals(Bare(page), StringComparison.OrdinalIgnoreCase);
+    /// leave the PDF unread. Neither is a subdomain: a club that puts its carta on
+    /// menu-cabamar.clubnaco.org.do, or its agenda on eventos.hotel.com, is publishing
+    /// on its own site and not on somebody else's.</summary>
+    public static bool SameSite(Uri url, Uri page)
+    {
+        string bare = Bare(url);
+        string other = Bare(page);
+        return bare.Equals(other, StringComparison.OrdinalIgnoreCase)
+            || bare.EndsWith($".{other}", StringComparison.OrdinalIgnoreCase)
+            || other.EndsWith($".{bare}", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static string Bare(Uri url) =>
         url.Host.StartsWith("www.", StringComparison.OrdinalIgnoreCase) ? url.Host[4..] : url.Host;
