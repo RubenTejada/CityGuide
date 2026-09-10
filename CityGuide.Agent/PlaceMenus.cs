@@ -23,16 +23,20 @@ public class PlaceMenus(
     /// are left alone and the company page is where its carta would belong, and a place
     /// whose "website" is a delivery app or a review portal is not read at all. "Best
     /// rated" is
-    /// read among the places with enough reviews to mean it. Prints the plan and writes
-    /// nothing unless <paramref name="apply"/>.
+    /// read among the places with enough reviews to mean it, and a place that already
+    /// carries a menu is skipped unless <paramref name="force"/>. Prints the plan and
+    /// writes nothing unless <paramref name="apply"/>.
     /// </summary>
-    public async Task RunAsync(bool apply, Func<string, bool> sectionSelected, int places)
+    public async Task RunAsync(
+        bool apply, Func<string, bool> sectionSelected, int places, bool force = false)
     {
         List<UmbracoClient.PublishedPlace> candidates =
             [.. (await umbraco.GetPublishedPlacesAsync("place"))
                 .Where(p => sectionSelected(p.Path)
-                    && p.MenuCount == 0
-                    && !p.HasMenuData
+                    // A menu already stored is left alone: it is what the pass is for.
+                    // --force reads the site again and replaces it, which is how a carta
+                    // that has gone stale — or one read off the wrong page — is redone.
+                    && (force || (p.MenuCount == 0 && !p.HasMenuData))
                     && MenuSources.CanRead(p.Website)
                     && p.RatingCount >= minReviews)
                 .OrderByDescending(p => p.Rating)
@@ -93,7 +97,7 @@ public class PlaceMenus(
     {
         try
         {
-            if (await menus.FindAsync(place.Website) is not FoundMenu menu)
+            if (await menus.FindAsync(place.Website, place.Name) is not FoundMenu menu)
             {
                 return null;
             }

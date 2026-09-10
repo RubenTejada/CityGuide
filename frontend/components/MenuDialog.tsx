@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 
 import { useWords } from "@/components/LocaleProvider";
+import Modal from "@/components/Modal";
 import MenuNote from "@/components/MenuNote";
 import MenuSections from "@/components/MenuSections";
 import type { MenuGroup } from "@/lib/menu";
@@ -17,8 +18,7 @@ import type { MenuGroup } from "@/lib/menu";
  * del modal va también de dónde salió y cuándo, que es donde alguien está mirando un
  * precio.
  *
- * Es un &lt;dialog&gt; modal: el navegador se encarga del foco y de cerrar con Escape, y
- * un clic en el fondo cierra también.
+ * La ventana en sí es <Modal>, la misma que abre el formulario de reserva.
  */
 export default function MenuDialog({
   sections,
@@ -54,7 +54,7 @@ export default function MenuDialog({
       </button>
 
       {open && (
-        <Dialog
+        <Modal
           title={words.place.menuHeading}
           close={words.place.menuClose}
           onClose={() => setOpen(false)}
@@ -67,56 +67,9 @@ export default function MenuDialog({
             captured={captured}
             className="border-t border-neutral-200 bg-neutral-50 px-5 py-3 text-neutral-500"
           />
-        </Dialog>
+        </Modal>
       )}
     </>
-  );
-}
-
-/** El modal en sí: cabecera con el título y el aspa, y debajo lo que le pasen. */
-function Dialog({
-  title,
-  close,
-  onClose,
-  children,
-}: {
-  title: string;
-  close: string;
-  onClose: () => void;
-  children: React.ReactNode;
-}) {
-  const dialog = useRef<HTMLDialogElement>(null);
-
-  useEffect(() => {
-    dialog.current?.showModal();
-  }, []);
-
-  return (
-    <dialog
-      ref={dialog}
-      onClose={onClose}
-      // Un clic en el fondo del modal llega al propio <dialog>, no a su contenido.
-      onClick={(event) => {
-        if (event.target === dialog.current) dialog.current?.close();
-      }}
-      aria-label={title}
-      className="m-auto max-h-[85vh] w-[92vw] max-w-3xl overflow-hidden rounded-2xl bg-white p-0 shadow-2xl backdrop:bg-black/60"
-    >
-      <div className="flex max-h-[85vh] flex-col">
-        <div className="flex items-center justify-between border-b border-neutral-200 px-5 py-3">
-          <h2 className="text-lg font-semibold">{title}</h2>
-          <button
-            type="button"
-            onClick={() => dialog.current?.close()}
-            aria-label={close}
-            className="rounded-full p-2 text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900"
-          >
-            <CloseIcon />
-          </button>
-        </div>
-        {children}
-      </div>
-    </dialog>
   );
 }
 
@@ -136,23 +89,6 @@ function MenuIcon() {
       <path d="M7 3v8a2 2 0 0 0 2 2v8" />
       <path d="M5 3v5M9 3v5" />
       <path d="M17 3c-1.5 1.5-2 3.5-2 5.5S15.5 12 17 12v9" />
-    </svg>
-  );
-}
-
-function CloseIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2.5}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-      className="size-5"
-    >
-      <path d="M6 6l12 12M18 6L6 18" />
     </svg>
   );
 }

@@ -74,8 +74,20 @@ public partial class MenuSources(WebFiles web, int maxPages, int maxTextCharacte
     private static readonly string[] MenuWords =
         ["menu", "menus", "carta", "cartas", "comida", "platos", "food"];
 
+    /// <summary>Everything that separates one word from another in a link, a file name
+    /// or the text on a button: a path is words too, only punctuated differently, and a
+    /// digit ends a word as surely as a hyphen ("Menu2024.pdf").</summary>
+    [GeneratedRegex("[^a-z]+")]
+    private static partial Regex NotWord();
+
+    /// <summary>Whether a link, a file name or the words on a button say "carta" — as a
+    /// word of its own and not as a run of letters inside one. A menu host writes its
+    /// own name into every address it serves ("imenupro" carries "menu"), so a substring
+    /// match takes the thumbnail of every dish for a page of the carta.</summary>
     private static bool SaysMenu(string? text) =>
-        text is not null && MenuWords.Any(TextMatch.Normalize(text).Contains);
+        text is not null
+        && NotWord().Split(TextMatch.Normalize(text))
+            .Any(word => MenuWords.Contains(word, StringComparer.Ordinal));
 
     /// <summary>Sites that hold somebody else's catalogue: a delivery app, a booking
     /// service, a review portal. A restaurant that stores one of them as its website is
@@ -106,8 +118,14 @@ public partial class MenuSources(WebFiles web, int maxPages, int maxTextCharacte
     /// menu pictures on it, and a page that only links the PDF is followed one step
     /// further. The first candidate that yields pages wins; nothing accumulates across
     /// two of them, since two links usually mean the same carta twice.
+    ///
+    /// Which is why <paramref name="name"/> decides the order: one site publishes
+    /// several cartas when it belongs to a club or a hotel with more than one
+    /// restaurant, and each is named after the place it feeds
+    /// ("menu-cabamar", "menu-cafeteria"). Without that the first link wins and a
+    /// restaurant is given the cafeteria's menu.
     /// </summary>
-    public async Task<FoundMenu?> FindAsync(string? website)
+    public async Task<FoundMenu?> FindAsync(string? website, string name)
     {
         if (!CanRead(website)
             || WebFiles.ReadableSite(website) is not Uri site
@@ -117,7 +135,9 @@ public partial class MenuSources(WebFiles web, int maxPages, int maxTextCharacte
         }
 
         FoundMenu? text = null;
-        foreach (Uri candidate in MenuLinks(html, site).Take(MaxCandidates))
+        IEnumerable<Uri> candidates = MenuLinks(html, site)
+            .OrderByDescending(url => TextMatch.Matches(name, url.AbsoluteUri));
+        foreach (Uri candidate in candidates.Take(MaxCandidates))
         {
             FoundMenu? found = await ReadAsync(candidate, followLinks: true);
             if (found is { Pages.Count: > 0 })
@@ -185,7 +205,27 @@ public partial class MenuSources(WebFiles web, int maxPages, int maxTextCharacte
             }
         }
 
-        return MenuText(html, url);
+        if (MenuText(html, url) is { } written)
+        {
+            return written;
+        }
+
+        // A menu page with nothing on it is a frame around somebody's menu maker
+        // (iMenuPro, Flipsnack, a Drive viewer): the carta is one request further, on a
+        // host CanRead already vouches for. Only from a page that said it was the menu,
+        // and never from that page in turn, or the pass would walk the web.
+        if (followLinks)
+        {
+            foreach (Uri frame in Frames(html, url).Take(2))
+            {
+                if (await ReadAsync(frame, followLinks: false) is { } embedded)
+                {
+                    return embedded;
+                }
+            }
+        }
+
+        return null;
     }
 
     private static FoundMenu? Menu(IReadOnlyList<FoundImage> pages, Uri url) =>
@@ -281,10 +321,14 @@ public partial class MenuSources(WebFiles web, int maxPages, int maxTextCharacte
         void Add(List<Uri> bucket, string href)
         {
             // "#menu" is the navigation scrolling down the page it is already on.
+            // A menu link may leave the site: half the restaurants that publish a carta
+            // at all publish it on a menu host (iMenuPro, Flipsnack, a Drive PDF), and
+            // that is still their own carta — what CanRead keeps out is the delivery app
+            // and the review portal, whose prices belong to somebody else.
             if (href.StartsWith('#')
                 || !Uri.TryCreate(page, href.Trim(), out Uri? url)
                 || (url.Scheme != Uri.UriSchemeHttp && url.Scheme != Uri.UriSchemeHttps)
-                || !WebFiles.SameSite(url, page)
+                || !(WebFiles.SameSite(url, page) || CanRead(url.AbsoluteUri))
                 || !seen.Add(url.AbsoluteUri))
             {
                 return;
@@ -311,6 +355,23 @@ public partial class MenuSources(WebFiles web, int maxPages, int maxTextCharacte
         return declared.Concat(files).Concat(links);
     }
 
+    [GeneratedRegex("""<iframe\b[^>]*src=["']([^"']+)["']""", RegexOptions.IgnoreCase)]
+    private static partial Regex FrameTag();
+
+    /// <summary>What a page embeds, when that is an address this pass may read: the
+    /// menu makers a restaurant frames instead of publishing the carta itself.</summary>
+    private static IEnumerable<Uri> Frames(string html, Uri page)
+    {
+        foreach (Match tag in FrameTag().Matches(html))
+        {
+            if (Uri.TryCreate(page, tag.Groups[1].Value.Trim(), out Uri? url)
+                && (WebFiles.SameSite(url, page) || CanRead(url.AbsoluteUri)))
+            {
+                yield return url;
+            }
+        }
+    }
+
     /// <summary>
     /// The text of a page when it reads like a carta, capped at what one model call is
     /// worth. Half the restaurants write their menu out — sections, dishes and prices as
@@ -324,6 +385,17 @@ public partial class MenuSources(WebFiles web, int maxPages, int maxTextCharacte
     private FoundMenu? MenuText(string html, Uri url)
     {
         string text = WebFiles.ReadableText(html);
+        if (Price().Matches(text).Count < MinPrices)
+        {
+            // A menu maker writes the dishes into the page and draws the prices in the
+            // browser, out of a payload the page carries with it: the visible text of
+            // such a carta shows every section and not one price. Reading that payload
+            // is what reaches those menus without a headless browser — and it is still
+            // the page saying what it costs. A page with no prices anywhere has none,
+            // and is left alone by the check below.
+            text = $"{text}\n{ScriptText(html)}";
+        }
+
         if (text.Length < MinTextLength || Price().Matches(text).Count < MinPrices)
         {
             return null;
@@ -334,6 +406,18 @@ public partial class MenuSources(WebFiles web, int maxPages, int maxTextCharacte
             url.AbsoluteUri,
             text.Length > maxTextCharacters ? text[..maxTextCharacters] : text);
     }
+
+    [GeneratedRegex("""<script\b(?![^>]*\bsrc=)[^>]*>(.*?)</script>""",
+        RegexOptions.IgnoreCase | RegexOptions.Singleline)]
+    private static partial Regex InlineScript();
+
+    /// <summary>What the page carries for its own scripts to draw, flattened: the data
+    /// of a menu the browser renders. Only what the page itself holds — a file it loads
+    /// is another request, and a carta is never worth walking a bundle for.</summary>
+    private static string ScriptText(string html) =>
+        string.Join(
+            "\n",
+            InlineScript().Matches(html).Select(block => block.Groups[1].Value.Trim()));
 
     /// <summary>An address that is the menu rather than a page about it.</summary>
     private static bool IsFile(Uri url) =>

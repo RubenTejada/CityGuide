@@ -24,6 +24,8 @@ const SPANISH_SLUG: Record<string, string> = {
   "breakfast-brunch": "desayunos-y-brunch",
   "businesses-services": "empresas-y-servicios",
   "car-rentals": "rent-a-car",
+  "tours-excursions": "tours-y-excursiones",
+  "event-venues": "salones-de-eventos",
   chinese: "china",
   "clothing-fashion": "ropa-y-moda",
   "department-stores": "tiendas-por-departamento",

@@ -86,12 +86,12 @@ public class ContactController : ControllerBase
             return BadRequest(new { error = invalid });
         }
 
-        if (!WithinRateLimit())
+        if (!PublicForms.WithinRateLimit(_cache, "contact-form", PublicForms.ClientAddress(HttpContext), MaxPerHour))
         {
             return StatusCode(429, new { error = "Recibimos varios mensajes tuyos. Intenta de nuevo en un rato." });
         }
 
-        IContent? inbox = FindInbox();
+        IContent? inbox = PublicForms.FindInbox(_contentService, _contentTypeService, "contactInbox");
         if (inbox is null)
         {
             _logger.LogError("CityGuide: contact message dropped, no '{Inbox}' node", CityGuideSeeder.ContactInboxName);
@@ -100,12 +100,12 @@ public class ContactController : ControllerBase
 
         IContent message = _contentService.Create(NodeName(request), inbox.Id, "contactMessage");
         message.SetValue("requestType", request.RequestType);
-        message.SetValue("senderName", Clean(request.Name, 100));
-        message.SetValue("email", Clean(request.Email, 200));
-        message.SetValue("phone", Clean(request.Phone, 50));
-        message.SetValue("businessName", Clean(request.BusinessName, 200));
-        message.SetValue("businessUrl", Clean(request.BusinessUrl, 500));
-        message.SetValue("message", Clean(request.Message, MaxMessage));
+        message.SetValue("senderName", PublicForms.Clean(request.Name, 100));
+        message.SetValue("email", PublicForms.Clean(request.Email, 200));
+        message.SetValue("phone", PublicForms.Clean(request.Phone, 50));
+        message.SetValue("businessName", PublicForms.Clean(request.BusinessName, 200));
+        message.SetValue("businessUrl", PublicForms.Clean(request.BusinessUrl, 500));
+        message.SetValue("message", PublicForms.Clean(request.Message, MaxMessage));
         message.SetValue("submittedAt", DateTime.UtcNow);
         // Saved, never published: the message is for the backoffice only.
         _contentService.Save(message);
@@ -131,16 +131,16 @@ public class ContactController : ControllerBase
             return;
         }
 
-        string sender = Clean(request.Email, 200);
+        string sender = PublicForms.Clean(request.Email, 200);
         var body = new StringBuilder()
             .AppendLine($"Tipo de solicitud: {request.RequestType}")
-            .AppendLine($"Nombre: {Clean(request.Name, 100)}")
+            .AppendLine($"Nombre: {PublicForms.Clean(request.Name, 100)}")
             .AppendLine($"Correo: {sender}")
-            .AppendLine($"Teléfono: {Or(Clean(request.Phone, 50))}")
-            .AppendLine($"Negocio: {Or(Clean(request.BusinessName, 200))}")
-            .AppendLine($"Enlace: {Or(Clean(request.BusinessUrl, 500))}")
+            .AppendLine($"Teléfono: {PublicForms.Or(PublicForms.Clean(request.Phone, 50))}")
+            .AppendLine($"Negocio: {PublicForms.Or(PublicForms.Clean(request.BusinessName, 200))}")
+            .AppendLine($"Enlace: {PublicForms.Or(PublicForms.Clean(request.BusinessUrl, 500))}")
             .AppendLine()
-            .AppendLine(Clean(request.Message, MaxMessage))
+            .AppendLine(PublicForms.Clean(request.Message, MaxMessage))
             .AppendLine()
             .AppendLine("— QueHacerRD.com. El mensaje también quedó en "
                 + $"\"{CityGuideSeeder.ContactInboxName}\" en el backoffice.")
@@ -149,7 +149,7 @@ public class ContactController : ControllerBase
         // ReplyTo is the visitor: answering the notification answers them.
         var email = new EmailMessage(
             from, [to], cc: null, bcc: null, replyTo: [sender],
-            $"[QueHacerRD] {request.RequestType} — {Clean(request.Name, 100)}",
+            $"[QueHacerRD] {request.RequestType} — {PublicForms.Clean(request.Name, 100)}",
             body, isBodyHtml: false, attachments: null);
 
         try
@@ -162,9 +162,6 @@ public class ContactController : ControllerBase
         }
     }
 
-    /// <summary>An empty optional field reads better as a dash than as nothing.</summary>
-    private static string Or(string value) => string.IsNullOrEmpty(value) ? "—" : value;
-
     /// <summary>The complaint to show the visitor, or null when the message is fine.</summary>
     private static string? Validate(ContactRequest request)
     {
@@ -173,89 +170,25 @@ public class ContactController : ControllerBase
             return "Elige el tipo de solicitud.";
         }
 
-        if (Clean(request.Name, 100).Length < 2)
+        if (PublicForms.Clean(request.Name, 100).Length < 2)
         {
             return "Escribe tu nombre.";
         }
 
-        if (!EmailPattern.IsMatch(Clean(request.Email, 200)))
+        if (!EmailPattern.IsMatch(PublicForms.Clean(request.Email, 200)))
         {
             return "Escribe un correo válido.";
         }
 
-        return Clean(request.Message, MaxMessage).Length < 10
+        return PublicForms.Clean(request.Message, MaxMessage).Length < 10
             ? "Cuéntanos un poco más en el mensaje."
             : null;
-    }
-
-    /// <summary>Trimmed and capped: the visitor decides the text, not its length.</summary>
-    private static string Clean(string? value, int maxLength)
-    {
-        string trimmed = value?.Trim() ?? string.Empty;
-        return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
     }
 
     /// <summary>"Agregar mi negocio — Juan Pérez", what the backoffice tree shows.</summary>
     private static string NodeName(ContactRequest request)
     {
-        string name = $"{request.RequestType} — {Clean(request.Name, 100)}";
+        string name = $"{request.RequestType} — {PublicForms.Clean(request.Name, 100)}";
         return name.Length <= 200 ? name : name[..200];
-    }
-
-    private IContent? FindInbox()
-    {
-        if (_contentTypeService.Get("contactInbox") is null)
-        {
-            return null;
-        }
-
-        IContent? site = _contentService.GetRootContent().FirstOrDefault(c => c.ContentType.Alias == "site");
-        return site is null
-            ? null
-            : _contentService
-                .GetPagedChildren(site.Id, 0, 100, out _, null, null, null, false)
-                .FirstOrDefault(c => c.ContentType.Alias == "contactInbox");
-    }
-
-    /// <summary>
-    /// Who is sending, as far as a throttle needs to know. The portal calls this
-    /// endpoint server-side, so without the forwarded address every visitor would
-    /// share one bucket. It is a courtesy limit and the header can be forged; what
-    /// actually guards the inbox is the validation and the honeypot above.
-    /// </summary>
-    private string? ClientAddress()
-    {
-        string? forwarded = Request.Headers["X-Forwarded-For"].FirstOrDefault();
-        string? first = forwarded?.Split(',').FirstOrDefault()?.Trim();
-        return string.IsNullOrEmpty(first)
-            ? HttpContext.Connection.RemoteIpAddress?.ToString()
-            : first;
-    }
-
-    /// <summary>Messages one address has sent inside the current hour.</summary>
-    private sealed class SendCount
-    {
-        public int Value;
-    }
-
-    /// <summary>
-    /// Counts what one address sent in the last hour. In memory on purpose: this stops
-    /// the obvious flood, and a restart losing the count costs nothing. The counter is
-    /// mutated in place so a new message never pushes the window forward.
-    /// </summary>
-    private bool WithinRateLimit()
-    {
-        string? address = ClientAddress();
-        if (address is null)
-        {
-            return true;
-        }
-
-        SendCount count = _cache.GetOrCreate($"contact-form:{address}", entry =>
-        {
-            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(1);
-            return new SendCount();
-        })!;
-        return Interlocked.Increment(ref count.Value) <= MaxPerHour;
     }
 }

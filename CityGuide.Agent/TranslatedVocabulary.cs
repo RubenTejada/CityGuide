@@ -72,6 +72,8 @@ public static partial class TranslatedVocabulary
         ["Plazas Comerciales y Malls"] = "Shopping Malls",
         ["Remesas y Envíos"] = "Money Transfers & Shipping",
         ["Rent a Car"] = "Car Rentals",
+        ["Tours y Excursiones"] = "Tours & Excursions",
+        ["Salones de Eventos"] = "Event Venues",
         ["Ropa y Moda"] = "Clothing & Fashion",
         ["Servicios"] = "Services",
         ["Supermercados"] = "Supermarkets",

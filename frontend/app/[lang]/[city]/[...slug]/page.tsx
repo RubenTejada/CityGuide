@@ -21,6 +21,7 @@ import { type ListingView } from "@/components/ViewToggle";
 import PlaceCard from "@/components/PlaceCard";
 import MenuDialog from "@/components/MenuDialog";
 import MenuViewer from "@/components/MenuViewer";
+import ReservationDialog from "@/components/ReservationDialog";
 import PhotoGallery from "@/components/PhotoGallery";
 import PlaceMap from "@/components/PlaceMap";
 import Rating from "@/components/Rating";
@@ -67,6 +68,7 @@ import {
   t,
 } from "@/lib/i18n";
 import { hasMenu, placeMenu } from "@/lib/menu";
+import { acceptsReservations } from "@/lib/reservation";
 import { getTopMovies } from "@/lib/movieCatalog";
 import { canonicalSlug, localizedSectionPath } from "@/lib/sectionSlugs";
 import {
@@ -1704,6 +1706,20 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
               priority
             />
           </div>
+          {/* Reservar encabeza la columna: es lo que alguien viene a hacer, y el horario
+              y la carta son lo que consulta antes. Solo el valor propio del nodo — leer
+              el de la empresa mandaría la reserva de una sucursal al correo de la cadena. */}
+          {acceptsReservations(item) && (
+            <div className="mt-4">
+              <ReservationDialog
+                placeId={item.id}
+                placeName={displayName}
+                placeUrl={item.route.path}
+                minDate={todayInDR()}
+                locale={locale}
+              />
+            </div>
+          )}
           {inherited("hours") && (
             <div className="mt-4 rounded-xl border border-neutral-200 bg-white p-4">
               <h2 className="font-semibold">{t(locale).place.hours}</h2>
