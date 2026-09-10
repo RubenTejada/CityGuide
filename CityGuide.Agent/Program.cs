@@ -274,6 +274,98 @@ if (args.Contains("--instagram-events"))
     return 0;
 }
 
+// Un evento suelto, escrito a mano. Es lo que ningún pase alcanza: el flyer que un local
+// reparte por WhatsApp o cuelga en la puerta, la historia de Instagram que caduca en un
+// día, el cartel que alguien fotografía. No está en un portal de boletas, el local no
+// tiene sitio propio y su publicación puede haber desaparecido antes de que el pase de
+// Instagram la lea. Lo que ve una persona se escribe por el mismo camino que lo que leen
+// los pases (EventWriter): bajo la sección de eventos de la ciudad del lugar, con su
+// dirección, sus coordenadas y su foto, y con la misma clave de duplicados, de modo que
+// si el pase de Instagram encuentra después el mismo anuncio no lo publica dos veces.
+// El día es una fecha ("2026-09-12") o el día en que se repite cada semana
+// ("miércoles"), que es como se anuncia media agenda de un pueblo de playa: se guarda
+// entonces con su "recurrence" y el sync lo mueve al siguiente en vez de borrarlo.
+// La fuente es "agent:flyer", así que "--purge-event-source flyer" deshace lo escrito
+// así. Plan hasta --apply.
+if (args.Contains("--add-event"))
+{
+    string? OptionValue(string flag) =>
+        args.SkipWhile(a => a != flag).Skip(1).FirstOrDefault() is { } value
+            && !value.StartsWith("--", StringComparison.Ordinal)
+                ? value
+                : null;
+
+    string[] added = [.. args.SkipWhile(a => a != "--add-event").Skip(1).Take(3)];
+    DayOfWeek? weekday = added.Length == 3 ? EventRecurrence.WeekdayOf(added[2]) : null;
+    DateOnly date = default;
+    bool onADate = added.Length == 3 && DateOnly.TryParseExact(added[2], "yyyy-MM-dd", out date);
+    if (added.Length < 3 || added.Any(a => a.StartsWith("--", StringComparison.Ordinal))
+        || (weekday is null && !onADate))
+    {
+        Console.Error.WriteLine(
+            "--add-event necesita la ruta del lugar, el nombre del evento y cuándo es: una "
+            + "fecha (2026-09-12) o el día que se repite cada semana (miércoles). Ejemplo: "
+            + "dotnet run -- --add-event "
+            + "/juan-dolio-y-guayacanes/restaurantes/comida-rapida/365-sports-bar "
+            + "\"Karaoke Party\" miércoles --time 18:00 --category Música");
+        return 1;
+    }
+
+    // La categoría es un valor del vocabulario y no texto libre: el filtro de eventos
+    // lista los que existen, así que uno nuevo partiría el desplegable en vez de agrupar.
+    string? addedCategory = OptionValue("--category");
+    if (addedCategory is not null && !EventCategories.Options.Contains(addedCategory))
+    {
+        Console.Error.WriteLine(
+            $"Categoría desconocida: {addedCategory}. Las que existen: "
+            + $"{string.Join(", ", EventCategories.Options)}.");
+        return 1;
+    }
+
+    string venuePath = $"/{added[0].Trim('/')}/";
+    if ((await umbraco.GetPublishedPlacesAsync()).FirstOrDefault(p =>
+            p.Path.Equals(venuePath, StringComparison.OrdinalIgnoreCase)) is not { } venue)
+    {
+        Console.Error.WriteLine($"No hay ningún lugar publicado en {venuePath}.");
+        return 1;
+    }
+
+    if (config.Events.Cities.FirstOrDefault(c =>
+            venuePath.StartsWith($"{c.CityPath.TrimEnd('/')}/", StringComparison.OrdinalIgnoreCase))
+        is not { } addedCity)
+    {
+        Console.Error.WriteLine($"{venuePath} no pertenece a ninguna ciudad de Events:Cities.");
+        return 1;
+    }
+
+    bool applyAdded = args.Contains("--apply");
+    Console.WriteLine(applyAdded
+        ? $"\n== Evento a mano en {addedCity.CityPath}/eventos"
+        : $"\n== Evento a mano en {addedCity.CityPath}/eventos "
+          + "(simulación; agrega --apply para aplicarla)");
+    Console.WriteLine($"  {venue.Name} — {venue.Path}");
+
+    var addedEvents = new EventWriter(umbraco, addedCity, "flyer");
+    if (!await addedEvents.OpenAsync())
+    {
+        return 1;
+    }
+
+    EventOutcome outcome = await addedEvents.AddAsync(
+        new AgendaEvent(
+            added[1],
+            weekday is null ? date : null,
+            weekday,
+            TimeOnly.TryParse(OptionValue("--time"), out TimeOnly addedTime) ? addedTime : null,
+            OptionValue("--description"),
+            addedCategory),
+        venue,
+        OptionValue("--website") ?? venue.Website ?? "",
+        applyAdded);
+
+    return outcome == EventOutcome.Failed ? 1 : 0;
+}
+
 // Maintenance pass: recategorize the events the agent already created — the sync
 // left them without a category until it learned to ask for one, and a startup of
 // the CMS stamped every category-less event as "Gastronomía". Prints the plan and

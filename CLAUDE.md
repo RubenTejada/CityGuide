@@ -115,6 +115,20 @@ cd CityGuide.Agent && dotnet run -- --scrape-instagram 30 --section juan-dolio-y
 cd CityGuide.Agent && dotnet run -- --paid --instagram-events --section juan-dolio-y-guayacanes
 cd CityGuide.Agent && dotnet run -- --paid --instagram-events 30 --section juan-dolio-y-guayacanes --apply
 
+# Un evento suelto, escrito a mano, para lo que ningún pase alcanza: el flyer que un
+# local reparte por WhatsApp, la historia de Instagram que caduca en un día. No cuesta
+# nada (ni Google ni modelo) y se escribe por el mismo camino que los pases, así que
+# lleva la dirección, las coordenadas y la foto del lugar y comparte su clave de
+# duplicados. El día es una fecha o el día en que se repite cada semana, que se guarda
+# entonces con su "recurrence". La fuente es "agent:flyer", de modo que
+# "--purge-event-source flyer" deshace lo escrito así. Plan hasta --apply.
+cd CityGuide.Agent && dotnet run -- --add-event \
+  /juan-dolio-y-guayacanes/restaurantes/comida-rapida/365-sports-bar \
+  "DJ Joseph en vivo" 2026-09-12 --time 13:00 --category "Música" --description "..."
+cd CityGuide.Agent && dotnet run -- --add-event \
+  /juan-dolio-y-guayacanes/restaurantes/comida-rapida/365-sports-bar \
+  "Karaoke Party" miércoles --time 18:00 --category "Música" --apply
+
 # File under the cuisine they actually serve the restaurants stuck in "Otros": Google
 # types most restaurants as nothing more than "restaurant", so the cuisine map had no
 # answer and the fallback subcategory grew larger than every cuisine put together. The
