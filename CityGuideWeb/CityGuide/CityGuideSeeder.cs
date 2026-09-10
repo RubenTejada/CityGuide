@@ -1492,6 +1492,62 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
                     18.5025m, -68.3839m,
                     ["Parqueo", "Terraza"]),
             ]),
+        // Juan Dolio y Guayacanes son un solo destino: el pueblo playero y el
+        // municipio al que pertenece comparten playa, bulevar y comercio, así que
+        // el portal los publica como una sola ciudad. Va sin "Cines" — la sala de
+        // Caribbean Cinemas más cercana está en La Romana, fuera del área, y una
+        // sección sin salas es una página vacía; el seeder la crearía en cuanto
+        // se añada aquí. El centro del mapa, que es además el punto por el que se
+        // pregunta el clima, va sobre el pueblo de Juan Dolio.
+        new("Juan Dolio y Guayacanes", "República Dominicana", 18.4270m, -69.4160m,
+            "Playas, restaurantes y vida nocturna de Juan Dolio y Guayacanes, en la costa de San Pedro de Macorís. Ubícate con un clic.",
+            // Lo que Google entiende en una consulta: el nombre del destino, no el
+            // del nodo. Las consultas que buscan el lado de Guayacanes lo nombran ellas.
+            "Juan Dolio, República Dominicana",
+            // De Playa Caribe a Playa Real, la franja costera entre Boca Chica y
+            // San Pedro de Macorís: ninguna de las dos entra, ni tampoco el
+            // rectángulo de Santo Domingo.
+            "18.38,-69.52;18.47,-69.36",
+            [.. CommonSections.Where(s => s.Name != "Cines"), new("Atracciones",
+                "Playas, bulevar y golf de la costa de Juan Dolio y Guayacanes.", [])],
+            [
+                new("Playa Juan Dolio",
+                    "La playa del pueblo: arena fina y agua calmada detrás del arrecife, con el bulevar a un paso y los comedores y bares de playa a lo largo de la orilla.",
+                    "Bulevar de Juan Dolio", "",
+                    "Abierto 24 horas",
+                    18.4253m, -69.4239m,
+                    ["Apto para Niños"]),
+                new("Playa Guayacanes",
+                    "La playa del pueblo pesquero, al oeste de Juan Dolio: yolas varadas en la arena, comedores de pescado frito y el ambiente local de un fin de semana dominicano.",
+                    "Guayacanes, San Pedro de Macorís", "",
+                    "Abierto 24 horas",
+                    18.4205m, -69.4525m,
+                    ["Apto para Niños"]),
+                new("Playa Caribe",
+                    "La playa más tranquila del tramo, entre acantilados bajos y cocoteros camino a Boca Chica: poca gente, agua clara y una vista abierta al Caribe.",
+                    "Playa Caribe, Guayacanes", "",
+                    "Abierto 24 horas",
+                    18.4083m, -69.4998m,
+                    []),
+                new("Playa Real",
+                    "El extremo este de Juan Dolio, frente a los residenciales de Costa del Sol: arena ancha, agua mansa y mucho menos movimiento que el centro del pueblo.",
+                    "Playa Real, Juan Dolio", "",
+                    "Abierto 24 horas",
+                    18.4262m, -69.3972m,
+                    []),
+                new("Bulevar de Juan Dolio",
+                    "La calle que corre pegada al mar: restaurantes, bares, heladerías y tiendas de una punta a otra del pueblo. Es donde se cena, se toma algo y se camina al caer la tarde.",
+                    "Bulevar de Juan Dolio", "",
+                    "Abierto 24 horas",
+                    18.4269m, -69.4162m,
+                    ["Apto para Niños"]),
+                new("Metro Country Club",
+                    "El club de golf de Juan Dolio: el campo Los Marlins, dieciocho hoyos entre el mar y los cocoteros, con casa club y canchas dentro del residencial.",
+                    "Metro Country Club, Juan Dolio", "",
+                    "",
+                    18.4362m, -69.4203m,
+                    ["Parqueo"]),
+            ]),
     ];
 
     /// <summary>
