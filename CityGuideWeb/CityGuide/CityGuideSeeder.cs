@@ -2427,12 +2427,13 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
     }
 
     private sealed record SeedArticle(
-        string Name, string Category, string Summary, string HeroImageUrl,
+        string City, string Name, string Category, string Summary, string HeroImageUrl,
         DateTime PublishDate, string Body);
 
     private static readonly SeedArticle[] Articles =
     [
-        new("Un día completo en la Zona Colonial: historia, café y atardecer",
+        new("Santo Domingo",
+            "Un día completo en la Zona Colonial: historia, café y atardecer",
             "Cultura",
             "Un recorrido a pie por la ciudad más antigua de América: de la Catedral Primada al Alcázar de Colón, con paradas para café, arte y una cerveza fría al caer la tarde.",
             "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a7/Catedral_Primada_CCSD_09_2018_1234.jpg/1280px-Catedral_Primada_CCSD_09_2018_1234.jpg",
@@ -2466,7 +2467,8 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
 
             **El plan en corto:** Catedral y Parque Colón por la mañana, El Conde a media mañana, Alcázar y almuerzo en Plaza España, Casa de Teatro por la tarde, y son y cerveza en Parada 77 o El Sartén de noche. Todo a pie.
             """),
-        new("Santo Domingo con niños: un plan que funciona de verdad",
+        new("Santo Domingo",
+            "Santo Domingo con niños: un plan que funciona de verdad",
             "Familia",
             "Cuevas con lagunas turquesa, un zoológico gigante, trencito en el jardín botánico y helado al final: un itinerario probado para un fin de semana en familia.",
             "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c0/Santo_Domingo_Este_-_Los_Tres_Ojos_0202.JPG/1280px-Santo_Domingo_Este_-_Los_Tres_Ojos_0202.JPG",
@@ -2498,7 +2500,8 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
 
             **Consejos rápidos:** lleva efectivo pequeño para las entradas de los parques, repelente para Los Tres Ojos, y agua siempre. Y si un día se cae por el sueño de la siesta, no pasa nada: la sección [Qué Hacer](/santo-domingo/que-hacer) tiene ideas de sobra para armar otro.
             """),
-        new("Una noche en Santo Domingo: del rooftop a bailar dentro de una cueva",
+        new("Santo Domingo",
+            "Una noche en Santo Domingo: del rooftop a bailar dentro de una cueva",
             "Vida Nocturna",
             "Ruta nocturna por la capital: atardecer con vista en Piantini, cena con merengue en vivo, coctelería colonial y madrugada bailando bajo estalactitas.",
             "https://upload.wikimedia.org/wikipedia/commons/thumb/5/56/DFC_4574_Late-night_drinks_in_Pattaya_-_a_chilled_cocktail_with_a_slice_of_lime_and_neon_reflections.jpg/1280px-DFC_4574_Late-night_drinks_in_Pattaya_-_a_chilled_cocktail_with_a_slice_of_lime_and_neon_reflections.jpg",
@@ -2532,12 +2535,126 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
 
             **Logística:** usa taxi o app entre paradas (las distancias engañan), lleva documento para las discotecas y revisa los [eventos](/santo-domingo/eventos) de la semana: si hay concierto en agenda, la ruta se reordena sola.
             """),
+        new("Juan Dolio y Guayacanes",
+            "Beach clubs de Juan Dolio: cómo funciona el day pass y cuál te conviene",
+            "Playa",
+            "Camas, piscina y consumo mínimo, o playa pública y gratis: qué se paga en cada club de la costa, cuánto ronda y cuál encaja con el día que tienes en mente.",
+            "/media/ix0jbpnl/oceanna-social-club-google.jpg",
+            new DateTime(2026, 9, 10, 9, 0, 0),
+            """
+            Hay dos maneras de pasar el día frente al mar en Juan Dolio, y conviene saber cuál estás comprando. Una es la playa pública: gratis, con su ruido, sus vendedores y su gente. La otra es el beach club: cama, sombra, piscina, cocina y música, a cambio de un monto por persona. Ninguna es mejor que la otra; son dos planes distintos y este año las redes se llenaron del segundo.
+
+            ## Lo primero: casi nadie cobra "entrada"
+
+            El modelo de la zona no es un ticket, es un consumo mínimo: pagas un monto por cabeza y ese mismo dinero se te descuenta en comida y bebida. En [Oceanna Social Club](/juan-dolio-y-guayacanes/restaurantes/otros/oceanna-social-club), el más comentado de todos, ese monto ronda los RD$2,500 por adulto los sábados, domingos y días feriados, y RD$1,000 por niño de 5 a 14 años, con pago en tarjeta. Los precios se mueven con la temporada y con el día, así que confírmalos por teléfono o por Instagram antes de montarte en la autopista.
+
+            ## Oceanna Social Club: el que salió en todos los videos
+
+            Piscina, camas frente al mar, paella los fines de semana y una estética que en TikTok le ganó el apodo de "mini Tulum". Es el que más se reserva y el que más se llena: pide mesa o cama con antelación y di dónde quieres sentarte, porque no es lo mismo la primera fila que el fondo. Tiene 4,4 estrellas con casi 1.300 opiniones, que para un sitio tan visitado dice bastante.
+
+            ![Camas y piscina frente al mar en Oceanna Social Club](/media/ix0jbpnl/oceanna-social-club-google.jpg)
+
+            ## Aquarium Beach Club: la playa primero
+
+            Menos piscina y más arena. [Aquarium Beach Club & Restaurant](/juan-dolio-y-guayacanes/bares-y-clubes/aquarium-beach-club-restaurant) funciona como un club de playa de toda la vida —sombrillas, mesas, cocina de mar y música— y es el punto medio entre pagar por una cama y sentarte en la arena pública. Buena opción cuando el grupo es grande y no todo el mundo quiere el mismo plan.
+
+            ![Aquarium Beach Club, a pie de arena en Juan Dolio](/media/akoiin0p/aquarium-beach-club-restaurant-google.jpg)
+
+            ## Club Hemingway: el clásico
+
+            [Club Hemingway](/juan-dolio-y-guayacanes/bares-y-clubes/club-hemingway) es el nombre que lleva décadas en esta costa, con 4,6 estrellas y casi tres mil opiniones. Su [playa](/juan-dolio-y-guayacanes/atracciones/playa-hemingway) es de las más protegidas del tramo y [El Embarcadero](/juan-dolio-y-guayacanes/restaurantes/mariscos/el-embarcadero-club-hemingway), su restaurante de mar, se sostiene solo: se puede ir a almorzar sin hacer día de playa.
+
+            ![La playa de Club Hemingway, de las más protegidas de la costa](/media/4aphff4m/club-hemingway-google.jpg)
+
+            ## Si no quieres pagar nada
+
+            La [Playa de Juan Dolio](/juan-dolio-y-guayacanes/atracciones/playa-juan-dolio) es pública y buena: arena clara, agua tranquila y 4,5 estrellas de más de mil visitantes. Llega temprano para agarrar sombra natural, lleva efectivo para los vendedores y termina el día caminando el [Bulevar de Juan Dolio](/juan-dolio-y-guayacanes/atracciones/bulevar-de-juan-dolio), que es donde la zona se reúne al caer el sol.
+
+            ## Para ir de bar y no de club
+
+            Si lo que buscas es cerveza fría y música con los pies en la arena, [365 Beach Bar](/juan-dolio-y-guayacanes/bares-y-clubes/365-beach-bar) y [Coco's Beach Club](/juan-dolio-y-guayacanes/bares-y-clubes/cocos-beach-club) son bares de playa, no clubes con cama: se entra, se consume lo que se quiera y ya. El resto de la oferta está en [Bares y Clubes](/juan-dolio-y-guayacanes/bares-y-clubes).
+
+            **El plan en corto:** reserva si vas a un club (sobre todo domingo), lleva tarjeta porque varios no toman efectivo en la puerta, pregunta el monto del día antes de salir, y si la idea era solo mar y sombra, la playa pública sigue siendo gratis. Antes de arrancar, mira lo que hay en la [agenda de la semana](/juan-dolio-y-guayacanes/eventos) y las ideas de [Qué Hacer](/juan-dolio-y-guayacanes/que-hacer).
+            """),
+        new("Juan Dolio y Guayacanes",
+            "Domingo en Guayacanes: fritura, pescado frito y la playa de los locales",
+            "Gastronomía",
+            "La playa a la que va la gente de aquí: mesitas de plástico, pescado frito con tostones, yaniqueques recién sacados del aceite y agua mansa. Cómo hacerlo bien y cuánto llevar.",
+            "/media/xljf0tjg/playa-guayacanes-google.jpg",
+            new DateTime(2026, 9, 10, 9, 30, 0),
+            """
+            A cinco minutos de los hoteles de Juan Dolio hay otra playa que funciona con otras reglas. [Playa Guayacanes](/juan-dolio-y-guayacanes/atracciones/playa-guayacanes) es el domingo dominicano completo: familias con neveras, mesitas de plástico bajo las uvas de playa, música a volumen de barrio y frituras trabajando desde temprano. Tiene 4,3 estrellas con más de 2.600 opiniones, y casi todas las dejó gente del país.
+
+            ![Playa Guayacanes, la playa del domingo local](/media/xljf0tjg/playa-guayacanes-google.jpg)
+
+            ## Lo que se come, y dónde
+
+            El plato es siempre el mismo y por eso hay que pedirlo bien: pescado frito entero —chillo o mero, según lo que entró esa mañana—, con tostones, ensalada y arroz. Al lado, el yaniqueque, esa masa de harina frita que en esta costa es religión, y que en Guayacanes tiene fama nacional desde que un video de las frituras del pueblo dio la vuelta al país.
+
+            En la orilla misma están los puestos: [D' Yeimi Fritura](/juan-dolio-y-guayacanes/restaurantes/criolla/d-yeimi-fritura), [Fritanga Criolla](/juan-dolio-y-guayacanes/restaurantes/criolla/fritanga-criolla) y [El Puesto de Doña Cristina](/juan-dolio-y-guayacanes/restaurantes/criolla/el-puesto-de-dona-cristina), que es de los mejor puntuados del tramo. Un paso más allá, con mesa y servicio, [Playa Del Pescador](/juan-dolio-y-guayacanes/restaurantes/mariscos/playa-del-pescador) y [Restaurante Bucaneros](/juan-dolio-y-guayacanes/restaurantes/mariscos/restaurante-bucaneros) hacen el mismo pescado sentado.
+
+            ## Del lado de Juan Dolio: las mesitas
+
+            Si te quedas en Juan Dolio, el equivalente son [las mesitas de la playa](/juan-dolio-y-guayacanes/restaurantes/criolla/mesitas-playa-juan-dolio): tarima, plástico, sombrilla y la comida saliendo detrás. Es el mismo espíritu con otra dirección, y queda a pasos del [Bulevar](/juan-dolio-y-guayacanes/atracciones/bulevar-de-juan-dolio).
+
+            ![Las mesitas de la playa de Juan Dolio](/media/elgljs5s/mesitas-playa-juan-dolio-google.jpg)
+
+            ## Cómo hacerlo bien
+
+            - Llega antes de las once. Después de mediodía el domingo no hay sombra libre, ni parqueo cerca.
+            - Lleva efectivo. En la orilla casi nadie tiene datáfono, y el cajero más cercano está en el pueblo.
+            - Pregunta el precio del pescado antes de que lo echen al aceite: se cobra por libra y varía con lo que se pescó.
+            - Si viajas con niños, este tramo es de agua mansa y poca profundidad; el arrecife rompe las olas antes de llegar.
+
+            ## Otras dos playas del mismo día
+
+            Para escapar del bullicio sin salir de la zona, [Playa Real](/juan-dolio-y-guayacanes/atracciones/playa-real) y [Playa Vicini](/juan-dolio-y-guayacanes/atracciones/playa-vicini) quedan al lado y suelen estar más vacías, aunque casi no tienen servicios: lo que lleves es lo que hay.
+
+            **El plan en corto:** pescado frito y yaniqueque en Guayacanes antes del mediodía, siesta de sombrilla, baño largo en agua tranquila y regreso por el Bulevar. Presupuesta el almuerzo en efectivo y no hace falta nada más. Si el día pide otra cosa, mira la [sección de Restaurantes](/juan-dolio-y-guayacanes/restaurantes) o las ideas de [Qué Hacer](/juan-dolio-y-guayacanes/que-hacer).
+            """),
+        new("Juan Dolio y Guayacanes",
+            "El mar por fuera: buceo, ballenas y caballos desde Juan Dolio",
+            "Aventura",
+            "Un arrecife a minutos de la orilla, barcos hundidos que hoy son coral, la temporada de ballenas de enero a marzo y cabalgatas al atardecer: la costa vista desde el agua.",
+            "https://upload.wikimedia.org/wikipedia/commons/thumb/9/91/Juan_Dolio_Beach_2.jpg/1280px-Juan_Dolio_Beach_2.jpg",
+            new DateTime(2026, 9, 10, 10, 0, 0),
+            """
+            Juan Dolio se disfruta desde la arena, pero lo que la distingue del resto de la costa está mar afuera: un arrecife que rompe las olas a pocos metros —por eso el agua es tan mansa— y, más allá, barcos hundidos que llevan décadas convirtiéndose en coral.
+
+            ## Buceo: arrecife primero, naufragios después
+
+            La inmersión de arrecife de esta bahía es de las fáciles: poca corriente, profundidad moderada y bastante vida para lo cerca que está de la orilla. Los naufragios de la zona —el Tanya V es el más conocido— están a profundidades recreativas y hoy son estructuras cubiertas de coral duro y blando, con peces viviendo dentro. La mejor ventana es de diciembre a mayo, cuando el sur amanece plano y el agua se aclara.
+
+            El centro de la zona es [Shark Juan Dolio Diver](/juan-dolio-y-guayacanes/tours/sharkjuandoliodiver), en Guayacanes, que trabaja tanto la salida de arrecife como los naufragios y los bautismos para quien nunca se ha puesto un tanque.
+
+            ## Ballenas: de mediados de enero a finales de marzo
+
+            Las jorobadas no pasan por aquí, pero Juan Dolio es una base cómoda para ir a verlas: la temporada en la bahía de Samaná va del 15 de enero al 31 de marzo, con el pico en febrero, y varias agencias salen desde esta costa con transporte incluido. [Juan Dolio Whale Watch](/juan-dolio-y-guayacanes/tours/juan-dolio-whale-watch) y [Juan Dolio - Samana Tours & Haitises](/juan-dolio-y-guayacanes/tours/juan-dolio-samana-tours-haitises) arman ese día completo, que normalmente incluye Cayo Levantado o el Salto El Limón.
+
+            ![La salida a Samaná en temporada de ballenas](/media/efoo2pah/juan-dolio-whale-watch-google.jpg)
+
+            ## Caballos al atardecer
+
+            El plan más subestimado de la zona: [Juan Dolio Horseback Riding](/juan-dolio-y-guayacanes/tours/juan-dolio-horseback-riding-cabalgatas) sale a caballo por la orilla a última hora de la tarde, cuando baja el sol y la arena se vacía. Es corto, sirve para todas las edades y es de lo mejor puntuado del pueblo.
+
+            ![Cabalgata por la orilla al caer la tarde](/media/c3zlqyhg/juan-dolio-horseback-riding-cabalgatas-google.jpg)
+
+            ## Excursiones de día completo
+
+            Desde aquí se llega en el mismo día a Isla Saona, a la Cueva de las Maravillas o a la capital, y las agencias del pueblo venden esas salidas con recogida en el hotel: [Excursiones Rachelly](/juan-dolio-y-guayacanes/tours/excursiones-rachelly-srl), [Pedro Díaz Tours](/juan-dolio-y-guayacanes/tours/pedro-diaz-tours-srl-of1) y [Maria Rigamonti Eldorado Travel](/juan-dolio-y-guayacanes/tours/maria-rigamonti-eldorado-travel), entre otras. La lista completa está en [Tours](/juan-dolio-y-guayacanes/tours).
+
+            ## Si el mar amanece movido
+
+            Pasa, sobre todo entre agosto y noviembre. El plan de repuesto en tierra son los dos campos de la zona, [Guavaberry Golf and Country Club](/juan-dolio-y-guayacanes/atracciones/guavaberry-golf-and-country-club) y [Metro Country Club](/juan-dolio-y-guayacanes/atracciones/metro-country-club), o bajar la tarde con calma en el [Bulevar](/juan-dolio-y-guayacanes/atracciones/bulevar-de-juan-dolio).
+
+            **El plan en corto:** buceo o snorkel temprano, cuando el viento aún no ha levantado el mar; cabalgata al atardecer; y si viajas entre enero y marzo, reserva la salida a Samaná con días de antelación, porque en temporada se llena. Todo lo demás está en [Qué Hacer](/juan-dolio-y-guayacanes/que-hacer).
+            """),
     ];
 
     /// <summary>
-    /// Idempotent, runs every startup: creates the "Artículos" page under Santo Domingo
-    /// and any missing seed article (guarded per article), so new entries added to
-    /// <see cref="Articles"/> reach existing installations.
+    /// Idempotent, runs every startup: creates the "Artículos" page of every city named
+    /// in <see cref="Articles"/> and any missing seed article (guarded per article), so
+    /// new entries — a new article, or a city's first one — reach existing installations.
     /// </summary>
     private bool EnsureArticlesSeeded()
     {
@@ -2547,16 +2664,32 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         }
 
         IContent? site = _contentService.GetRootContent().FirstOrDefault(c => c.ContentType.Alias == "site");
-        if (site is null || Descendant(site, "city", "Santo Domingo") is not { } city)
+        if (site is null)
         {
             return false;
         }
 
+        bool seeded = false;
+        foreach (IGrouping<string, SeedArticle> cityArticles in Articles.GroupBy(a => a.City))
+        {
+            // A city added to the table before it exists in the tree is simply skipped:
+            // the next startup after it is seeded picks its articles up.
+            if (Descendant(site, "city", cityArticles.Key) is { } city)
+            {
+                seeded |= SeedCityArticles(city, cityArticles);
+            }
+        }
+
+        return seeded;
+    }
+
+    private bool SeedCityArticles(IContent city, IEnumerable<SeedArticle> articles)
+    {
         IContent? articulos = Descendant(city, "articlesPage", "Artículos");
         bool seeded = false;
         if (articulos is null)
         {
-            _logger.LogInformation("CityGuide: seeding 'Artículos' page");
+            _logger.LogInformation("CityGuide: seeding 'Artículos' page for {City}", city.Name);
             articulos = CreateContent("Artículos", city.Id, "articlesPage");
             SetSeedValue(articulos, "intro",
                 "Guías, rutas e ideas escritas para disfrutar la ciudad: planes por barrio, por presupuesto y para cada tipo de plan.");
@@ -2564,7 +2697,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
             seeded = true;
         }
 
-        foreach (SeedArticle seed in Articles)
+        foreach (SeedArticle seed in articles)
         {
             // Existing seed articles are updated in place when the seed text
             // changes, so content fixes reach installations already seeded.
