@@ -76,6 +76,7 @@ const SUBCATEGORY_ICONS: Record<string, string> = {
   // Empresas y Servicios
   bancos: "🏦",
   "remesas-y-envios": "💸",
+  "rent-a-car": "🚗",
   // Mall groups
   comida: "🍽",
   restaurantes: "🍽",
