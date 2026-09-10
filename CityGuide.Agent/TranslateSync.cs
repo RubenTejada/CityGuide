@@ -266,9 +266,12 @@ public class TranslateSync(UmbracoClient umbraco, IEnrichmentClient enricher)
                 unnamed.Add(node.Name);
             }
         }
-        else if (node.ContentType == "article")
+        else if (node.ContentType is "article" or "tour")
         {
-            // A headline is prose, and the URL it makes is the article's own.
+            // A headline is prose, and the URL it makes is the article's own. So is the
+            // name of an excursion ("Isla Saona en catamarán, día completo"), which
+            // describes a day rather than naming a place: it is written, not chosen, and
+            // an English reader has to be able to read it.
             forModel["name"] = node.Name;
         }
 
