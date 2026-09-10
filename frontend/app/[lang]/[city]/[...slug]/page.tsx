@@ -13,6 +13,7 @@ import JsonLd from "@/components/JsonLd";
 import ArticleCard, { articleDate } from "@/components/ArticleCard";
 import FacilityBadges, { FACILITY_ICONS } from "@/components/FacilityBadges";
 import AttractionCard from "@/components/AttractionCard";
+import TourCard from "@/components/TourCard";
 import ListingViews from "@/components/ListingViews";
 import ListingPagination from "@/components/ListingPagination";
 import SubcategoryLinks from "@/components/SubcategoryLinks";
@@ -68,6 +69,14 @@ import {
   t,
 } from "@/lib/i18n";
 import { hasMenu, placeMenu } from "@/lib/menu";
+import { curatedPhoto } from "@/lib/photos";
+import {
+  durationLabel,
+  includedItems,
+  priceLabel,
+  tourMeta,
+  tourOperators,
+} from "@/lib/tour";
 import { acceptsReservations } from "@/lib/reservation";
 import { getTopMovies } from "@/lib/movieCatalog";
 import { canonicalSlug, localizedSectionPath } from "@/lib/sectionSlugs";
@@ -107,6 +116,7 @@ import {
   placeJsonLd,
   seoDescription,
   seoTitle,
+  tourJsonLd,
 } from "@/lib/seo";
 import {
   activeLocale,
@@ -182,6 +192,8 @@ export default async function ContentPage({
       }
       return <PlaceView item={item} />;
     }
+    case "tour":
+      return <TourView item={item} />;
     case "movie":
       return <MovieView item={item} citySlug={city} fecha={fecha} />;
     case "eventsPage":
@@ -366,6 +378,20 @@ export async function generateMetadata({
       );
       image = image ?? sectionListImage(item.route.path);
       break;
+    case "tour": {
+      const duration = durationLabel(item, locale, t(locale).tours) ?? "";
+      title = seoTitle(item, `${item.name}${inCity}`, item.name);
+      description = seoDescription(
+        item,
+        text(item, "description"),
+        words.tourFallback(item.name, duration, inCity),
+      );
+      image =
+        image ??
+        curatedPhoto(citySlug, slugOf(item)) ??
+        sectionListImage(item.route.path);
+      break;
+    }
     case "movie":
       title = seoTitle(
         item,
@@ -564,10 +590,16 @@ function PageShell({
  * into category/subcategory listings.
  */
 async function listingEntries(path: string): Promise<UmbracoItem[]> {
-  const [places, companies, malls] = await Promise.all([
+  // Only the "Tours" section holds excursions, so only there is the extra query
+  // worth making: everywhere else it would cost one request per listing to find
+  // nothing.
+  const [places, companies, malls, tours] = await Promise.all([
     getDescendantsOfType(path, "place"),
     getDescendantsOfType(path, "company"),
     getDescendantsOfType(path, "mall"),
+    sectionSlug(path) === "tours"
+      ? getDescendantsOfType(path, "tour")
+      : Promise.resolve([] as UmbracoItem[]),
   ]);
   const under = (containers: UmbracoItem[], item: UmbracoItem) =>
     containers.some((container) => isUnder(container, item));
@@ -575,7 +607,7 @@ async function listingEntries(path: string): Promise<UmbracoItem[]> {
   const standalonePlaces = places.filter(
     (p) => !under(companies, p) && !under(malls, p),
   );
-  return [...malls, ...standaloneCompanies, ...standalonePlaces];
+  return [...tours, ...malls, ...standaloneCompanies, ...standalonePlaces];
 }
 
 /** How many entries a listing page shows, from the queries the view itself
@@ -957,6 +989,30 @@ function Listing({
  */
 const PHOTO_CARD_SECTIONS = new Set(["atracciones", "tours"]);
 
+/**
+ * The card one entry of a listing is drawn with. An excursion carries its own —
+ * what is picked there is a day, so the card says how long it takes, whether they
+ * come for you and what it costs; an outing takes the guide's photo card; anything
+ * else is a place, with its address and its rating.
+ */
+function listingCard(
+  entry: UmbracoItem,
+  locale: Locale,
+  photoCard: boolean,
+): ReactNode {
+  if (entry.contentType === "tour") {
+    return <TourCard key={entry.id} tour={entry} locale={locale} />;
+  }
+  return photoCard ? (
+    <AttractionCard key={entry.id} place={entry} compact locale={locale} />
+  ) : (
+    <PlaceCard key={entry.id} place={entry} locale={locale} />
+  );
+}
+
+/** The grid a listing of photo cards uses: three across on a wide screen. */
+const PHOTO_CARD_GRID = "mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-3";
+
 async function CategoryView({
   item,
   citySlug,
@@ -1031,23 +1087,8 @@ async function CategoryView({
           entries={entries}
           groups={filters}
           markersById={markers}
-          card={(entry) =>
-            showsAttractions ? (
-              <AttractionCard
-                key={entry.id}
-                place={entry}
-                compact
-                locale={locale}
-              />
-            ) : (
-              <PlaceCard key={entry.id} place={entry} locale={locale} />
-            )
-          }
-          gridClassName={
-            showsAttractions
-              ? "mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
-              : undefined
-          }
+          card={(entry) => listingCard(entry, locale, showsAttractions)}
+          gridClassName={showsAttractions ? PHOTO_CARD_GRID : undefined}
         />
       )}
       {/* The links to the subcategories close the page, under the pagination:
@@ -1069,6 +1110,141 @@ async function CategoryView({
  * showings — every cinema in the city presenting it on the chosen date, with
  * booking links and a map of those cinemas. Date via ?fecha=YYYY-MM-DD.
  */
+/**
+ * La ficha de una excursión: la foto del sitio adonde va, lo que hay que saber antes
+ * de apartarle el día — cuánto dura, si pasan a buscarte, en qué temporada se hace —,
+ * qué cubre el precio y quién la lleva.
+ *
+ * Nada se reserva aquí: el portal traslada la solicitud y la confirma el operador,
+ * que es lo mismo que promete el formulario de una mesa y por eso es el mismo, con
+ * las frases de una excursión. El operador es un nodo del propio portal — vive en la
+ * sección que dice lo que es, "Atracciones" o "Empresas y Servicios" — así que se
+ * enlaza en vez de repetirse.
+ */
+async function TourView({ item }: { item: UmbracoItem }) {
+  const locale = await activeLocale();
+  const words = t(locale).tours;
+  // The operators are a picker, and the route fetch does not expand it: without
+  // this the list of who runs the excursion comes back empty.
+  const expanded = await getItem(item.route.path, "properties[operators]");
+  const citySlug = contentSegments(item.route.path)[0] ?? "";
+  const photo =
+    photoUrl(item) ??
+    curatedPhoto(citySlug, slugOf(item)) ??
+    sectionListImage(item.route.path);
+  const meta = tourMeta(item, locale, words);
+  const price = priceLabel(item, locale);
+  const included = includedItems(item);
+  const operators = tourOperators(expanded ?? item);
+  const meetingPoint = text(item, "meetingPoint");
+  const booking = text(item, "bookingUrl");
+
+  return (
+    <PageShell item={item}>
+      <JsonLd data={tourJsonLd(expanded ?? item, photo, locale)} />
+      <div className="mt-4 flex flex-wrap items-start gap-x-4 gap-y-2">
+        <h1 className="text-3xl font-bold">{item.name}</h1>
+        <ShareButtons
+          url={absoluteUrl(item.route.path)}
+          title={item.name}
+          className="sm:ml-auto"
+        />
+      </div>
+      {meta.length > 0 && (
+        <p className="mt-2 text-sm text-neutral-500">{meta.join(" · ")}</p>
+      )}
+
+      <div className="mt-6 grid gap-8 lg:grid-cols-[1fr_20rem] lg:items-start">
+        <div>
+          <div className="relative aspect-[16/9] overflow-hidden rounded-xl bg-neutral-200">
+            <Image
+              src={photo}
+              alt={item.name}
+              fill
+              unoptimized={photo.endsWith(".svg")}
+              className="object-cover"
+              sizes="(min-width: 1024px) 60vw, 100vw"
+              priority
+            />
+          </div>
+          {text(item, "description") && (
+            <p className="mt-5 whitespace-pre-line text-neutral-700">
+              {text(item, "description")}
+            </p>
+          )}
+          {included.length > 0 && (
+            <div className="mt-6 rounded-xl border border-neutral-200 bg-white p-5">
+              <h2 className="font-semibold">{words.includes}</h2>
+              <ul className="mt-2 space-y-1.5 text-sm text-neutral-700">
+                {included.map((line) => (
+                  <li key={line} className="flex gap-2">
+                    <span aria-hidden className="text-brand-600">
+                      ✓
+                    </span>
+                    <span>{line}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {meetingPoint && (
+            <div className="mt-4 rounded-xl border border-neutral-200 bg-white p-5">
+              <h2 className="font-semibold">{words.meetingPoint}</h2>
+              <p className="mt-1 text-sm text-neutral-600">{meetingPoint}</p>
+            </div>
+          )}
+        </div>
+
+        <aside className="rounded-xl border border-neutral-200 bg-white p-5">
+          <p className="text-lg font-semibold text-brand-700">
+            {price ? words.priceFrom(price) : words.priceOnRequest}
+          </p>
+          {acceptsReservations(item) && (
+            <div className="mt-4">
+              <ReservationDialog
+                placeId={item.id}
+                placeName={item.name}
+                placeUrl={item.route.path}
+                minDate={todayInDR()}
+                locale={locale}
+                variant="tour"
+              />
+            </div>
+          )}
+          {booking && (
+            <a
+              href={booking}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-3 block rounded-xl border border-brand-600 px-4 py-2.5 text-center text-sm font-semibold text-brand-700 transition-colors hover:bg-brand-50"
+            >
+              {words.bookWithOperator}
+            </a>
+          )}
+          {operators.length > 0 && (
+            <div className="mt-5 border-t border-neutral-200 pt-4">
+              <h2 className="text-sm font-semibold">{words.operators}</h2>
+              <ul className="mt-2 space-y-1 text-sm">
+                {operators.map((operator) => (
+                  <li key={operator.id}>
+                    <Link
+                      href={operator.route.path}
+                      className="text-brand-700 hover:underline"
+                    >
+                      {operator.name}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <p className="mt-4 text-xs text-neutral-500">{words.operatorsHint}</p>
+        </aside>
+      </div>
+    </PageShell>
+  );
+}
+
 async function MovieView({
   item,
   citySlug,
@@ -1189,6 +1365,11 @@ async function SubcategoryView({
     parentOf(item),
   ]);
   const markers = await listingMarkers(item.route.path, entries);
+  // A subcategory reads like its section: the kinds of day under "Tours" and the
+  // kinds of outing under "Atracciones" are picked by their picture.
+  const photoCards = PHOTO_CARD_SECTIONS.has(
+    canonicalSlug(contentSegments(item.route.path)[1] ?? ""),
+  );
   const lead =
     text(item, "intro") ||
     listingLead({
@@ -1210,9 +1391,8 @@ async function SubcategoryView({
         query={query}
         entries={entries}
         markersById={markers}
-        card={(entry) => (
-          <PlaceCard key={entry.id} place={entry} locale={locale} />
-        )}
+        card={(entry) => listingCard(entry, locale, photoCards)}
+        gridClassName={photoCards ? PHOTO_CARD_GRID : undefined}
       />
     </PageShell>
   );

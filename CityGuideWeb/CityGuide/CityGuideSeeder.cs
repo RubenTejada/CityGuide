@@ -130,6 +130,8 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
 
         await EnsureArticleSchemaAsync();
 
+        await EnsureTourSchemaAsync();
+
         await EnsurePlaceRatingSchemaAsync();
 
         await EnsureEventCategorySchemaAsync();
@@ -168,7 +170,9 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
 
         bool cityContentSeeded = EnsureCityContentSeeded();
 
-        bool toursSeeded = EnsureToursSectionSeeded();
+        bool operatorsFiled = EnsureTourOperatorsFiled();
+
+        bool toursSeeded = EnsureToursSeeded();
 
         EnsureContactInboxSeeded();
 
@@ -201,6 +205,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
             && (banksSeeded
                 || citiesSeeded
                 || cityContentSeeded
+                || operatorsFiled
                 || toursSeeded
                 || logosRestored
                 || agentConfigSeeded
@@ -681,6 +686,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         ("articlesPage", ["intro", "metaTitle", "metaDescription"]),
         ("article", ["summary", "body", "category", "metaTitle", "metaDescription"]),
         ("movie", ["synopsis", "genre", "metaTitle", "metaDescription"]),
+        ("tour", ["description", "includes", "meetingPoint", "metaTitle", "metaDescription"]),
     ];
 
     /// <summary>
@@ -877,6 +883,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
     [
         "city", "categoryPage", "subcategory", "place", "company", "mall",
         "eventsPage", "eventItem", "thingsToDoPage", "articlesPage", "article", "movie",
+        "tour",
     ];
 
     /// <summary>
@@ -1411,7 +1418,17 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         new("Empresas y Servicios", "Empresas y servicios locales.", []),
     ];
 
+    /// <summary>What the section holds now: the excursions, not the agencies.</summary>
     private const string ToursIntro =
+        "Excursiones y planes de un día desde Juan Dolio: islas, ballenas, buceo y salidas al campo, "
+        + "con lo que incluye cada una y quién la lleva.";
+
+    /// <summary>
+    /// The introduction the section carried while it listed operators, replaced in place
+    /// on installations that already have it — and only when it is still exactly that
+    /// text, never one an editor rewrote.
+    /// </summary>
+    private const string ToursLegacyIntro =
         "Tours, excursiones y operadores turísticos de la zona: salidas de un día, mar y naturaleza.";
 
     private static readonly SeedCity[] SeedCities =
@@ -1758,21 +1775,32 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         return changed;
     }
 
-    /// <summary>Where the tour operators lived before "Tours" was a section of its own.</summary>
+    /// <summary>Where the tour operators live: what they sell is arranged, not walked into.</summary>
     private const string ToursLegacySubcategory = "Tours y Excursiones";
 
     /// <summary>
-    /// Idempotent, runs every startup: moves the tour operators out of the
-    /// "Tours y Excursiones" subcategory of "Empresas y Servicios" into the city's own
-    /// "Tours" section — in a beach town an excursion is the plan of the day, read like
-    /// an attraction and not like a service filed beside the banks — and sends the
-    /// emptied subcategory to the recycle bin. The section itself is one more row of
-    /// <see cref="SeedCity.Sections"/>, created by <see cref="EnsureCityContentSeeded"/>;
-    /// a city without one is left exactly as it is, and so is a subcategory whose places
-    /// could not all be moved. Moving changes their URL and the old one stops answering,
-    /// which is the same trade "--recategorize-places" makes in the agent.
+    /// The operators filed under "Atracciones" instead: what they offer happens at one
+    /// spot the visitor goes to — a dive centre, the horses on the beach — and reads
+    /// like an attraction, not like an agency that arranges a day elsewhere.
     /// </summary>
-    private bool EnsureToursSectionSeeded()
+    private static readonly string[] TourOutingOperators =
+    [
+        "Sharkjuandoliodiver",
+        "Juan Dolio Horseback Riding (Cabalgatas)",
+        "Villa Jubey Emotion JG",
+    ];
+
+    /// <summary>
+    /// Idempotent, runs every startup: takes the operators out of the "Tours" section and
+    /// files them where a business belongs — the ones that run an outing of their own under
+    /// "Atracciones", every agency under "Tours y Excursiones" in "Empresas y Servicios",
+    /// recreated when it is missing. The section itself is left to hold what a visitor
+    /// actually plans: the excursions <see cref="EnsureToursSeeded"/> writes. Only "place"
+    /// children are moved, so the tours and their subcategories are never touched, and a
+    /// city without a "Tours" section is left exactly as it is. Moving changes a URL and
+    /// the old one stops answering, the same trade "--recategorize-places" makes.
+    /// </summary>
+    private bool EnsureTourOperatorsFiled()
     {
         IContent? site = _contentService.GetRootContent().FirstOrDefault(c => c.ContentType.Alias == "site");
         if (site is null)
@@ -1785,34 +1813,451 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
             .GetPagedChildren(site.Id, 0, 100, out _, null, null, null, false)
             .Where(c => c.ContentType.Alias == "city"))
         {
-            if (Descendant(city, "categoryPage", "Tours") is not IContent tours
-                || Descendant(city, "categoryPage", "Empresas y Servicios") is not IContent servicios
-                || Descendant(servicios, "subcategory", ToursLegacySubcategory) is not IContent legacy)
+            if (Descendant(city, "categoryPage", "Tours") is not IContent tours)
             {
                 continue;
             }
 
-            foreach (IContent child in _contentService
-                .GetPagedChildren(legacy.Id, 0, 500, out _, null, null, null, false))
+            List<IContent> operators = _contentService
+                .GetPagedChildren(tours.Id, 0, 500, out _, null, null, null, false)
+                .Where(c => c.ContentType.Alias == "place")
+                .ToList();
+            if (operators.Count == 0)
             {
-                _logger.LogInformation("CityGuide: moving '{Name}' into the 'Tours' section of '{City}'",
-                    child.Name, city.Name);
-                _contentService.Move(child, tours.Id);
+                continue;
+            }
+
+            IContent? atracciones = Descendant(city, "categoryPage", "Atracciones");
+            IContent? agencies = Descendant(city, "categoryPage", "Empresas y Servicios") is IContent servicios
+                ? Descendant(servicios, "subcategory", ToursLegacySubcategory) ?? CreateSubcategory(servicios,
+                    ToursLegacySubcategory,
+                    "Agencias y operadores que arman excursiones, traslados y salidas de un día.")
+                : null;
+
+            foreach (IContent op in operators)
+            {
+                IContent? destination = TourOutingOperators.Contains(op.Name, StringComparer.OrdinalIgnoreCase)
+                    ? atracciones
+                    : agencies;
+                if (destination is null)
+                {
+                    continue;
+                }
+
+                _logger.LogInformation("CityGuide: filing '{Name}' under '{Section}' in '{City}'",
+                    op.Name, destination.Name, city.Name);
+                _contentService.Move(op, destination.Id);
                 moved = true;
             }
 
-            if (_contentService.GetPagedChildren(legacy.Id, 0, 1, out _, null, null, null, false).Any())
+            moved |= RepairTourOperatorLinks(city);
+        }
+
+        return moved;
+    }
+
+    /// <summary>
+    /// The addresses the moved operators used to answer at, and the ones they answer at
+    /// now. Moving a node changes its URL and the old one stops answering, so the guide
+    /// article that names half of them by hand is rewritten by the same step that moves
+    /// them — a link the portal writes itself must never be the one that 404s.
+    /// </summary>
+    private static readonly (string Old, string New)[] TourOperatorLinkFixes =
+    [
+        ("/juan-dolio-y-guayacanes/tours/sharkjuandoliodiver",
+            "/juan-dolio-y-guayacanes/atracciones/sharkjuandoliodiver"),
+        ("/juan-dolio-y-guayacanes/tours/juan-dolio-horseback-riding-cabalgatas",
+            "/juan-dolio-y-guayacanes/atracciones/juan-dolio-horseback-riding-cabalgatas"),
+        ("/juan-dolio-y-guayacanes/tours/juan-dolio-whale-watch",
+            "/juan-dolio-y-guayacanes/empresas-y-servicios/tours-y-excursiones/juan-dolio-whale-watch"),
+        ("/juan-dolio-y-guayacanes/tours/juan-dolio-samana-tours-haitises",
+            "/juan-dolio-y-guayacanes/empresas-y-servicios/tours-y-excursiones/juan-dolio-samana-tours-haitises"),
+        ("/juan-dolio-y-guayacanes/tours/excursiones-rachelly-srl",
+            "/juan-dolio-y-guayacanes/empresas-y-servicios/tours-y-excursiones/excursiones-rachelly-srl"),
+        ("/juan-dolio-y-guayacanes/tours/pedro-diaz-tours-srl-of1",
+            "/juan-dolio-y-guayacanes/empresas-y-servicios/tours-y-excursiones/pedro-diaz-tours-srl-of1"),
+        ("/juan-dolio-y-guayacanes/tours/maria-rigamonti-eldorado-travel",
+            "/juan-dolio-y-guayacanes/empresas-y-servicios/tours-y-excursiones/maria-rigamonti-eldorado-travel"),
+        // The bare section link meant "the operators", which is what it keeps pointing at.
+        ("/juan-dolio-y-guayacanes/tours)",
+            "/juan-dolio-y-guayacanes/empresas-y-servicios/tours-y-excursiones)"),
+    ];
+
+    /// <summary>
+    /// Idempotent, runs every startup and guarded on the text itself: rewrites in the
+    /// city's articles the links that pointed at an operator's old page under "Tours".
+    /// Both languages are fixed, since the English body carries the same paths.
+    /// </summary>
+    private bool RepairTourOperatorLinks(IContent city)
+    {
+        if (Descendant(city, "articlesPage", "Artículos") is not IContent articlesPage)
+        {
+            return false;
+        }
+
+        var repaired = false;
+        foreach (IContent article in _contentService
+            .GetPagedChildren(articlesPage.Id, 0, 500, out _, null, null, null, false)
+            .Where(c => c.ContentType.Alias == "article"))
+        {
+            string?[] cultures = article.ContentType.VariesByCulture()
+                ? article.AvailableCultures.Cast<string?>().ToArray()
+                : [null];
+            var changed = new List<string>();
+            foreach (string? culture in cultures)
+            {
+                if (article.GetValue<string>("body", culture) is not string body)
+                {
+                    continue;
+                }
+
+                string rewritten = TourOperatorLinkFixes.Aggregate(
+                    body, (text, fix) => text.Replace(fix.Old, fix.New, StringComparison.Ordinal));
+                if (rewritten == body)
+                {
+                    continue;
+                }
+
+                article.SetValue("body", rewritten, culture);
+                changed.Add(culture ?? SpanishCulture);
+            }
+
+            if (changed.Count == 0)
             {
                 continue;
             }
 
-            _logger.LogInformation("CityGuide: retiring the '{Subcategory}' subcategory of '{City}'",
-                ToursLegacySubcategory, city.Name);
-            _contentService.MoveToRecycleBin(legacy);
-            moved = true;
+            _logger.LogInformation("CityGuide: repairing the tour links of '{Article}'", article.Name);
+            _contentService.Save(article);
+            _contentService.Publish(article,
+                article.ContentType.VariesByCulture() ? [.. changed] : ["*"]);
+            repaired = true;
         }
 
-        return moved;
+        return repaired;
+    }
+
+    /// <summary>Creates a published subcategory under a section and returns it.</summary>
+    private IContent CreateSubcategory(IContent parent, string name, string intro)
+    {
+        _logger.LogInformation("CityGuide: seeding the '{Name}' subcategory of '{Parent}'", name, parent.Name);
+        IContent subcategory = CreateContent(name, parent.Id, "subcategory");
+        SetSeedValue(subcategory, "intro", intro);
+        _contentService.Save(subcategory);
+        PublishSeeded([subcategory]);
+        return subcategory;
+    }
+
+    /// <summary>
+    /// Idempotent, runs every startup: the "tour" document type, which is what the
+    /// "Tours" section holds now — an excursion a visitor plans a day around, not the
+    /// agency that sells it. It carries what someone decides by (how long it takes,
+    /// whether they are picked up at the hotel, what the price covers, where it leaves
+    /// from) and points at the operators the portal already lists, which stay filed in
+    /// the section that says what they are. Reservations reach it through the same two
+    /// fields a place carries, added by <see cref="EnsurePlaceReservationSchemaAsync"/>.
+    /// </summary>
+    private async Task EnsureTourSchemaAsync()
+    {
+        IContentType? subcategory = _contentTypeService.Get("subcategory");
+        IContentType? categoryPage = _contentTypeService.Get("categoryPage");
+        if (subcategory is null || categoryPage is null)
+        {
+            return;
+        }
+
+        if (_contentTypeService.Get("tour") is null)
+        {
+            _logger.LogInformation("CityGuide: creating 'tour' document type");
+            IDataType textstring = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.TextstringGuid))!;
+            IDataType textarea = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.TextareaGuid))!;
+            IDataType imagePicker = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.MediaPicker3SingleImageGuid))!;
+            IDataType checkbox = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.CheckboxGuid))!;
+            IDataType number = await GetOrCreateDataTypeAsync(
+                "CityGuide Decimal", Constants.PropertyEditors.Aliases.Decimal,
+                "Umb.PropertyEditorUi.Decimal", ValueStorageType.Decimal, configurationData: null);
+            IDataType picker = await GetOrCreateDataTypeAsync(
+                "CityGuide Establecimientos", Constants.PropertyEditors.Aliases.MultiNodeTreePicker,
+                "Umb.PropertyEditorUi.ContentPicker", ValueStorageType.Ntext,
+                new Dictionary<string, object>
+                {
+                    ["startNode"] = new Dictionary<string, object> { ["type"] = "content" },
+                    ["minNumber"] = 0,
+                    ["maxNumber"] = 0,
+                });
+
+            IContentType tour = NewContentType("tour", "Tour / Excursión", "icon-map-alt");
+            AddProperty(tour, "description", "Descripción", textarea, 1);
+            AddProperty(tour, "includes", "Qué incluye (una línea por punto)", textarea, 2);
+            AddProperty(tour, "meetingPoint", "Punto de encuentro o recogida", textstring, 3);
+            AddProperty(tour, "photo", "Foto", imagePicker, 4);
+            AddProperty(tour, "durationHours", "Duración (horas)", number, 5);
+            AddProperty(tour, "hotelPickup", "Incluye recogida en el hotel", checkbox, 6);
+            AddProperty(tour, "priceFrom", "Precio desde", number, 7);
+            AddProperty(tour, "priceCurrency", "Moneda del precio (USD | DOP | EUR)", textstring, 8);
+            AddProperty(tour, "season", "Temporada", textstring, 9);
+            AddProperty(tour, "operators", "Operadores que la venden", picker, 10);
+            AddProperty(tour, "bookingUrl", "Enlace de reserva del operador", textstring, 11);
+            AddProperty(tour, "source", "Fuente (manual | agent)", textstring, 12);
+            await CreateAsync(tour);
+        }
+
+        IContentType tourType = _contentTypeService.Get("tour")!;
+        foreach (IContentType parent in new[] { categoryPage, subcategory })
+        {
+            if (parent.AllowedContentTypes!.Any(c => c.Key == tourType.Key))
+            {
+                continue;
+            }
+
+            _logger.LogInformation("CityGuide: allowing 'tour' under '{Parent}'", parent.Alias);
+            int nextSort = parent.AllowedContentTypes!.Count();
+            parent.AllowedContentTypes =
+                [.. parent.AllowedContentTypes!, new ContentTypeSort(tourType.Key, nextSort, tourType.Alias)];
+            Attempt<ContentTypeOperationStatus> attempt =
+                await _contentTypeService.UpdateAsync(parent, Constants.Security.SuperUserKey);
+            if (!attempt.Success)
+            {
+                throw new InvalidOperationException(
+                    $"Failed to allow 'tour' under '{parent.Alias}': {attempt.Result}");
+            }
+        }
+    }
+
+    private sealed record SeedTour(
+        string Name, string Description, string Includes, string MeetingPoint,
+        decimal DurationHours, bool HotelPickup, string[] Operators, string? Season = null);
+
+    private sealed record TourGroup(string Name, string Intro, SeedTour[] Tours);
+
+    /// <summary>What the portal's own excursions carry when nobody has priced them yet.</summary>
+    private const string TourPickup = "Recogida en hoteles y apartamentos de Juan Dolio y Guayacanes";
+
+    /// <summary>
+    /// The excursions of Juan Dolio y Guayacanes, grouped by the kind of day they are —
+    /// which is a subcategory like a cuisine is, so the section filters and links them
+    /// with the machinery every other section already uses. What is written here is what
+    /// this coast actually offers and what the operators the portal lists actually run;
+    /// no price is seeded, because a price is the operator's to quote and the one thing
+    /// on the page that goes stale without anybody noticing.
+    /// </summary>
+    private static readonly TourGroup[] TourGroups =
+    [
+        new("Islas y Catamaranes",
+            "Las salidas de un día a las islas: Saona y Catalina, en catamarán o en lancha, con playa y almuerzo.",
+            [
+                new("Isla Saona en catamarán, día completo",
+                    "La excursión clásica de esta costa. Se sale temprano hacia Bayahibe, se cruza en lancha rápida "
+                    + "hasta Isla Saona y se vuelve en catamarán con parada en la piscina natural, un banco de arena "
+                    + "en medio del mar donde el agua no pasa de la cintura. El día se pasa entre Playa Bonita y Mano "
+                    + "Juan, con almuerzo dominicano bajo los cocoteros, y se regresa a Juan Dolio al caer la tarde.",
+                    "Transporte de ida y vuelta desde el hotel\nTravesía en lancha y regreso en catamarán\n"
+                    + "Parada en la piscina natural\nAlmuerzo dominicano en la playa\nBebidas a bordo\nGuía en español",
+                    TourPickup, 10m, true,
+                    ["Excursiones Rachelly SRL", "Pedro Diaz Tours SRL OF#1", "Maria Rigamonti Eldorado Travel"]),
+                new("Isla Catalina: snorkel y playa",
+                    "Frente a La Romana, a una hora y media de Juan Dolio, Isla Catalina tiene un arrecife somero que "
+                    + "empieza a pocos metros de la orilla: se ve con tubo y gafas, sin experiencia y sin curso. La "
+                    + "salida combina un rato de snorkel con la tarde en la playa y el almuerzo, y es la alternativa "
+                    + "a Saona cuando se busca menos gente y más agua clara.",
+                    "Transporte de ida y vuelta desde el hotel\nTravesía en catamarán o lancha\nEquipo de snorkel\n"
+                    + "Almuerzo y bebidas\nGuía en español",
+                    TourPickup, 10m, true,
+                    ["Excursiones Rachelly SRL", "Pedro Diaz Tours SRL OF#1"]),
+            ]),
+        new("Naturaleza y Ballenas",
+            "Los días completos hacia la bahía de Samaná: manglares, cuevas taínas y, en invierno, las jorobadas.",
+            [
+                new("Parque Nacional Los Haitises y Cayo Levantado",
+                    "Día completo hacia la bahía de Samaná. Los Haitises se recorre en bote entre mogotes cubiertos "
+                    + "de vegetación, con parada en cuevas de pictografías taínas y frente a las colonias de fragatas "
+                    + "y pelícanos; el mediodía se pasa en Cayo Levantado. Es la salida más larga que se hace en un "
+                    + "día desde esta costa, y se sale de madrugada.",
+                    "Transporte de ida y vuelta desde el hotel\nPaseo en bote por Los Haitises\nEntrada al parque "
+                    + "nacional\nParada en Cayo Levantado\nAlmuerzo y bebidas\nGuía en español",
+                    TourPickup, 12m, true,
+                    ["Juan Dolio - Samana Tours & Haitises", "Excursiones Rachelly SRL"]),
+                new("Avistamiento de ballenas jorobadas en Samaná",
+                    "Cada invierno miles de jorobadas cruzan desde el Atlántico Norte hasta la bahía de Samaná para "
+                    + "aparearse y parir, y se ven desde el barco a pocos metros. La temporada va del 15 de enero al "
+                    + "31 de marzo, con el pico en febrero. La salida es de día completo desde esta costa: transporte "
+                    + "hasta Samaná, embarque en el puerto y avistamiento con observador a bordo, casi siempre con "
+                    + "Cayo Levantado o el Salto El Limón en el mismo día.",
+                    "Transporte de ida y vuelta desde el hotel\nSalida en barco con observador a bordo\nTasa de "
+                    + "avistamiento del santuario\nAlmuerzo y bebidas\nGuía en español",
+                    TourPickup, 12m, true,
+                    ["Juan Dolio Whale Watch", "Juan Dolio - Samana Tours & Haitises"],
+                    Season: "Del 15 de enero al 31 de marzo"),
+            ]),
+        new("Cultura e Historia",
+            "La capital y el Este de piedra: la Zona Colonial, las cuevas taínas y Altos de Chavón.",
+            [
+                new("Santo Domingo: Zona Colonial y Los Tres Ojos",
+                    "La capital está a menos de una hora por la autopista. La mañana se camina entre la Catedral "
+                    + "Primada de América, el Alcázar de Colón, la Calle Las Damas y la peatonal El Conde, y la tarde "
+                    + "suele cerrar en el Parque Nacional Los Tres Ojos, las lagunas subterráneas de la Av. Las "
+                    + "Américas que se cruzan en una balsa de mano.",
+                    "Transporte de ida y vuelta desde el hotel\nRecorrido guiado por la Zona Colonial\nEntrada a Los "
+                    + "Tres Ojos\nTiempo libre para almorzar\nGuía en español",
+                    TourPickup, 8m, true,
+                    ["Pedro Diaz Tours SRL OF#1", "Maria Rigamonti Eldorado Travel", "Excursiones Rachelly SRL"]),
+                new("Cueva de las Maravillas y Altos de Chavón",
+                    "Dos paradas a media hora de Juan Dolio. La Cueva de las Maravillas, en San Pedro de Macorís, se "
+                    + "recorre por pasarelas iluminadas entre cientos de pictografías y petroglifos taínos, con "
+                    + "ascensor y visita guiada. Altos de Chavón es el pueblo de piedra levantado sobre el cañón del "
+                    + "río Chavón, en Casa de Campo, con su anfiteatro griego y sus talleres de artesanía.",
+                    "Transporte de ida y vuelta desde el hotel\nEntrada y visita guiada a la cueva\nTiempo libre en "
+                    + "Altos de Chavón\nGuía en español",
+                    TourPickup, 6m, true,
+                    ["Pedro Diaz Tours SRL OF#1", "Excursiones Rachelly SRL"]),
+            ]),
+        new("Mar y Buceo",
+            "Lo que se hace en el agua de aquí mismo: el arrecife de la costa, los naufragios y el snorkel de orilla.",
+            [
+                new("Buceo en los arrecifes y naufragios de Juan Dolio",
+                    "Juan Dolio se bucea a pocos minutos de la orilla: el arrecife que corre frente al pueblo y los "
+                    + "barcos hundidos a propósito hace décadas, hoy cubiertos de coral y de peces. Hay inmersión "
+                    + "para certificados y bautismo para quien nunca se ha puesto un tanque, con instructor, equipo y "
+                    + "una sesión previa en poca profundidad.",
+                    "Instructor o guía de buceo\nEquipo completo\nSalida en bote a los puntos de la costa\n"
+                    + "Sesión de iniciación para quien no está certificado",
+                    "En el centro de buceo, en el bulevar de Juan Dolio", 4m, false,
+                    ["Sharkjuandoliodiver"]),
+                new("Snorkel en el arrecife de Guayacanes",
+                    "El arrecife de Guayacanes empieza a pocos metros de la playa y se ve con tubo y gafas: corales, "
+                    + "peces loro y erizos sobre un fondo de poca profundidad. Es corto, sirve para niños y para "
+                    + "quien no bucea, y se sale desde la orilla o en bote según la marea.",
+                    "Equipo de snorkel\nGuía acompañante en el agua\nSalida desde la playa o en bote",
+                    "En la playa de Guayacanes", 2m, false,
+                    ["Sharkjuandoliodiver"]),
+            ]),
+        new("Aventura",
+            "Medio día de tierra adentro y la salida de última hora: buggies por el campo y caballos por la orilla.",
+            [
+                new("Safari en buggy por el campo dominicano",
+                    "Media jornada en buggy por los caminos de tierra detrás de la costa: cañaverales, una parada en "
+                    + "una casa de campo donde se prueba el café y el cacao de la zona, y el regreso bordeando la "
+                    + "playa. Se conduce uno mismo, se sale polvoriento y, si llovió, embarrado — que es medio chiste "
+                    + "de la excursión.",
+                    "Buggy para uno o dos\nCasco y gafas\nGuía que abre la ruta\nParada en una casa de campo",
+                    TourPickup, 4m, true,
+                    ["Excursiones Rachelly SRL", "Pedro Diaz Tours SRL OF#1"]),
+                new("Cabalgata por la playa al atardecer",
+                    "El plan más subestimado del pueblo: salir a caballo por la orilla a última hora de la tarde, "
+                    + "cuando baja el sol y la arena se vacía. Es corto, sirve para todas las edades y no hace falta "
+                    + "haber montado antes — va un guía por delante todo el camino.",
+                    "Caballo ensillado y guía\nCasco para quien lo quiera\nSalida al atardecer por la playa",
+                    "En la playa de Juan Dolio, frente al centro ecuestre", 1.5m, false,
+                    ["Juan Dolio Horseback Riding (Cabalgatas)"]),
+            ]),
+    ];
+
+    /// <summary>The city whose "Tours" section holds the excursions above.</summary>
+    private const string TourCity = "Juan Dolio y Guayacanes";
+
+    /// <summary>
+    /// Idempotent, runs every startup and guarded per node: fills the "Tours" section of
+    /// Juan Dolio y Guayacanes with the excursions of the zone, one subcategory per kind
+    /// of day. Every tour points at the operators that run it — nodes that live in
+    /// "Atracciones" or under "Empresas y Servicios", referenced and never copied, the
+    /// same way a plaza lists the establishments inside it — and takes requests through
+    /// the portal, which passes them on: nothing is booked here.
+    /// </summary>
+    private bool EnsureToursSeeded()
+    {
+        IContent? site = _contentService.GetRootContent().FirstOrDefault(c => c.ContentType.Alias == "site");
+        if (site is null || _contentTypeService.Get("tour") is null)
+        {
+            return false;
+        }
+
+        IContent? city = Descendant(site, "city", TourCity);
+        if (city is null || Descendant(city, "categoryPage", "Tours") is not IContent tours)
+        {
+            return false;
+        }
+
+        var repaired = false;
+        if (tours.GetValue<string>("intro", SpanishCulture) == ToursLegacyIntro)
+        {
+            _logger.LogInformation("CityGuide: rewriting the introduction of the 'Tours' section");
+            SetSeedValue(tours, "intro", ToursIntro);
+            _contentService.Save(tours);
+            _contentService.Publish(tours, SeededCultures(tours));
+            repaired = true;
+        }
+
+        var created = new List<IContent>();
+        foreach (TourGroup group in TourGroups)
+        {
+            IContent parent = Descendant(tours, "subcategory", group.Name)
+                ?? CreateSubcategory(tours, group.Name, group.Intro);
+
+            foreach (SeedTour tour in group.Tours)
+            {
+                if (Descendant(parent, "tour", tour.Name) is not null)
+                {
+                    continue;
+                }
+
+                _logger.LogInformation("CityGuide: seeding tour '{Name}'", tour.Name);
+                IContent content = CreateContent(tour.Name, parent.Id, "tour");
+                SetSeedValue(content, "description", tour.Description);
+                SetSeedValue(content, "includes", tour.Includes);
+                SetSeedValue(content, "meetingPoint", tour.MeetingPoint);
+                SetSeedValue(content, "durationHours", tour.DurationHours);
+                SetSeedValue(content, "hotelPickup", tour.HotelPickup);
+                SetSeedValue(content, "season", tour.Season);
+                SetSeedValue(content, "operators", OperatorPicker(city, tour.Operators));
+                // The portal takes the request and passes it to the operator; with no
+                // address of its own it reaches the portal's inbox, which is the point.
+                SetSeedValue(content, "acceptsReservations", true);
+                SetSeedValue(content, "source", "manual");
+                _contentService.Save(content);
+                created.Add(content);
+            }
+        }
+
+        PublishSeeded(created);
+        return created.Count > 0 || repaired;
+    }
+
+    /// <summary>
+    /// The MultiNodeTreePicker value naming the operators of a tour: the ones the city
+    /// really holds, by name, wherever they are filed. An operator the portal has not
+    /// discovered yet is simply left out rather than seeded as a second copy.
+    /// </summary>
+    private string? OperatorPicker(IContent city, string[] names)
+    {
+        List<string> udis = names
+            .Select(name => DescendantAnywhere(city, "place", name))
+            .Where(node => node is not null)
+            .Select(node => new GuidUdi(Constants.UdiEntityType.Document, node!.Key).ToString())
+            .ToList();
+        return udis.Count == 0 ? null : string.Join(",", udis);
+    }
+
+    /// <summary>A node of that type and name anywhere under the city, however it is filed.</summary>
+    private IContent? DescendantAnywhere(IContent root, string contentTypeAlias, string name)
+    {
+        var pending = new Queue<IContent>([root]);
+        while (pending.Count > 0)
+        {
+            IContent parent = pending.Dequeue();
+            foreach (IContent child in _contentService
+                .GetPagedChildren(parent.Id, 0, 500, out _, null, null, null, false))
+            {
+                if (child.ContentType.Alias == contentTypeAlias
+                    && string.Equals(child.Name, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    return child;
+                }
+
+                pending.Enqueue(child);
+            }
+        }
+
+        return null;
     }
 
     private static readonly string ThingsToDoIntro =
@@ -2625,23 +3070,23 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
 
             La inmersión de arrecife de esta bahía es de las fáciles: poca corriente, profundidad moderada y bastante vida para lo cerca que está de la orilla. Los naufragios de la zona —el Tanya V es el más conocido— están a profundidades recreativas y hoy son estructuras cubiertas de coral duro y blando, con peces viviendo dentro. La mejor ventana es de diciembre a mayo, cuando el sur amanece plano y el agua se aclara.
 
-            El centro de la zona es [Shark Juan Dolio Diver](/juan-dolio-y-guayacanes/tours/sharkjuandoliodiver), en Guayacanes, que trabaja tanto la salida de arrecife como los naufragios y los bautismos para quien nunca se ha puesto un tanque.
+            El centro de la zona es [Shark Juan Dolio Diver](/juan-dolio-y-guayacanes/atracciones/sharkjuandoliodiver), en Guayacanes, que trabaja tanto la salida de arrecife como los naufragios y los bautismos para quien nunca se ha puesto un tanque.
 
             ## Ballenas: de mediados de enero a finales de marzo
 
-            Las jorobadas no pasan por aquí, pero Juan Dolio es una base cómoda para ir a verlas: la temporada en la bahía de Samaná va del 15 de enero al 31 de marzo, con el pico en febrero, y varias agencias salen desde esta costa con transporte incluido. [Juan Dolio Whale Watch](/juan-dolio-y-guayacanes/tours/juan-dolio-whale-watch) y [Juan Dolio - Samana Tours & Haitises](/juan-dolio-y-guayacanes/tours/juan-dolio-samana-tours-haitises) arman ese día completo, que normalmente incluye Cayo Levantado o el Salto El Limón.
+            Las jorobadas no pasan por aquí, pero Juan Dolio es una base cómoda para ir a verlas: la temporada en la bahía de Samaná va del 15 de enero al 31 de marzo, con el pico en febrero, y varias agencias salen desde esta costa con transporte incluido. [Juan Dolio Whale Watch](/juan-dolio-y-guayacanes/empresas-y-servicios/tours-y-excursiones/juan-dolio-whale-watch) y [Juan Dolio - Samana Tours & Haitises](/juan-dolio-y-guayacanes/empresas-y-servicios/tours-y-excursiones/juan-dolio-samana-tours-haitises) arman ese día completo, que normalmente incluye Cayo Levantado o el Salto El Limón.
 
             ![La salida a Samaná en temporada de ballenas](/media/efoo2pah/juan-dolio-whale-watch-google.jpg)
 
             ## Caballos al atardecer
 
-            El plan más subestimado de la zona: [Juan Dolio Horseback Riding](/juan-dolio-y-guayacanes/tours/juan-dolio-horseback-riding-cabalgatas) sale a caballo por la orilla a última hora de la tarde, cuando baja el sol y la arena se vacía. Es corto, sirve para todas las edades y es de lo mejor puntuado del pueblo.
+            El plan más subestimado de la zona: [Juan Dolio Horseback Riding](/juan-dolio-y-guayacanes/atracciones/juan-dolio-horseback-riding-cabalgatas) sale a caballo por la orilla a última hora de la tarde, cuando baja el sol y la arena se vacía. Es corto, sirve para todas las edades y es de lo mejor puntuado del pueblo.
 
             ![Cabalgata por la orilla al caer la tarde](/media/c3zlqyhg/juan-dolio-horseback-riding-cabalgatas-google.jpg)
 
             ## Excursiones de día completo
 
-            Desde aquí se llega en el mismo día a Isla Saona, a la Cueva de las Maravillas o a la capital, y las agencias del pueblo venden esas salidas con recogida en el hotel: [Excursiones Rachelly](/juan-dolio-y-guayacanes/tours/excursiones-rachelly-srl), [Pedro Díaz Tours](/juan-dolio-y-guayacanes/tours/pedro-diaz-tours-srl-of1) y [Maria Rigamonti Eldorado Travel](/juan-dolio-y-guayacanes/tours/maria-rigamonti-eldorado-travel), entre otras. La lista completa está en [Tours](/juan-dolio-y-guayacanes/tours).
+            Desde aquí se llega en el mismo día a Isla Saona, a la Cueva de las Maravillas o a la capital, y las agencias del pueblo venden esas salidas con recogida en el hotel: [Excursiones Rachelly](/juan-dolio-y-guayacanes/empresas-y-servicios/tours-y-excursiones/excursiones-rachelly-srl), [Pedro Díaz Tours](/juan-dolio-y-guayacanes/empresas-y-servicios/tours-y-excursiones/pedro-diaz-tours-srl-of1) y [Maria Rigamonti Eldorado Travel](/juan-dolio-y-guayacanes/empresas-y-servicios/tours-y-excursiones/maria-rigamonti-eldorado-travel), entre otras. La lista completa está en [Tours y Excursiones](/juan-dolio-y-guayacanes/empresas-y-servicios/tours-y-excursiones), y las excursiones que arman, una por una, en [Tours](/juan-dolio-y-guayacanes/tours).
 
             ## Si el mar amanece movido
 
@@ -3728,55 +4173,60 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
     /// </summary>
     private async Task EnsurePlaceReservationSchemaAsync()
     {
-        IContentType? place = _contentTypeService.Get("place");
-        if (place is null)
-        {
-            return;
-        }
-
         IDataType checkbox = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.CheckboxGuid))!;
         IDataType textstring = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.TextstringGuid))!;
 
         var wanted = new (string Alias, IDataType Editor, string Name, string Description, int SortOrder)[]
         {
             ("acceptsReservations", checkbox, "Acepta reservas",
-                "Muestra en la ficha del lugar el botón que abre el formulario de reserva. "
-                + "Marcarlo solo para los establecimientos que se comprometieron a responderlas.", 1),
+                "Muestra en la ficha el botón que abre el formulario de reserva. Marcarlo solo "
+                + "para lo que quien lo lleva se comprometió a responder.", 1),
             ("reservationEmail", textstring, "Correo para reservas",
                 "A dónde se envía cada solicitud. Sin él la reserva queda igualmente guardada "
                 + $"en \"{ReservationInboxName}\" y se avisa al correo del portal.", 2),
         };
 
-        var added = new List<string>();
-        foreach ((string alias, IDataType editor, string name, string description, int sortOrder) in wanted)
+        // A tour is asked for the way a table is — the operator answers it and the portal
+        // only carries the request — so it is the same switch, on the other document type.
+        foreach (string alias in new[] { "place", "tour" })
         {
-            if (place.PropertyTypeExists(alias))
+            IContentType? type = _contentTypeService.Get(alias);
+            if (type is null)
             {
                 continue;
             }
 
-            place.AddPropertyType(new PropertyType(_shortStringHelper, editor, alias)
+            var added = new List<string>();
+            foreach ((string property, IDataType editor, string name, string description, int sortOrder) in wanted)
             {
-                Name = name,
-                Description = description,
-                SortOrder = sortOrder,
-            }, "reservations", "Reservas");
-            added.Add(alias);
-        }
+                if (type.PropertyTypeExists(property))
+                {
+                    continue;
+                }
 
-        if (added.Count == 0)
-        {
-            return;
-        }
+                type.AddPropertyType(new PropertyType(_shortStringHelper, editor, property)
+                {
+                    Name = name,
+                    Description = description,
+                    SortOrder = sortOrder,
+                }, "reservations", "Reservas");
+                added.Add(property);
+            }
 
-        _logger.LogInformation("CityGuide: adding {Properties} to the 'Reservas' tab on 'place'",
-            string.Join(", ", added));
-        Attempt<ContentTypeOperationStatus> attempt =
-            await _contentTypeService.UpdateAsync(place, Constants.Security.SuperUserKey);
-        if (!attempt.Success)
-        {
-            throw new InvalidOperationException(
-                $"Failed to add the reservation properties to 'place': {attempt.Result}");
+            if (added.Count == 0)
+            {
+                continue;
+            }
+
+            _logger.LogInformation("CityGuide: adding {Properties} to the 'Reservas' tab on '{Alias}'",
+                string.Join(", ", added), alias);
+            Attempt<ContentTypeOperationStatus> attempt =
+                await _contentTypeService.UpdateAsync(type, Constants.Security.SuperUserKey);
+            if (!attempt.Success)
+            {
+                throw new InvalidOperationException(
+                    $"Failed to add the reservation properties to '{alias}': {attempt.Result}");
+            }
         }
     }
 

@@ -20,6 +20,8 @@ public static class ContentCultures
     {
         "description", "intro", "country", "hours", "summary", "body",
         "synopsis", "genre", "category", "metaTitle", "metaDescription",
+        // De una excursión ("tour"): lo que incluye y dónde empieza.
+        "includes", "meetingPoint",
     };
 
     /// <summary>Whether a property's value belongs to one culture rather than to both.</summary>

@@ -164,8 +164,9 @@ public class ReservationController : ControllerBase
         }
 
         IContent? place = _contentService.GetById(key);
+        // A tour is asked for the same way: the flag an editor set is what decides.
         return place is not null
-            && place.ContentType.Alias == "place"
+            && (place.ContentType.Alias == "place" || place.ContentType.Alias == "tour")
             && place.Published
             && place.GetValue<bool>("acceptsReservations")
                 ? place

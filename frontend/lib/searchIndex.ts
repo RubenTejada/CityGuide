@@ -50,7 +50,10 @@ function toEntry(
     path: item.route.path,
     kind: kindLabel(item.contentType, locale) || item.contentType,
     category,
-    extra: text(item, "address") || text(item, "venueName"),
+    extra:
+      text(item, "address") ||
+      text(item, "venueName") ||
+      text(item, "meetingPoint"),
   };
 }
 
@@ -76,16 +79,25 @@ export async function buildSearchIndex(
     sections.map((s) => [trimPath(s.route.path), s.name]),
   );
 
-  const [subcategories, companies, malls, places, events, articles, movies] =
-    await Promise.all([
-      getDescendantsOfType(cityPath, "subcategory", undefined, locale),
-      getDescendantsOfType(cityPath, "company", undefined, locale),
-      getDescendantsOfType(cityPath, "mall", undefined, locale),
-      getDescendantsOfType(cityPath, "place", undefined, locale),
-      getDescendantsOfType(cityPath, "eventItem", undefined, locale),
-      getDescendantsOfType(cityPath, "article", undefined, locale),
-      getDescendantsOfType(cityPath, "movie", undefined, locale),
-    ]);
+  const [
+    subcategories,
+    companies,
+    malls,
+    places,
+    tours,
+    events,
+    articles,
+    movies,
+  ] = await Promise.all([
+    getDescendantsOfType(cityPath, "subcategory", undefined, locale),
+    getDescendantsOfType(cityPath, "company", undefined, locale),
+    getDescendantsOfType(cityPath, "mall", undefined, locale),
+    getDescendantsOfType(cityPath, "place", undefined, locale),
+    getDescendantsOfType(cityPath, "tour", undefined, locale),
+    getDescendantsOfType(cityPath, "eventItem", undefined, locale),
+    getDescendantsOfType(cityPath, "article", undefined, locale),
+    getDescendantsOfType(cityPath, "movie", undefined, locale),
+  ]);
 
   const companyNameByPath = new Map(
     companies.map((c) => [trimPath(c.route.path), c.name]),
@@ -97,6 +109,7 @@ export async function buildSearchIndex(
     ...companies,
     ...malls,
     ...places,
+    ...tours,
     ...events,
     ...articles,
     ...movies,

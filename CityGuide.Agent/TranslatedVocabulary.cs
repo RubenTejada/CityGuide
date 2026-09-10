@@ -80,6 +80,14 @@ public static partial class TranslatedVocabulary
         ["Servicios"] = "Services",
         ["Supermercados"] = "Supermarkets",
         ["Tiendas por Departamento"] = "Department Stores",
+        ["Tours y Excursiones"] = "Tour Operators",
+
+        // Las clases de día que agrupan las excursiones de la sección "Tours"
+        ["Islas y Catamaranes"] = "Islands & Catamarans",
+        ["Naturaleza y Ballenas"] = "Nature & Whales",
+        ["Cultura e Historia"] = "Culture & History",
+        ["Mar y Buceo"] = "Sea & Diving",
+        ["Aventura"] = "Adventure",
     };
 
     /// <summary>The events filter lists whatever values the events carry, so the English

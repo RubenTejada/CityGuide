@@ -80,6 +80,13 @@ const SUBCATEGORY_ICONS: Record<string, string> = {
   "remesas-y-envios": "💸",
   "rent-a-car": "🚗",
   "salones-de-eventos": "🎪",
+  "tours-y-excursiones": "🧭",
+  // Tours: la clase de día que es cada excursión
+  "islas-y-catamaranes": "⛵",
+  "naturaleza-y-ballenas": "🐋",
+  "cultura-e-historia": "🏛",
+  "mar-y-buceo": "🤿",
+  aventura: "🏜",
   // Mall groups
   comida: "🍽",
   restaurantes: "🍽",

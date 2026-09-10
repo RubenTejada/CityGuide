@@ -41,6 +41,7 @@ export default function ReservationDialog({
   placeUrl,
   minDate,
   locale,
+  variant = "table",
 }: {
   placeId: string;
   placeName: string;
@@ -48,8 +49,15 @@ export default function ReservationDialog({
   /** Hoy en la ciudad, calculado en el servidor: el cliente no lo adivina. */
   minDate: string;
   locale: Locale;
+  /**
+   * Qué se está pidiendo. El formulario es el mismo — un día, una hora, cuántos
+   * son y quién eres —, pero lo que promete no: una mesa la confirma el
+   * restaurante y una excursión la confirma el operador que la lleva.
+   */
+  variant?: "table" | "tour";
 }) {
-  const words = t(locale).reservation;
+  const base = t(locale).reservation;
+  const words = variant === "tour" ? { ...base, ...base.tour } : base;
   const [open, setOpen] = useState(false);
   const [state, formAction, pending] = useActionState(
     requestReservation,
@@ -81,6 +89,7 @@ export default function ReservationDialog({
               placeName={placeName}
               state={state}
               locale={locale}
+              variant={variant}
               onClose={() => setOpen(false)}
             />
           ) : (
@@ -282,14 +291,17 @@ function Sent({
   placeName,
   state,
   locale,
+  variant,
   onClose,
 }: {
   placeName: string;
   state: ReservationState;
   locale: Locale;
+  variant: "table" | "tour";
   onClose: () => void;
 }) {
-  const words = t(locale).reservation;
+  const base = t(locale).reservation;
+  const words = variant === "tour" ? { ...base, ...base.tour } : base;
   const summary = state.summary;
 
   return (

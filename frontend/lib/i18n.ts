@@ -281,6 +281,25 @@ const es = {
     establishmentsEmpty: "No hay establecimientos publicados todavía.",
   },
   reservation: {
+    /**
+     * Una excursión se pide igual que una mesa, pero no es una mesa: la lleva una
+     * empresa que el portal no es, el cupo y el precio los confirma ella, y lo que
+     * cambia es lo que el formulario promete. Solo esas frases se sustituyen.
+     */
+    tour: {
+      open: "Solicitar esta excursión",
+      openHint: "Respuesta por correo",
+      heading: (name: string): string => `Solicitar ${name}`,
+      lead: (name: string): string =>
+        `Dinos qué día quieres ir y cuántos son. Pasamos tu solicitud al operador de ${name}, que te confirma el cupo y el precio por correo. Nada queda reservado hasta que te respondan.`,
+      notesHint: "(dónde te alojas, edades, algo que debamos saber…)",
+      confirmedByEmail:
+        "Al enviarla te llega un correo con lo que pediste, y la confirmación llega después desde el operador.",
+      sentBody: (name: string): string =>
+        `Recibimos tu solicitud para ${name} y te respondemos al correo que nos dejaste. Revisa también la carpeta de correo no deseado.`,
+      privacy:
+        "Usamos tus datos solo para gestionar esta excursión con el operador.",
+    },
     /** El botón de la ficha: lo que el visitante viene a hacer, dicho en una palabra. */
     open: "Reservar una mesa",
     openHint: "Respuesta por correo",
@@ -326,6 +345,21 @@ const es = {
       tooMany: "Ya recibimos varias solicitudes tuyas. Intenta de nuevo en un rato.",
       failed: "No pudimos enviar tu solicitud. Inténtalo más tarde.",
     },
+  },
+  tours: {
+    /** Lo que dice la línea bajo el título de una excursión. */
+    hour: "hora",
+    hours: "horas",
+    pickup: "Recogida en el hotel",
+    priceFrom: (price: string): string => `Desde ${price} por persona`,
+    /** Casi ninguna excursión publica precio: lo cotiza quien la lleva. */
+    priceOnRequest: "Precio a consultar",
+    includes: "Qué incluye",
+    meetingPoint: "Dónde empieza",
+    operators: "Quién la lleva",
+    operatorsHint:
+      "La excursión la opera y la confirma la empresa; el portal solo traslada tu solicitud.",
+    bookWithOperator: "Ver al operador",
   },
   events: {
     about: "Acerca del evento",
@@ -408,6 +442,7 @@ const es = {
       article: "Artículo",
       mall: "Plaza",
       movie: "Película",
+      tour: "Excursión",
     } as Record<string, string>,
     heading: (query: string): string => `Resultados para «${query}»`,
     count: (total: number): string =>
@@ -541,6 +576,8 @@ const es = {
       `Ideas de planes${where}: eventos de los próximos días, atracciones abiertas hoy y lugares para comer y salir.`,
     articlesFallback: (where: string): string =>
       `Artículos, guías y recomendaciones${where}.`,
+    tourFallback: (name: string, duration: string, where: string): string =>
+      `${name}${where}${duration ? `, ${duration}` : ""}. Qué incluye, dónde empieza y quién la lleva.`,
   },
   facilities: {} as Record<string, string>,
 };
@@ -705,6 +742,20 @@ const en: typeof es = {
     establishmentsEmpty: "No stores published yet.",
   },
   reservation: {
+    tour: {
+      open: "Request this tour",
+      openHint: "Answered by email",
+      heading: (name: string): string => `Request ${name}`,
+      lead: (name: string): string =>
+        `Tell us which day you would like to go and how many of you there are. We pass your request to the operator of ${name}, who confirms availability and the price by email. Nothing is booked until they answer.`,
+      notesHint: "(where you are staying, ages, anything we should know…)",
+      confirmedByEmail:
+        "You get an email with what you asked for right away, and the confirmation comes afterwards from the operator.",
+      sentBody: (name: string): string =>
+        `We have your request for ${name} and will answer the email address you gave us. Check your spam folder too.`,
+      privacy:
+        "We use your details only to arrange this tour with the operator.",
+    },
     open: "Book a table",
     openHint: "Answered by email",
     heading: (name: string): string => `Book at ${name}`,
@@ -746,6 +797,19 @@ const en: typeof es = {
       tooMany: "We already have several requests from you. Try again in a while.",
       failed: "We could not send your request. Please try again later.",
     },
+  },
+  tours: {
+    hour: "hour",
+    hours: "hours",
+    pickup: "Hotel pickup",
+    priceFrom: (price: string): string => `From ${price} per person`,
+    priceOnRequest: "Price on request",
+    includes: "What is included",
+    meetingPoint: "Where it starts",
+    operators: "Who runs it",
+    operatorsHint:
+      "The tour is run and confirmed by the operator; the portal only passes your request on.",
+    bookWithOperator: "See the operator",
   },
   events: {
     about: "About this event",
@@ -826,6 +890,7 @@ const en: typeof es = {
       article: "Article",
       mall: "Mall",
       movie: "Movie",
+      tour: "Tour",
     } as Record<string, string>,
     heading: (query: string): string => `Results for “${query}”`,
     count: (total: number): string =>
@@ -947,6 +1012,8 @@ const en: typeof es = {
       `Ideas${where}: events in the days ahead, attractions open today, and places to eat and go out.`,
     articlesFallback: (where: string): string =>
       `Articles, guides and recommendations${where}.`,
+    tourFallback: (name: string, duration: string, where: string): string =>
+      `${name}${where}${duration ? `, ${duration}` : ""}. What is included, where it starts and who runs it.`,
   },
   facilities: {
     Romántico: "Romantic",

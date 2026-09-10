@@ -649,28 +649,63 @@ buys its place by sharing an existing input rather than adding one.
 
 Every external request goes through `ThrottlingHandler` (min interval + jitter per host, `Throttle:SecondsBetweenRequests`) so the agent is slow on purpose and never trips rate limiters.
 
-**Una sección "Tours", y solo en Juan Dolio y Guayacanes.** Las excursiones vivían como
-subcategoría de "Empresas y Servicios" — y ahí una salida en catamarán se leía como un
-servicio que se contrata, entre bancos y remesas. En un pueblo de playa la excursión *es*
-el plan del día, así que tiene sección propia y se lista como "Atracciones": la tarjeta
-con foto de la guía (`PHOTO_CARD_SECTIONS` en el catch-all), su glifo de brújula, su
-icono de pin y su dibujo para las fichas de "Qué Hacer" — donde entra como sección de
-ideas, que es lo que es, y no queda excluida como lo están "Atracciones", "Cines" y
-"Empresas y Servicios". En schema.org declara `TravelAgency`: lo que la sección lista es
-quien lleva la excursión, no el sitio adonde va. La sección se llama igual en los dos
-idiomas (`TranslatedVocabulary`), así que el slug inglés es el mismo y no hay par que
-mapear en `sectionSlugs.ts`. Es una fila más de la tabla de `SeedCity`, de modo que la
-crea `EnsureCityContentSeeded` para esa ciudad y para ninguna otra: una sección vacía es
-una página vacía, y ninguna otra ciudad tiene `Runs` de tours. `EnsureToursSectionSeeded`
-es la mudanza de lo ya publicado — mueve los operadores de "Tours y Excursiones" a la
-sección y manda la subcategoría vacía a la papelera, guardado por ciudad y solo donde
-existe la sección — y los dos `Runs` de Juan Dolio escriben desde ahora en
-`/juan-dolio-y-guayacanes/tours` sin `Subcategory`. Mover cambia la URL y la vieja deja de
-responder, el mismo trato que hace `--recategorize-places`; el pase `--translate` es lo
-que da a la sección su variante inglesa, sin la cual sus lugares no enrutan en `/en`.
+**Una sección "Tours", y solo en Juan Dolio y Guayacanes, con excursiones y no con
+agencias.** La sección nació listando operadores turísticos, que es lo que Google
+responde a "tours en {city}" — y un operador no es un plan: nadie decide su sábado
+leyendo la ficha de una agencia. Lo que se planifica es la salida a Saona, la mañana en
+Los Haitises, la cabalgata al atardecer, y eso es lo que la sección lista ahora: un tipo
+de documento propio, `tour`, que lleva lo que decide un día — cuánto dura
+(`durationHours`, un número que la página formatea, "10 horas" / "10 hours"), si pasan a
+buscarte (`hotelPickup`), qué cubre (`includes`, una línea por punto), dónde empieza
+(`meetingPoint`), en qué temporada se hace (`season`, para las ballenas) y desde cuánto
+sale (`priceFrom` + `priceCurrency`, vacíos mientras el operador no publique uno: la
+tarjeta dice entonces "Precio a consultar", que es la verdad, y no una cifra inventada
+que además envejece). Quien la lleva no se copia: `operators` es un picker a los nodos
+del propio portal, igual que los establecimientos de una plaza, y esos nodos viven en la
+sección que dice lo que son. `EnsureTourOperatorsFiled` es esa mudanza sobre lo ya
+publicado — el que opera una salida suya va a "Atracciones" (el centro de buceo, los
+caballos), la agencia a "Tours y Excursiones" bajo "Empresas y Servicios", subcategoría
+que se recrea si falta —, y los dos `Runs` de Juan Dolio escriben desde ahora ahí con
+`Subcategory`, o el siguiente pase pagado volvería a llenar "Tours" de agencias. Mover
+cambia la URL y la vieja deja de responder, el mismo trato que hace
+`--recategorize-places`, con una diferencia: el portal enlazaba a mano siete de esos
+operadores desde un artículo de la guía, así que el mismo paso que los mueve reescribe
+esos enlaces (`TourOperatorLinkFixes`, guardado sobre el propio texto y en los dos
+idiomas, que llevan las mismas rutas).
+
+La clase de día que es cada excursión es una **subcategoría**, como la cocina de un
+restaurante — Islas y Catamaranes, Naturaleza y Ballenas, Cultura e Historia, Mar y
+Buceo, Aventura —, de modo que el filtro del listado, los enlaces del pie, los glifos y
+la traducción del nombre son los que ya existen y no un vocabulario nuevo. La sección se
+lista con la tarjeta de foto de la guía (`PHOTO_CARD_SECTIONS`), pero un `tour` lleva la
+suya (`TourCard`: duración, recogida y precio en vez de dirección y valoración), tanto
+en el listado como en las fichas de "Qué Hacer". `listingEntries` solo pregunta por
+`tour` cuando la sección es "tours": en cualquier otra costaría una petición por listado
+para no encontrar nada. En schema.org una excursión declara `TouristTrip` (`tourJsonLd`),
+con `provider` por cada operador y `offers` solo cuando hay precio real.
+
+Las excursiones las siembra `EnsureToursSeeded` (guardado por nodo, como todo lo
+sembrado) y su foto no está en el CMS: es la de `lib/photos.ts`, la tabla de fotos
+curadas de Commons que ya usaban las atracciones sembradas, ahora compartida por las dos
+tarjetas y por los metadatos. Una foto puesta en el backoffice siempre gana.
+
+**Reservar una excursión es pedirla, igual que una mesa**, así que es el mismo
+formulario: `acceptsReservations`/`reservationEmail` viven también en `tour`
+(`EnsurePlaceReservationSchemaAsync` recorre los dos tipos), `ReservationController`
+acepta un nodo `tour` con la misma comprobación del interruptor, y `ReservationDialog`
+toma un `variant` que cambia solo lo que el formulario promete — una mesa la confirma el
+restaurante, una excursión la confirma el operador, y sin operador propio la solicitud
+llega al correo del portal, que es quien la traslada. Junto al botón va el enlace directo
+al operador cuando lo hay (`bookingUrl`) y la lista de quién la lleva.
+
+La sección se llama igual en los dos idiomas (`TranslatedVocabulary`), así que su slug
+inglés es el mismo; las cinco subcategorías sí tienen par, en `TranslatedVocabulary` y en
+`sectionSlugs.ts`. `--translate` traduce el tipo `tour` como cualquier otro (`includes` y
+`meetingPoint` entran en `ProseAliases` y en `ContentCultures`), y sin ese pase la
+sección no enruta en `/en`.
 
 Content model (all created in code, not in the backoffice):
-`site` → `city` → `categoryPage` → `subcategory` → `place`, plus `eventsPage`/`eventItem` and `thingsToDoPage` (“Qué Hacer”: aggregation-only guide page, planned for a day — the attractions open that day, its events (or the next ones), its most-shown movies (live cartelera cards, not a list of theaters — that is why “cines” is excluded from the idea sections), idea sections per category, every block capped at six with a link to its section; no child content) under each city, and `movie` (agent-maintained cartelera catalog) under `categoryPage`. `categoryPage` accepts `subcategory`, `place`, and `company` children; `subcategory` accepts `place` and `company`; `company` (empresa: logo + general info) accepts only `place` (its branches/sucursales).
+`site` → `city` → `categoryPage` → `subcategory` → `place`, plus `eventsPage`/`eventItem` and `thingsToDoPage` (“Qué Hacer”: aggregation-only guide page, planned for a day — the attractions open that day, its events (or the next ones), its most-shown movies (live cartelera cards, not a list of theaters — that is why “cines” is excluded from the idea sections), idea sections per category, every block capped at six with a link to its section; no child content) under each city, and `movie` (agent-maintained cartelera catalog) under `categoryPage`. `categoryPage` accepts `subcategory`, `place`, `company` and `tour` children; `subcategory` accepts `place`, `company` and `tour`; `company` (empresa: logo + general info) accepts only `place` (its branches/sucursales). `tour` (una excursión que se planifica, no un negocio que se visita) holds no children.
 
 Company inheritance: a `place` under a `company` stores only its own data (name, address, coordinates); empty fields (phone, website, hours, description, photo) fall back to the parent company **in the frontend** (`PlaceView` in the catch-all page). Category/subcategory listings show companies as single cards and never flatten their branch places (`listingEntries`); branches appear only inside the company page. Every listing (category, subcategory, mall groups) is ordered best rated first by `listingEntriesByRating`: a company or mall carries no rating of its own, so it ranks by its best-rated nested place, and unrated entries keep their original order at the end.
 
@@ -846,7 +881,7 @@ and every schema.org builder. `components/JsonLd.tsx` renders it.
   every page went out without a preview image, home and section pages included.
 - **Structured data**: `BreadcrumbList` on every content page (from the existing breadcrumb),
   `Restaurant`/`BarOrPub`/`Store`/`MovieTheater`/`TouristAttraction`/`LocalBusiness` per section for
-  places, `ShoppingCenter` for malls, `Organization` + branch `Place`s for companies, `Event`,
+  places, `TouristTrip` for tours, `ShoppingCenter` for malls, `Organization` + branch `Place`s for companies, `Event`,
   `Article`, `Movie`, `ItemList` for listings, `Organization`+`WebSite` site-wide. Free-text "Horario"
   is parsed into `openingHoursSpecification`; unparseable lines are dropped.
 - **`app/sitemap.ts`** enumerates every published node (`getDescendants`, `updateDate` as `<lastmod>`),

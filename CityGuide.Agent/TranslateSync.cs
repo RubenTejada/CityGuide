@@ -21,12 +21,17 @@ public class TranslateSync(UmbracoClient umbraco, IEnrichmentClient enricher)
     [
         "site", "city", "categoryPage", "subcategory", "eventsPage", "thingsToDoPage",
         "articlesPage", "article", "place", "mall", "company", "movie", "eventItem",
+        "tour",
     ];
 
     /// <summary>The properties only a model can translate. The rest of what varies by
     /// culture is closed vocabulary (<see cref="TranslatedVocabulary"/>).</summary>
     private static readonly string[] ProseAliases =
-        ["description", "intro", "summary", "body", "synopsis", "metaTitle", "metaDescription"];
+    [
+        "description", "intro", "summary", "body", "synopsis", "metaTitle", "metaDescription",
+        // De una excursión: lo que incluye (una línea por punto) y dónde empieza.
+        "includes", "meetingPoint",
+    ];
 
     /// <summary>Types whose name is a label the portal chose ("Restaurantes") rather than
     /// something out in the world. Everything else keeps its name in both languages: a
@@ -51,6 +56,7 @@ public class TranslateSync(UmbracoClient umbraco, IEnrichmentClient enricher)
         ["company"] = "empresa o cadena",
         ["movie"] = "película",
         ["eventItem"] = "evento",
+        ["tour"] = "excursión",
     };
 
     /// <summary>A node's Spanish side, what it already has in English, and what filling

@@ -18,7 +18,7 @@ import {
 import type { MenuGroup } from "./menu";
 import { canonicalPath } from "./sectionSlugs";
 import { SOCIAL_ACCOUNTS } from "./social";
-import { num, photoUrl, text, type UmbracoItem } from "./umbraco";
+import { num, photoUrl, picked, text, type UmbracoItem } from "./umbraco";
 
 export const SITE_NAME = "QueHacerRD";
 
@@ -350,8 +350,8 @@ const SECTION_BUSINESS_TYPES: Record<string, string> = {
   tiendas: "Store",
   cines: "MovieTheater",
   atracciones: "TouristAttraction",
-  // Lo que la sección lista es quien lleva la excursión, no el sitio adonde va.
-  tours: "TravelAgency",
+  // "Tours" ya no lista empresas: lo que hay ahí son excursiones ("TouristTrip",
+  // en tourJsonLd), y quien las lleva vive en "Empresas y Servicios".
   "empresas-y-servicios": "LocalBusiness",
 };
 
@@ -713,6 +713,67 @@ export function eventJsonLd(
           availability: "https://schema.org/InStock",
         }
       : undefined,
+  });
+}
+
+/** Horas decimales en la duración ISO 8601 que schema.org espera. */
+function isoDuration(hours: number): string {
+  const minutes = Math.round(hours * 60);
+  const whole = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return `PT${whole}H${rest ? `${rest}M` : ""}`;
+}
+
+/**
+ * Una excursión: un viaje que se compra, no un sitio que se visita — de ahí
+ * "TouristTrip" y no "TouristAttraction". Lleva lo que la decide (cuánto dura, desde
+ * cuánto sale) y quién la opera, que son nodos propios del portal; un precio solo se
+ * declara cuando el operador publicó uno, porque una oferta sin cifra real es peor
+ * que ninguna.
+ */
+export function tourJsonLd(
+  item: UmbracoItem,
+  photo: string | null,
+  locale: Locale,
+): JsonLd {
+  const url = absoluteUrl(item.route.path);
+  const price =
+    typeof item.properties["priceFrom"] === "number"
+      ? (item.properties["priceFrom"] as number)
+      : null;
+  const hours =
+    typeof item.properties["durationHours"] === "number"
+      ? (item.properties["durationHours"] as number)
+      : null;
+  const operators = picked(item, "operators");
+  return prune({
+    "@context": "https://schema.org",
+    "@type": "TouristTrip",
+    "@id": url,
+    inLanguage: HTML_LANG[locale],
+    name: item.name,
+    url,
+    description: firstText(text(item, "description")) || undefined,
+    image: absoluteImage(photo),
+    // ISO 8601: "PT10H", y una hora y media "PT1H30M".
+    duration: hours ? isoDuration(hours) : undefined,
+    provider: operators.length
+      ? operators.map((operator) => ({
+          "@type": "Organization",
+          name: operator.name,
+          url: absoluteUrl(operator.route.path),
+        }))
+      : undefined,
+    offers:
+      price !== null
+        ? {
+            "@type": "Offer",
+            price,
+            priceCurrency: text(item, "priceCurrency").toUpperCase() || "USD",
+            availability: "https://schema.org/InStock",
+            url,
+          }
+        : undefined,
   });
 }
 

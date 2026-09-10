@@ -23,6 +23,7 @@ const SITEMAP_HINTS: Record<
   mall: { changeFrequency: "weekly", priority: 0.7 },
   company: { changeFrequency: "weekly", priority: 0.7 },
   place: { changeFrequency: "weekly", priority: 0.6 },
+  tour: { changeFrequency: "weekly", priority: 0.6 },
   article: { changeFrequency: "monthly", priority: 0.6 },
   eventItem: { changeFrequency: "daily", priority: 0.6 },
   movie: { changeFrequency: "daily", priority: 0.4 },

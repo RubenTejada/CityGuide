@@ -21,6 +21,7 @@ import MovieCard from "./cine/MovieCard";
 import { type MapMarker } from "./MarkersMap";
 import { EventCard, eventMarkers, type EventEntry } from "./EventsList";
 import PlaceCard from "./PlaceCard";
+import TourCard from "./TourCard";
 import { type ListingView } from "./ViewToggle";
 import { WeatherForecast } from "./Weather";
 import { weatherOn, type CityWeather } from "@/lib/weather";
@@ -527,14 +528,20 @@ export default function ThingsToDoExplorer({
                     )}
                   />
                   <div className={CARD_GRID}>
-                    {section.entries.map((entry) => (
-                      <PlaceCard
-                        key={entry.id}
-                        place={entry}
-                        compact
-                        locale={locale}
-                      />
-                    ))}
+                    {/* Una excursión se elige por el plan y no por la dirección,
+                        así que lleva su propia tarjeta también aquí. */}
+                    {section.entries.map((entry) =>
+                      entry.contentType === "tour" ? (
+                        <TourCard key={entry.id} tour={entry} locale={locale} />
+                      ) : (
+                        <PlaceCard
+                          key={entry.id}
+                          place={entry}
+                          compact
+                          locale={locale}
+                        />
+                      ),
+                    )}
                   </div>
                 </section>
               ))}
