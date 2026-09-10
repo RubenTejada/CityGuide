@@ -686,7 +686,9 @@ and the container the agent runs in keeps nothing between passes, so the memory 
 the CMS beside the query log: `agentSocialLog`, the "Publicaciones ya hechas" field on
 the city node, one `yyyy-MM-dd <id> <nombre>` line per node already posted. A post that
 failed is not written to it, so the next pass offers it again. `.github/workflows/run-agent.yml`
-exposes it as the `social` dispatch input (plan / apply, `social_posts` for the cap), with
+exposes it as the `social` dispatch input (plan / apply, `count` for the cap — one input
+shared by every pass that takes one, since the workflow sits at GitHub's 25-input
+ceiling), with
 the three Meta credentials as repository secrets.
 
 **El clima de la ciudad** lo sirve `frontend/lib/weather.ts`, de dos fuentes por lo que

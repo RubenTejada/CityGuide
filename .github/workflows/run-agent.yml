@@ -12,6 +12,10 @@ name: Run agent
 # never retried. The second cron is the safety net for that day, and on a public repository
 # a runner-minute costs nothing. 08:23 UTC = 4:23 AM in Santo Domingo (AST, UTC-4), 20:23
 # UTC = 4:23 PM.
+# GitHub allows a workflow_dispatch at most 25 inputs, and a file over that is invalid:
+# every push reports a failed run and the schedule stops firing, silently. This one sits
+# at the ceiling, so a new pass has to share an input rather than add one — which is what
+# "count" is: the cap of whichever pass takes one, since only one runs per dispatch.
 on:
   schedule:
     - cron: "23 8 * * *"
@@ -181,7 +185,7 @@ on:
           Maintenance pass instead of the ingestion run: gives the best-rated places
           of "section" the photo gallery their detail page rotates. Google names a
           place's photos for free and bills only the download, so it needs "paid" and
-          gallery_places caps the bill. "plan" only prints what it would download.
+          "count" caps the bill. "plan" only prints what it would download.
         type: choice
         required: false
         options:
@@ -189,10 +193,6 @@ on:
           - plan
           - apply
         default: "no"
-      gallery_places:
-        description: How many places the gallery pass covers. Empty uses the default (10).
-        required: false
-        default: ""
       menus:
         description: >-
           Maintenance pass instead of the ingestion run: reads the menu of the
@@ -208,10 +208,6 @@ on:
           - plan
           - apply
         default: "no"
-      menus_places:
-        description: How many places the menu pass covers. Empty uses the default (25).
-        required: false
-        default: ""
       venue_events:
         description: >-
           Maintenance pass instead of the ingestion run: fills a city's "Eventos"
@@ -227,10 +223,6 @@ on:
           - plan
           - apply
         default: "no"
-      venue_events_places:
-        description: How many places the venue-events pass reads. Empty uses the default (30).
-        required: false
-        default: ""
       social:
         description: >-
           Maintenance pass instead of the ingestion run: announces the portal's own
@@ -245,10 +237,6 @@ on:
           - plan
           - apply
         default: "no"
-      social_posts:
-        description: How many posts the social pass may publish per city. Empty uses the default (3).
-        required: false
-        default: ""
       scrape_instagram:
         description: >-
           Diagnostic instead of the ingestion run: prints what the places of each city
@@ -258,8 +246,12 @@ on:
         type: boolean
         required: false
         default: false
-      scrape_instagram_accounts:
-        description: How many accounts the Instagram diagnostic reads per city. Empty uses the default (30).
+      count:
+        description: >-
+          How much the chosen pass covers, for the ones that take a cap: places for
+          gallery, menus, venue_events and the Instagram diagnostic, posts per city for
+          social. Only one pass runs per dispatch, so one number serves them all. Empty
+          uses each pass's own default.
         required: false
         default: ""
       paid:
@@ -340,21 +332,17 @@ jobs:
           EXCLUDE_NOTE: ${{ inputs.exclude_note }}
           TRANSLATE: ${{ inputs.translate }}
           GALLERY: ${{ inputs.gallery }}
-          GALLERY_PLACES: ${{ inputs.gallery_places }}
           MENUS: ${{ inputs.menus }}
-          MENUS_PLACES: ${{ inputs.menus_places }}
           # Publishing to the Page and to the linked Instagram account. Missing
           # secrets only mean the pass refuses to post: the plan still runs.
           Social__PageId: ${{ secrets.META_PAGE_ID }}
           Social__InstagramUserId: ${{ secrets.META_INSTAGRAM_USER_ID }}
           Social__AccessToken: ${{ secrets.META_ACCESS_TOKEN }}
           VENUE_EVENTS: ${{ inputs.venue_events }}
-          VENUE_EVENTS_PLACES: ${{ inputs.venue_events_places }}
           SOCIAL: ${{ inputs.social }}
-          SOCIAL_POSTS: ${{ inputs.social_posts }}
           SCRAPE_INSTAGRAM: ${{ inputs.scrape_instagram }}
-          SCRAPE_INSTAGRAM_ACCOUNTS: ${{ inputs.scrape_instagram_accounts }}
           PUBLISH: ${{ inputs.publish }}
+          COUNT: ${{ inputs.count }}
           PAID: ${{ inputs.paid }}
         run: |
           # Everything the agent uses is free except Google Places and the enrichment
@@ -364,23 +352,23 @@ jobs:
           section_flag=""
           if [ -n "$SECTION" ]; then section_flag="--section $SECTION"; fi
           if [ "$SCRAPE_INSTAGRAM" = "true" ]; then
-            dotnet run -c Release -- --scrape-instagram $SCRAPE_INSTAGRAM_ACCOUNTS $section_flag
+            dotnet run -c Release -- --scrape-instagram $COUNT $section_flag
           elif [ "$SOCIAL" = "plan" ] || [ "$SOCIAL" = "apply" ]; then
             apply_flag=""
             if [ "$SOCIAL" = "apply" ]; then apply_flag="--apply"; fi
-            dotnet run -c Release -- --social $SOCIAL_POSTS $apply_flag $section_flag
+            dotnet run -c Release -- --social $COUNT $apply_flag $section_flag
           elif [ "$GALLERY" = "plan" ] || [ "$GALLERY" = "apply" ]; then
             apply_flag=""
             if [ "$GALLERY" = "apply" ]; then apply_flag="--apply"; fi
-            dotnet run -c Release -- --gallery $GALLERY_PLACES $apply_flag $section_flag $paid_flag
+            dotnet run -c Release -- --gallery $COUNT $apply_flag $section_flag $paid_flag
           elif [ "$MENUS" = "plan" ] || [ "$MENUS" = "apply" ]; then
             apply_flag=""
             if [ "$MENUS" = "apply" ]; then apply_flag="--apply"; fi
-            dotnet run -c Release -- --menus $MENUS_PLACES $apply_flag $section_flag $paid_flag
+            dotnet run -c Release -- --menus $COUNT $apply_flag $section_flag $paid_flag
           elif [ "$VENUE_EVENTS" = "plan" ] || [ "$VENUE_EVENTS" = "apply" ]; then
             apply_flag=""
             if [ "$VENUE_EVENTS" = "apply" ]; then apply_flag="--apply"; fi
-            dotnet run -c Release -- --venue-events $VENUE_EVENTS_PLACES $apply_flag $section_flag $paid_flag
+            dotnet run -c Release -- --venue-events $COUNT $apply_flag $section_flag $paid_flag
           elif [ "$TRANSLATE" = "plan" ]; then
             dotnet run -c Release -- --translate $section_flag $paid_flag
           elif [ "$TRANSLATE" = "apply" ]; then
