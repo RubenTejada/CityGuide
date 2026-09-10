@@ -35,6 +35,7 @@ import {
   eventMarkers,
   isPastEvent,
   monthLabel,
+  recurrenceLabel,
   type EventEntry,
 } from "@/components/EventsList";
 import ThingsToDoExplorer, {
@@ -2022,6 +2023,9 @@ async function EventView({ item }: { item: UmbracoItem }) {
       ? ` — ${formatDate(item.properties["endDate"], locale)}`
       : ""
   }`;
+  // A weekly event's date is the next night it falls on, not the only one: the
+  // rule leads and the date follows it as the next occasion.
+  const repeats = recurrenceLabel(text(item, "recurrence"), locale);
   const cityItem = await cityOf(item);
 
   return (
@@ -2072,6 +2076,9 @@ async function EventView({ item }: { item: UmbracoItem }) {
           </div>
           <div className="mt-4 rounded-xl border border-neutral-200 bg-white p-4">
             <h2 className="font-semibold">{t(locale).place.date}</h2>
+            {repeats && (
+              <p className="mt-1 text-sm font-medium text-brand-700">{repeats}</p>
+            )}
             <p className="mt-1 text-sm text-neutral-600">{dates}</p>
           </div>
         </div>

@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { INTL_LOCALE, type Locale } from "@/lib/i18n";
+import { INTL_LOCALE, t, type Locale } from "@/lib/i18n";
 import { num, photoUrl, text, type UmbracoItem } from "@/lib/umbraco";
 import { type MapMarker } from "./MarkersMap";
 
@@ -12,6 +12,8 @@ export interface EventEntry {
   startDate: string;
   endDate: string;
   venueName: string;
+  /** The weekly rule the CMS stores ("semanal:miércoles"), empty for a one-off. */
+  recurrence: string;
   description: string;
   photo: string | null;
   latitude: number;
@@ -34,6 +36,7 @@ export function eventEntry(event: UmbracoItem): EventEntry {
         ? event.properties["endDate"]
         : "",
     venueName: text(event, "venueName"),
+    recurrence: text(event, "recurrence"),
     description: text(event, "description"),
     photo: photoUrl(event),
     latitude: num(event, "latitude"),
@@ -57,6 +60,44 @@ export function eventMarkers(events: EventEntry[]): MapMarker[] {
       logo: null,
       photo: event.photo,
     }));
+}
+
+/** The days the CMS writes a weekly rule with, in the order `Date` counts them. */
+const RECURRENCE_DAYS = [
+  "domingo",
+  "lunes",
+  "martes",
+  "miercoles",
+  "jueves",
+  "viernes",
+  "sabado",
+];
+
+/**
+ * "Cada miércoles" for an event that repeats every week, and "" for one that
+ * happens once. The rule is stored in Spanish because it is what an editor types
+ * into the backoffice, so the day is read off it and then named by `Intl` in
+ * whichever language the page is in — an English page says "Every Wednesday"
+ * without a second table to keep in step.
+ */
+export function recurrenceLabel(recurrence: string, locale: Locale): string {
+  const written = recurrence
+    .split(":")
+    .pop()!
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  const day = RECURRENCE_DAYS.indexOf(written);
+  if (day < 0) return "";
+  // 2024-01-07 is a Sunday, so adding the index lands on the day itself — read
+  // back in UTC, since formatting that instant in Santo Domingo's own zone lands
+  // on the evening before and names the day that comes first.
+  const named = new Intl.DateTimeFormat(INTL_LOCALE[locale], {
+    weekday: "long",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(2024, 0, 7 + day)));
+  return t(locale).events.everyWeek(named);
 }
 
 /** Whether the event is over, which is what files it under "Eventos pasados". */
@@ -148,7 +189,10 @@ export function EventCard({
         <p
           className={`text-brand-700 ${compact ? "mt-0.5 text-xs" : "mt-1 text-sm"}`}
         >
-          {formatDate(event.startDate, locale)}
+          {/* A weekly event carries one date like any other — the next night it
+              falls on — and the date alone would read as the only one there is. */}
+          {recurrenceLabel(event.recurrence, locale) ||
+            formatDate(event.startDate, locale)}
         </p>
         <p
           className={`truncate text-neutral-500 ${

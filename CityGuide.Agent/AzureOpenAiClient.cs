@@ -67,6 +67,16 @@ public class AzureOpenAiClient(HttpClient http, AzureOpenAiConfig config) : IEnr
         return arguments is null ? null : MenuPrompt.Parse(arguments.Value);
     }
 
+    public async Task<IReadOnlyList<AgendaEvent>> ReadAgendaAsync(
+        string placeName, string cityName, string pageUrl, string pageText)
+    {
+        JsonElement? arguments = await CallToolAsync(
+            EventAgendaPrompt.ToolName, EventAgendaPrompt.ToolDescription, EventAgendaPrompt.Schema,
+            EventAgendaPrompt.UserMessage(placeName, cityName, pageUrl, pageText), placeName,
+            temperature: 0);
+        return arguments is null ? [] : EventAgendaPrompt.Parse(arguments.Value, pageText);
+    }
+
     public async Task<Dictionary<int, Dictionary<string, string>>> TranslateAsync(
         IReadOnlyList<TranslationRequest> entries)
     {

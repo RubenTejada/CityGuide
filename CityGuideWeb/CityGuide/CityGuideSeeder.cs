@@ -589,9 +589,16 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
     }
 
     /// <summary>
-    /// Adds the "category", "website" and "phone" properties to the existing
-    /// "eventItem" document type. Guarded per property and run every startup
-    /// so existing installations pick them up.
+    /// Adds the "category", "website", "phone", "source" and "recurrence" properties
+    /// to the existing "eventItem" document type. Guarded per property and run every
+    /// startup so existing installations pick them up.
+    ///
+    /// "recurrence" is what a small town's events section is made of: Juan Dolio has
+    /// no amphitheatre and no ticket portal listing it, but its bars have live music
+    /// on a fixed night of the week. One node carrying "semanal:miércoles" says that
+    /// once, and the agent's event pass moves its date to the next Wednesday instead
+    /// of deleting it when it passes. It is a rule and not prose, so it never varies
+    /// by culture.
     /// </summary>
     private async Task EnsureEventCategorySchemaAsync()
     {
@@ -606,6 +613,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
             {
                 ("category", "Categoría", 9), ("website", "Sitio Web / Entradas", 10),
                 ("phone", "Teléfono", 11), ("source", "Fuente (manual | agent:<portal>)", 12),
+                ("recurrence", "Repetición (\"semanal:miércoles\")", 13),
             }
                 .Where(p => !eventItem.PropertyTypeExists(p.Item1))
                 .ToArray();

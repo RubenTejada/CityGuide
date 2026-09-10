@@ -106,8 +106,22 @@ public partial class EventSync(
                 byNameDate.Add(NameDateKey(child.Name, start.Value));
             }
 
+            // A weekly event is never over: what has passed is one of its nights. It
+            // is moved to the next one — whoever created it, since the rule is what
+            // says the event repeats — and only an event without a rule can be past.
+            DateTime? end = ParseCmsDate(detail.TextValues.GetValueOrDefault("endDate"));
+            if (EventRecurrence.WeekdayOf(detail.TextValues.GetValueOrDefault("recurrence")) is { } weekday)
+            {
+                if (start is not null)
+                {
+                    await RollAsync(child.Id, child.Name, start.Value, end, weekday);
+                }
+
+                continue;
+            }
+
             bool fromAgent = detail.TextValues.GetValueOrDefault("source")?.StartsWith("agent:") == true;
-            DateTime? last = ParseCmsDate(detail.TextValues.GetValueOrDefault("endDate")) ?? start;
+            DateTime? last = end ?? start;
             if (fromAgent && last is not null && last.Value.Date < DateTime.Today)
             {
                 agentPast.Add((child.Id, child.Name));
@@ -263,6 +277,43 @@ public partial class EventSync(
         {
             await umbraco.DeleteDocumentAsync(id);
             Console.WriteLine($"  - {name} (evento pasado)");
+        }
+    }
+
+    /// <summary>
+    /// Moves a weekly event to its next night when the one it carries has passed. This
+    /// is what an events section is made of in a town no ticket portal lists: the live
+    /// music at the bar on the boulevard is every Thursday, stated once, and a portal
+    /// that deleted it each Friday would show an empty section six days out of seven.
+    /// The time of day and the length are kept — the music starts at nine whichever
+    /// Thursday it is — and an event still in the future is left exactly as it is.
+    /// </summary>
+    private async Task RollAsync(Guid id, string name, DateTime start, DateTime? end, DayOfWeek weekday)
+    {
+        if (EventRecurrence.Roll(start, end, weekday, DateTime.Today) is not { } rolled)
+        {
+            return;
+        }
+
+        var dates = new List<(string Alias, string Value)>
+        {
+            ("startDate", rolled.Start.ToString("yyyy-MM-dd HH:mm:ss")),
+        };
+        if (rolled.End is DateTime rolledEnd)
+        {
+            dates.Add(("endDate", rolledEnd.ToString("yyyy-MM-dd HH:mm:ss")));
+        }
+
+        try
+        {
+            await umbraco.SetTextValuesAsync(id, dates);
+            Console.WriteLine(
+                $"  ~ {name}: {EventRecurrence.Describe(weekday)} "
+                + $"{start:yyyy-MM-dd} → {rolled.Start:yyyy-MM-dd}");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"  ! {name} no se pudo mover: {ex.Message}");
         }
     }
 
