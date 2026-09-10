@@ -54,27 +54,26 @@ const CURATED_PHOTOS: Record<string, string> = {
   "zona-colonial":
     "https://upload.wikimedia.org/wikipedia/commons/thumb/4/46/Calle_las_Damas%2C_Santo_Domingo%2C_Zona_Colonial.jpg/1280px-Calle_las_Damas%2C_Santo_Domingo%2C_Zona_Colonial.jpg",
 
-  // Tours: the place the excursion goes to, which is what tells one from another.
-  "isla-saona-en-catamaran-dia-completo":
-    "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7a/Isla_Saona_Dominican_Republic.jpg/1280px-Isla_Saona_Dominican_Republic.jpg",
-  "isla-catalina-snorkel-y-playa":
-    "https://upload.wikimedia.org/wikipedia/commons/thumb/4/48/Isla_Catalina%2C_Caribbean.jpg/1280px-Isla_Catalina%2C_Caribbean.jpg",
+  // Tours: la foto del sitio adonde va la excursión, que es lo que distingue una de
+  // otra. Estas se sirven desde el propio origen (`public/tours/`) y no desde
+  // Commons: son diez en una misma página, y Wikimedia responde a esa ráfaga con un
+  // 429 que deja el listado en gris. El crédito de cada una está en PHOTO_CREDITS.
+  "isla-saona-en-catamaran-dia-completo": "/tours/isla-saona-en-catamaran-dia-completo.jpg",
+  "isla-catalina-snorkel-y-playa": "/tours/isla-catalina-snorkel-y-playa.jpg",
   "parque-nacional-los-haitises-y-cayo-levantado":
-    "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e8/Los_Haitises_National_Park_-_Flickr_-_J_a_s_o_n_B_o_l_d_e_r_o.jpg/1280px-Los_Haitises_National_Park_-_Flickr_-_J_a_s_o_n_B_o_l_d_e_r_o.jpg",
+    "/tours/parque-nacional-los-haitises-y-cayo-levantado.jpg",
   "avistamiento-de-ballenas-jorobadas-en-samana":
-    "https://upload.wikimedia.org/wikipedia/commons/thumb/b/ba/001_Humpback_whale_breaching_in_Ballena_Marine_National_Park_Photo_by_Giles_Laurent.jpg/1280px-001_Humpback_whale_breaching_in_Ballena_Marine_National_Park_Photo_by_Giles_Laurent.jpg",
+    "/tours/avistamiento-de-ballenas-jorobadas-en-samana.jpg",
   "santo-domingo-zona-colonial-y-los-tres-ojos":
-    "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b8/Zona_Colonial%2C_Santo_Domingo%2C_Dominican_Republic_-_panoramio_%2817%29.jpg/1280px-Zona_Colonial%2C_Santo_Domingo%2C_Dominican_Republic_-_panoramio_%2817%29.jpg",
+    "/tours/santo-domingo-zona-colonial-y-los-tres-ojos.jpg",
   "cueva-de-las-maravillas-y-altos-de-chavon":
-    "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3d/Altos_de_Chavon_1.jpg/1280px-Altos_de_Chavon_1.jpg",
+    "/tours/cueva-de-las-maravillas-y-altos-de-chavon.jpg",
   "safari-en-buggy-por-el-campo-dominicano":
-    "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e7/Rural_Dominican_Republic_Campo.jpg/1280px-Rural_Dominican_Republic_Campo.jpg",
-  "cabalgata-por-la-playa-al-atardecer":
-    "https://upload.wikimedia.org/wikipedia/commons/thumb/0/04/Horse_riding_on_the_beach.jpg/1280px-Horse_riding_on_the_beach.jpg",
+    "/tours/safari-en-buggy-por-el-campo-dominicano.jpg",
+  "cabalgata-por-la-playa-al-atardecer": "/tours/cabalgata-por-la-playa-al-atardecer.jpg",
   "buceo-en-los-arrecifes-y-naufragios-de-juan-dolio":
-    "https://upload.wikimedia.org/wikipedia/commons/thumb/9/92/Kleine_Bonaire-Underwater_life%28js%29.jpg/1280px-Kleine_Bonaire-Underwater_life%28js%29.jpg",
-  "snorkel-en-el-arrecife-de-guayacanes":
-    "https://upload.wikimedia.org/wikipedia/commons/thumb/8/85/Buck_Island_Reef_National_Monument%2C_Virgin_Islands_%2806523f05-6c64-4c00-abe8-c14d9a46efab%29.jpg/1280px-Buck_Island_Reef_National_Monument%2C_Virgin_Islands_%2806523f05-6c64-4c00-abe8-c14d9a46efab%29.jpg",
+    "/tours/buceo-en-los-arrecifes-y-naufragios-de-juan-dolio.jpg",
+  "snorkel-en-el-arrecife-de-guayacanes": "/tours/snorkel-en-el-arrecife-de-guayacanes.jpg",
 };
 
 /**
@@ -84,4 +83,41 @@ const CURATED_PHOTOS: Record<string, string> = {
  */
 export function curatedPhoto(citySlug: string, slug: string): string | null {
   return CURATED_PHOTOS[`${citySlug}/${slug}`] ?? CURATED_PHOTOS[slug] ?? null;
+}
+
+/**
+ * Quién hizo cada foto curada y bajo qué licencia. Las de Commons son CC BY o CC
+ * BY-SA salvo las de dominio público, y esas licencias piden crédito allí donde se
+ * publican: la ficha lo imprime bajo la foto. Sin entrada aquí no se imprime nada,
+ * que es lo correcto para una foto del propio CMS.
+ */
+const PHOTO_CREDITS: Record<string, string> = {
+  "isla-saona-en-catamaran-dia-completo":
+    "bez_uk (Flickr), CC BY-SA 2.0, vía Wikimedia Commons",
+  "isla-catalina-snorkel-y-playa":
+    "Dr. Ondřej Havelka (cestovatel), CC BY 4.0, vía Wikimedia Commons",
+  "parque-nacional-los-haitises-y-cayo-levantado":
+    "Jason Boldero, CC BY 2.0, vía Wikimedia Commons",
+  "avistamiento-de-ballenas-jorobadas-en-samana":
+    "Giles Laurent, CC BY-SA 4.0, vía Wikimedia Commons",
+  "santo-domingo-zona-colonial-y-los-tres-ojos":
+    "Максим Улитин, CC BY 3.0, vía Wikimedia Commons",
+  "cueva-de-las-maravillas-y-altos-de-chavon":
+    "Andreas Volkmer, dominio público, vía Wikimedia Commons",
+  "safari-en-buggy-por-el-campo-dominicano":
+    "flickr.com/photos/75277036@N00, CC BY-SA 2.0, vía Wikimedia Commons",
+  "cabalgata-por-la-playa-al-atardecer":
+    "Anna.Massini, CC BY-SA 4.0, vía Wikimedia Commons",
+  "buceo-en-los-arrecifes-y-naufragios-de-juan-dolio":
+    "Michal, Wojtek y Jerzy Strzelecki, CC BY 3.0, vía Wikimedia Commons",
+  "snorkel-en-el-arrecife-de-guayacanes":
+    "NPS staff, dominio público, vía Wikimedia Commons",
+};
+
+/** El crédito de la foto curada de un nodo, o null si la foto no es de las curadas. */
+export function curatedPhotoCredit(
+  citySlug: string,
+  slug: string,
+): string | null {
+  return PHOTO_CREDITS[`${citySlug}/${slug}`] ?? PHOTO_CREDITS[slug] ?? null;
 }

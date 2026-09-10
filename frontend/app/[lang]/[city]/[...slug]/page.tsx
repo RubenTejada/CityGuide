@@ -69,7 +69,7 @@ import {
   t,
 } from "@/lib/i18n";
 import { hasMenu, placeMenu } from "@/lib/menu";
-import { curatedPhoto } from "@/lib/photos";
+import { curatedPhoto, curatedPhotoCredit } from "@/lib/photos";
 import {
   durationLabel,
   includedItems,
@@ -1128,10 +1128,12 @@ async function TourView({ item }: { item: UmbracoItem }) {
   // this the list of who runs the excursion comes back empty.
   const expanded = await getItem(item.route.path, "properties[operators]");
   const citySlug = contentSegments(item.route.path)[0] ?? "";
+  const own = photoUrl(item);
   const photo =
-    photoUrl(item) ??
-    curatedPhoto(citySlug, slugOf(item)) ??
-    sectionListImage(item.route.path);
+    own ?? curatedPhoto(citySlug, slugOf(item)) ?? sectionListImage(item.route.path);
+  // Las fotos curadas son de Commons y sus licencias piden crédito; una foto puesta
+  // en el backoffice es del portal y no lleva ninguno.
+  const credit = own ? null : curatedPhotoCredit(citySlug, slugOf(item));
   const meta = tourMeta(item, locale, words);
   const price = priceLabel(item, locale);
   const included = includedItems(item);
@@ -1167,6 +1169,11 @@ async function TourView({ item }: { item: UmbracoItem }) {
               priority
             />
           </div>
+          {credit && (
+            <p className="mt-1 text-right text-[11px] text-neutral-400">
+              {words.photoCredit(credit)}
+            </p>
+          )}
           {text(item, "description") && (
             <p className="mt-5 whitespace-pre-line text-neutral-700">
               {text(item, "description")}

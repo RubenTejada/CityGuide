@@ -360,6 +360,7 @@ const es = {
     operatorsHint:
       "La excursión la opera y la confirma la empresa; el portal solo traslada tu solicitud.",
     bookWithOperator: "Ver al operador",
+    photoCredit: (credit: string): string => `Foto: ${credit}`,
   },
   events: {
     about: "Acerca del evento",
@@ -810,6 +811,7 @@ const en: typeof es = {
     operatorsHint:
       "The tour is run and confirmed by the operator; the portal only passes your request on.",
     bookWithOperator: "See the operator",
+    photoCredit: (credit: string): string => `Photo: ${credit}`,
   },
   events: {
     about: "About this event",
