@@ -71,6 +71,7 @@ public static partial class TranslatedVocabulary
         ["Perfumerías y Cosméticos"] = "Perfume & Cosmetics",
         ["Plazas Comerciales y Malls"] = "Shopping Malls",
         ["Remesas y Envíos"] = "Money Transfers & Shipping",
+        ["Rent a Car"] = "Car Rentals",
         ["Ropa y Moda"] = "Clothing & Fashion",
         ["Servicios"] = "Services",
         ["Supermercados"] = "Supermarkets",
