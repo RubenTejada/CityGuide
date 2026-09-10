@@ -231,6 +231,10 @@ const CITY_SECTION_LIST_IMAGES: Record<string, string> = {
     "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b8/2023_-_Playa_Bavaro_Punta_Cana_-_01.jpg/1280px-2023_-_Playa_Bavaro_Punta_Cana_-_01.jpg",
   "punta-cana/que-hacer":
     "https://upload.wikimedia.org/wikipedia/commons/thumb/d/df/2023_-_Playa_Bavaro_Punta_Cana_-_08.jpg/1280px-2023_-_Playa_Bavaro_Punta_Cana_-_08.jpg",
+  "juan-dolio-y-guayacanes/atracciones":
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/6/62/Juan_Dolio_Beach_1.jpg/1280px-Juan_Dolio_Beach_1.jpg",
+  "juan-dolio-y-guayacanes/que-hacer":
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/9/91/Juan_Dolio_Beach_2.jpg/1280px-Juan_Dolio_Beach_2.jpg",
 };
 
 /** Representative photo of the section a content path belongs to. */

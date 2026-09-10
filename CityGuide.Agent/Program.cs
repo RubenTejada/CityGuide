@@ -1248,7 +1248,7 @@ if (args.Contains("--regroup-companies"))
             {
                 // The longest name wins when several fit: "Western Union" over "Union".
                 string? chain = companies.Keys.Concat(chains)
-                    .Where(c => TextMatch.ContainsPhrase(c, loose.Name))
+                    .Where(c => ChainNames.NamesBranch(c, loose.Name))
                     .OrderByDescending(c => c.Length)
                     .FirstOrDefault();
                 if (chain is null)
@@ -1644,7 +1644,7 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelec
             // Branches inherit description/phone/website/hours from their company,
             // so they cost no LLM tokens.
             Guid? companyId = pinnedCompanyId ?? companies
-                .Where(c => TextMatch.ContainsPhrase(c.Key, place.Name))
+                .Where(c => ChainNames.NamesBranch(c.Key, place.Name))
                 .Select(c => (Guid?)c.Value)
                 .FirstOrDefault();
             Enrichment? enrichment = companyId is null
@@ -1693,7 +1693,7 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelec
             // "Pizzerías" — and keeps the description this place just paid for. Every
             // location after it is a branch that inherits and costs no tokens.
             if (companyId is null && run.CreatesCompanies
-                && TextMatch.ContainsPhrase(run.CompanyName, place.Name))
+                && ChainNames.NamesBranch(run.CompanyName, place.Name))
             {
                 companyId = await umbraco.CreateDocumentAsync(
                     targetParentId, companyTypeId, run.CompanyName,

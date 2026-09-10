@@ -145,6 +145,36 @@ function MonumentScene() {
   );
 }
 
+/**
+ * Costa de Juan Dolio y Guayacanes: las mismas dos palmas de la playa, con un
+ * velero fondeado entre ellas en lugar del sol — es el tramo de mar en calma
+ * detrás del arrecife, y distingue el emblema del de Punta Cana.
+ */
+function SailboatScene() {
+  return (
+    <g>
+      <g transform="translate(58 128) scale(1.45)">
+        <Palm />
+      </g>
+      <g transform="translate(142 128) scale(-1.45 1.45)">
+        <Palm />
+      </g>
+      <g stroke="#fff" fill="none">
+        {/* Casco */}
+        <path d="M78 118 H124 L118 128 H84 Z" strokeWidth="3.5" />
+        {/* Mástil */}
+        <path d="M100 118 V80" strokeWidth="3" />
+        {/* Mayor y foque */}
+        <path d="M103 84 V116 H121 Z" strokeWidth="3" />
+        <path d="M97 88 V116 H81 Z" strokeWidth="3" />
+      </g>
+      <g transform="translate(90 52)">
+        <Birds />
+      </g>
+    </g>
+  );
+}
+
 /** Playa: dos palmas y el sol. Escena por defecto de cualquier ciudad. */
 function BeachScene() {
   return (
@@ -178,6 +208,7 @@ const CITY_SCENES: Record<
   "santo-domingo": { Scene: AlcazarScene, crop: "30 44 146 112" },
   santiago: { Scene: MonumentScene, crop: "28 30 153 118" },
   "punta-cana": { Scene: BeachScene, crop: "30 44 140 108" },
+  "juan-dolio-y-guayacanes": { Scene: SailboatScene, crop: "30 44 140 108" },
 };
 
 const DEFAULT_SCENE = CITY_SCENES["punta-cana"];

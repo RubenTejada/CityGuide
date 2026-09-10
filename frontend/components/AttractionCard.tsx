@@ -39,6 +39,12 @@ const FALLBACK_PHOTOS: Record<string, string> = {
     "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a4/Playa_Macao.jpg/1280px-Playa_Macao.jpg",
   "punta-cana/scape-park":
     "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e2/Dominican_Republic_Hoyo_Azul.jpg/1280px-Dominican_Republic_Hoyo_Azul.jpg",
+  "juan-dolio-y-guayacanes/playa-juan-dolio":
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/6/62/Juan_Dolio_Beach_1.jpg/1280px-Juan_Dolio_Beach_1.jpg",
+  "juan-dolio-y-guayacanes/bulevar-de-juan-dolio":
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/9/91/Juan_Dolio_Beach_2.jpg/1280px-Juan_Dolio_Beach_2.jpg",
+  "juan-dolio-y-guayacanes/playa-guayacanes":
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b1/Quiet_Sea_-_panoramio.jpg/1280px-Quiet_Sea_-_panoramio.jpg",
   "punta-cana/marina-cap-cana":
     "https://upload.wikimedia.org/wikipedia/commons/thumb/4/45/Cap_Cana_Marina_Dominican_Republic.jpg/1280px-Cap_Cana_Marina_Dominican_Republic.jpg",
   "malecon-de-santo-domingo":
