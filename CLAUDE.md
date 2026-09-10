@@ -579,6 +579,26 @@ that would look like the only one (`recurrenceLabel` reads the day off the store
 value and names it with `Intl`, so the English page says "Every Thursday" without a second
 table to keep in step). Every external request goes through `ThrottlingHandler` (min interval + jitter per host, `Throttle:SecondsBetweenRequests`) so the agent is slow on purpose and never trips rate limiters.
 
+**Una sección "Tours", y solo en Juan Dolio y Guayacanes.** Las excursiones vivían como
+subcategoría de "Empresas y Servicios" — y ahí una salida en catamarán se leía como un
+servicio que se contrata, entre bancos y remesas. En un pueblo de playa la excursión *es*
+el plan del día, así que tiene sección propia y se lista como "Atracciones": la tarjeta
+con foto de la guía (`PHOTO_CARD_SECTIONS` en el catch-all), su glifo de brújula, su
+icono de pin y su dibujo para las fichas de "Qué Hacer" — donde entra como sección de
+ideas, que es lo que es, y no queda excluida como lo están "Atracciones", "Cines" y
+"Empresas y Servicios". En schema.org declara `TravelAgency`: lo que la sección lista es
+quien lleva la excursión, no el sitio adonde va. La sección se llama igual en los dos
+idiomas (`TranslatedVocabulary`), así que el slug inglés es el mismo y no hay par que
+mapear en `sectionSlugs.ts`. Es una fila más de la tabla de `SeedCity`, de modo que la
+crea `EnsureCityContentSeeded` para esa ciudad y para ninguna otra: una sección vacía es
+una página vacía, y ninguna otra ciudad tiene `Runs` de tours. `EnsureToursSectionSeeded`
+es la mudanza de lo ya publicado — mueve los operadores de "Tours y Excursiones" a la
+sección y manda la subcategoría vacía a la papelera, guardado por ciudad y solo donde
+existe la sección — y los dos `Runs` de Juan Dolio escriben desde ahora en
+`/juan-dolio-y-guayacanes/tours` sin `Subcategory`. Mover cambia la URL y la vieja deja de
+responder, el mismo trato que hace `--recategorize-places`; el pase `--translate` es lo
+que da a la sección su variante inglesa, sin la cual sus lugares no enrutan en `/en`.
+
 Content model (all created in code, not in the backoffice):
 `site` → `city` → `categoryPage` → `subcategory` → `place`, plus `eventsPage`/`eventItem` and `thingsToDoPage` (“Qué Hacer”: aggregation-only guide page, planned for a day — the attractions open that day, its events (or the next ones), its most-shown movies (live cartelera cards, not a list of theaters — that is why “cines” is excluded from the idea sections), idea sections per category, every block capped at six with a link to its section; no child content) under each city, and `movie` (agent-maintained cartelera catalog) under `categoryPage`. `categoryPage` accepts `subcategory`, `place`, and `company` children; `subcategory` accepts `place` and `company`; `company` (empresa: logo + general info) accepts only `place` (its branches/sucursales).
 

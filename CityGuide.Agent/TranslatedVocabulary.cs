@@ -28,6 +28,9 @@ public static partial class TranslatedVocabulary
         ["Cines"] = "Movie Theaters",
         ["Atracciones"] = "Attractions",
         ["Empresas y Servicios"] = "Businesses & Services",
+        // La sección se llama igual en los dos idiomas, y por eso está aquí: sin la
+        // entrada el pase de traducción la deja en español y la reporta como faltante.
+        ["Tours"] = "Tours",
         ["Eventos"] = "Events",
         ["Qué Hacer"] = "Things to Do",
         ["Artículos"] = "Articles",
@@ -72,7 +75,6 @@ public static partial class TranslatedVocabulary
         ["Plazas Comerciales y Malls"] = "Shopping Malls",
         ["Remesas y Envíos"] = "Money Transfers & Shipping",
         ["Rent a Car"] = "Car Rentals",
-        ["Tours y Excursiones"] = "Tours & Excursions",
         ["Salones de Eventos"] = "Event Venues",
         ["Ropa y Moda"] = "Clothing & Fashion",
         ["Servicios"] = "Services",

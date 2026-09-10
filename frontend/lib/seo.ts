@@ -350,6 +350,8 @@ const SECTION_BUSINESS_TYPES: Record<string, string> = {
   tiendas: "Store",
   cines: "MovieTheater",
   atracciones: "TouristAttraction",
+  // Lo que la sección lista es quien lleva la excursión, no el sitio adonde va.
+  tours: "TravelAgency",
   "empresas-y-servicios": "LocalBusiness",
 };
 

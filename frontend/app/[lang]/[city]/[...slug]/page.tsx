@@ -951,6 +951,12 @@ function Listing({
   );
 }
 
+/**
+ * Sections listed with the photo card of the guide instead of the place card:
+ * what they hold is an outing, not an address to look up.
+ */
+const PHOTO_CARD_SECTIONS = new Set(["atracciones", "tours"]);
+
 async function CategoryView({
   item,
   citySlug,
@@ -987,8 +993,10 @@ async function CategoryView({
   ];
   const markers = await listingMarkers(item.route.path, entries);
   // Attractions use the photo card "Qué Hacer" shows, three across on a wide
-  // screen, instead of the two-column place card the other sections list.
-  const showsAttractions = categorySlug === "atracciones";
+  // screen, instead of the two-column place card the other sections list. Tours
+  // read the same way: what is picked there is a plan for the day, and the
+  // picture is what tells one excursion from another.
+  const showsAttractions = PHOTO_CARD_SECTIONS.has(categorySlug);
   // The editor's introduction, else the derived lead — what the page holds,
   // which is also its meta description.
   const lead =

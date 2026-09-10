@@ -21,6 +21,8 @@ export const SECTION_LIST_IMAGES: Record<string, string> = {
     "https://upload.wikimedia.org/wikipedia/commons/thumb/4/49/Bonn%2C_Post-Tower_--_2017_--_2128.jpg/1280px-Bonn%2C_Post-Tower_--_2017_--_2128.jpg",
   atracciones:
     "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9e/Santo_Domingo_-_Alcazar_de_Colon_01.JPG/1280px-Santo_Domingo_-_Alcazar_de_Colon_01.JPG",
+  tours:
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e4/Bayahibe_harber_051.jpg/1280px-Bayahibe_harber_051.jpg",
   eventos:
     "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cc/Heritage_Live_concert_crowd_and_stage_at_Sandringham_2023_-_geograph.org.uk_-_7586057.jpg/1280px-Heritage_Live_concert_crowd_and_stage_at_Sandringham_2023_-_geograph.org.uk_-_7586057.jpg",
   "que-hacer":
@@ -77,7 +79,6 @@ const SUBCATEGORY_ICONS: Record<string, string> = {
   bancos: "🏦",
   "remesas-y-envios": "💸",
   "rent-a-car": "🚗",
-  "tours-y-excursiones": "🧭",
   "salones-de-eventos": "🎪",
   // Mall groups
   comida: "🍽",
@@ -108,6 +109,7 @@ const SECTION_ICONS: Record<string, string> = {
   cines: "🎬",
   "empresas-y-servicios": "🏢",
   atracciones: "🏛",
+  tours: "🧭",
   eventos: "🎉",
   articulos: "📰",
 };
@@ -173,6 +175,7 @@ const SECTION_MAP_ICON_SLUGS = new Set([
   "cines",
   "empresas-y-servicios",
   "atracciones",
+  "tours",
   "eventos",
 ]);
 
@@ -257,6 +260,7 @@ const SECTION_TILE_SLUGS = new Set([
   "tiendas",
   "cines",
   "atracciones",
+  "tours",
   "eventos",
   "que-hacer",
 ]);

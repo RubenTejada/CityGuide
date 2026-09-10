@@ -168,6 +168,8 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
 
         bool cityContentSeeded = EnsureCityContentSeeded();
 
+        bool toursSeeded = EnsureToursSectionSeeded();
+
         EnsureContactInboxSeeded();
 
         EnsureReservationInboxSeeded();
@@ -199,6 +201,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
             && (banksSeeded
                 || citiesSeeded
                 || cityContentSeeded
+                || toursSeeded
                 || logosRestored
                 || agentConfigSeeded
                 || thingsToDoMigrated
@@ -1408,6 +1411,9 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         new("Empresas y Servicios", "Empresas y servicios locales.", []),
     ];
 
+    private const string ToursIntro =
+        "Tours, excursiones y operadores turísticos de la zona: salidas de un día, mar y naturaleza.";
+
     private static readonly SeedCity[] SeedCities =
     [
         new("Santiago", "República Dominicana", 19.4517m, -70.6970m,
@@ -1523,7 +1529,11 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
             // rectángulo de Santo Domingo.
             "18.38,-69.52;18.47,-69.36",
             [.. CommonSections.Where(s => s.Name != "Cines"), new("Atracciones",
-                "Playas, bulevar y golf de la costa de Juan Dolio y Guayacanes.", [])],
+                "Playas, bulevar y golf de la costa de Juan Dolio y Guayacanes.", []),
+                // Una sección propia, y no una subcategoría de "Empresas y Servicios":
+                // en un pueblo de playa la excursión es el plan del día — se lee como
+                // una atracción, no como un servicio que se contrata.
+                new("Tours", ToursIntro, [])],
             [
                 new("Playa Juan Dolio",
                     "La playa del pueblo: arena fina y agua calmada detrás del arrecife, con el bulevar a un paso y los comedores y bares de playa a lo largo de la orilla.",
@@ -1746,6 +1756,63 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         }
 
         return changed;
+    }
+
+    /// <summary>Where the tour operators lived before "Tours" was a section of its own.</summary>
+    private const string ToursLegacySubcategory = "Tours y Excursiones";
+
+    /// <summary>
+    /// Idempotent, runs every startup: moves the tour operators out of the
+    /// "Tours y Excursiones" subcategory of "Empresas y Servicios" into the city's own
+    /// "Tours" section — in a beach town an excursion is the plan of the day, read like
+    /// an attraction and not like a service filed beside the banks — and sends the
+    /// emptied subcategory to the recycle bin. The section itself is one more row of
+    /// <see cref="SeedCity.Sections"/>, created by <see cref="EnsureCityContentSeeded"/>;
+    /// a city without one is left exactly as it is, and so is a subcategory whose places
+    /// could not all be moved. Moving changes their URL and the old one stops answering,
+    /// which is the same trade "--recategorize-places" makes in the agent.
+    /// </summary>
+    private bool EnsureToursSectionSeeded()
+    {
+        IContent? site = _contentService.GetRootContent().FirstOrDefault(c => c.ContentType.Alias == "site");
+        if (site is null)
+        {
+            return false;
+        }
+
+        var moved = false;
+        foreach (IContent city in _contentService
+            .GetPagedChildren(site.Id, 0, 100, out _, null, null, null, false)
+            .Where(c => c.ContentType.Alias == "city"))
+        {
+            if (Descendant(city, "categoryPage", "Tours") is not IContent tours
+                || Descendant(city, "categoryPage", "Empresas y Servicios") is not IContent servicios
+                || Descendant(servicios, "subcategory", ToursLegacySubcategory) is not IContent legacy)
+            {
+                continue;
+            }
+
+            foreach (IContent child in _contentService
+                .GetPagedChildren(legacy.Id, 0, 500, out _, null, null, null, false))
+            {
+                _logger.LogInformation("CityGuide: moving '{Name}' into the 'Tours' section of '{City}'",
+                    child.Name, city.Name);
+                _contentService.Move(child, tours.Id);
+                moved = true;
+            }
+
+            if (_contentService.GetPagedChildren(legacy.Id, 0, 1, out _, null, null, null, false).Any())
+            {
+                continue;
+            }
+
+            _logger.LogInformation("CityGuide: retiring the '{Subcategory}' subcategory of '{City}'",
+                ToursLegacySubcategory, city.Name);
+            _contentService.MoveToRecycleBin(legacy);
+            moved = true;
+        }
+
+        return moved;
     }
 
     private static readonly string ThingsToDoIntro =
