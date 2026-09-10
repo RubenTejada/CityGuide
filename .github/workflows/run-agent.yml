@@ -219,21 +219,6 @@ on:
           - plan
           - apply
         default: "no"
-      venue_events:
-        description: >-
-          Maintenance pass instead of the ingestion run: fills a city's "Eventos"
-          from what its own places announce on their own sites. It is what fills the
-          section of a town no ticket portal lists — Juan Dolio has no box office, so
-          every portal answers about it with Santo Domingo. No Google request; the
-          model reads each agenda page, so it needs "paid". Scoped by "section",
-          whose city slug picks one city. "plan" only lists what it would create.
-        type: choice
-        required: false
-        options:
-          - "no"
-          - plan
-          - apply
-        default: "no"
       count:
         description: >-
           How much the chosen pass covers: places for "gallery" (default 10),
