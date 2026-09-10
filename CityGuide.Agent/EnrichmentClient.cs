@@ -20,8 +20,9 @@ public record Enrichment(
 /// <summary>
 /// The agent's model-backed steps: a Spanish description + facility mapping for a
 /// newly discovered place, the category of a scraped event, the cuisine of a restaurant
-/// Google types generically, the carta behind a restaurant's menu page, and the English
-/// translation of the prose already in the CMS. Implemented by
+/// Google types generically, the carta behind a restaurant's menu page, the agenda a
+/// venue writes on its own site, and the English translation of the prose already in
+/// the CMS. Implemented by
 /// AzureOpenAiClient (production) and ClaudeClient (fallback). Everything else
 /// (dedupe, rating refresh, cinema sync, trailers, event scraping) is plain code.
 /// </summary>
@@ -41,6 +42,12 @@ public interface IEnrichmentClient
     /// <summary>Structures the text of a restaurant's menu page into its carta, in both
     /// languages, or null when the page turned out not to be one.</summary>
     Task<StructuredMenu?> StructureMenuAsync(string placeName, string cityName, string menuText);
+
+    /// <summary>The activities a place's own page announces, dated or weekly. Empty
+    /// when the page announces none, which is the normal answer: "Eventos" on a
+    /// hotel's site is its salones for hire and not an agenda.</summary>
+    Task<IReadOnlyList<AgendaEvent>> ReadAgendaAsync(
+        string placeName, string cityName, string pageUrl, string pageText);
 
     /// <summary>Translates a batch of Spanish prose into English, keyed by the entry's
     /// position in the list and then by property alias. Entries or fields the model left

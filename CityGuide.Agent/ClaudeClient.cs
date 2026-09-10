@@ -43,6 +43,15 @@ public class ClaudeClient(HttpClient http, string apiKey, string model) : IEnric
         return MenuPrompt.Parse(arguments);
     }
 
+    public async Task<IReadOnlyList<AgendaEvent>> ReadAgendaAsync(
+        string placeName, string cityName, string pageUrl, string pageText)
+    {
+        JsonElement arguments = await CallToolAsync(
+            EventAgendaPrompt.ToolName, EventAgendaPrompt.ToolDescription, EventAgendaPrompt.Schema,
+            EventAgendaPrompt.UserMessage(placeName, cityName, pageUrl, pageText), temperature: 0);
+        return EventAgendaPrompt.Parse(arguments, pageText);
+    }
+
     public async Task<Dictionary<int, Dictionary<string, string>>> TranslateAsync(
         IReadOnlyList<TranslationRequest> entries)
     {

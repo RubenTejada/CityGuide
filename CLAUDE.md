@@ -125,6 +125,16 @@ cd CityGuide.Agent && dotnet run -- --menus 25 --section restaurantes --apply
 # detail page renders. Without it those places are reported and left for a later pass.
 cd CityGuide.Agent && dotnet run -- --paid --menus 25 --section restaurantes --apply
 
+# The events a city's own places announce on their own sites, for the section no
+# ticket portal can fill: Juan Dolio has no box office, so every portal answers about
+# it with Santo Domingo, while its bars announce live music one night a week on their
+# own pages. No Google request; the model reads the agenda page, which is what needs
+# --paid. Most of what it finds repeats, and is stored with its "recurrence" so the
+# event sync moves it to the next Thursday instead of deleting it. --section picks
+# the city, exactly as for the other event passes. Plan until --apply.
+cd CityGuide.Agent && dotnet run -- --paid --venue-events --section juan-dolio-y-guayacanes
+cd CityGuide.Agent && dotnet run -- --paid --venue-events 30 --section juan-dolio-y-guayacanes --apply
+
 # IMDb / Rotten Tomatoes scores on the movie catalog need two free keys, set as
 # user-secrets (leave either empty to run without it — the scores just stay blank):
 #   Cinemas:Ratings:TmdbApiKey  (themoviedb.org, matches the Spanish release title)
@@ -484,7 +494,55 @@ Every event gets a main image: the one the source declares, else the `og:image` 
 ticket page, else a Google photo of its venue. `EventSync` runs once per city in `Events:Cities` (each entry a `CityPath`, its own `Sources` and its own `VenueSections`) and fills that city's `eventos` from public event portals (TodoTickets detail pages, Eventbrite listings) via per-source strategies ("jsonld-listing", "jsonld-detail"); the national portals are listed by every city and scraped once for the whole pass (`EventSync.ScrapeCache`, keyed by source URL) — the feed is the same and only the rectangle that filters it differs, so the second city costs no request; events publish immediately, dedupe by ticket URL and name+date, and only agent-created (`source` = `agent:*`) past events are deleted — TuBoleta (JS-loaded dates), Uepa Tickets (Cloudflare) and TicketExpress (a listing frozen in 2020 whose pages state neither venue nor a real date, so the prose parser invented future ones) are deliberately not scraped. Every portal lists the whole country, so an event is only imported when its location is inside the city's `agentArea` rectangle (`EventVenues`): the portals state the venue's coordinates in their JSON-LD and the rectangle decides for free — the locality they file it under does not, since Escenario 360 reads "Los Alcarrizos" and stands on Av. John F. Kennedy — and an event without coordinates is kept only when its venue name resolves, on Google restricted to that same rectangle, to a place carrying every significant word of the name. A failed lookup is never read as "not in the city", and a city with no `agentArea` keeps importing everything. Resolving the venue also yields a full place, so the venue is created in the section its Google types belong to (`Events:VenueSections` — bars and attractions; a hotel or a shop matches none and only gives the event its coordinates, which is what puts it on the events map), like any discovered place and deduped by Google place id. `dotnet run -- --purge-foreign-events [--apply]` applies the same rule to the events already imported and recycles the ones outside the city (seeded and hand-made events are never touched); the "Run agent" workflow exposes it as the `purge_foreign_events` input. Each event's "Categoría" comes from the model (`EventCategories`: one batched call per portal, from the vocabulary the seeded events use), because no portal states one and the title is usually just the artist's name — an event stays uncategorized, never mislabelled, when no model is configured or the call fails. `dotnet run -- --scrape-events` prints what each source yields, and whether the city filter would keep it, without touching the CMS; `dotnet run -- --recategorize-events [--apply]` reclassifies the events the agent already created (only `agent:*` ones — hand-made and seeded events keep their editor's category), and the "Run agent" workflow exposes it as the `recategorize_events` input so it can be run against Azure. `dotnet run -- --purge-event-source <portal> [--apply]` recycles what a retired portal left behind: dropping a source from a city's `Sources` stops new imports but not the old ones, which are neither past nor locatable (TicketExpress's seven events sat there until this removed them). A venue is looked up once per pass, not once per event: a portal lists a season at one
 address — eight nights at the Gran Arena — and each of those events used to pay for the
 same Enterprise search (`EventVenues` caches by venue name). Every event pass — the sync
-and each maintenance one — covers every city in `Events:Cities`, and `--section` narrows it: a city slug is a segment of its paths, so `--section santiago` is how one city is run on its own, for the discovery runs and the two syncs alike. Every external request goes through `ThrottlingHandler` (min interval + jitter per host, `Throttle:SecondsBetweenRequests`) so the agent is slow on purpose and never trips rate limiters.
+and each maintenance one — covers every city in `Events:Cities`, and `--section` narrows it: a city slug is a segment of its paths, so `--section santiago` is how one city is run on its own, for the discovery runs and the two syncs alike.
+
+**A town without a box office is invisible to every portal, and that is what
+`--venue-events` answers.** Every source the sync scrapes sells tickets, so it lists the
+venues that have a box office and says nothing at all about Juan Dolio y Guayacanes:
+Eventbrite publishes a "Juan Dolio" page, and not one of the twenty events on it falls
+inside the city's rectangle (they are Santo Domingo, La Romana and Casa de Campo), while
+TodoTickets is national ticketing and `allevents.in` has no such city; GetYourGuide,
+Viator, TripAdvisor and Civitatis answer a datacenter address with 403, like Uepa Tickets.
+Adding another portal there buys nothing. What that town does have is a bar with live
+music every Thursday and a club with a tournament on Sunday, written on the place's own
+page — so `--venue-events [n]` (`VenueEvents` over `EventSources`, scoped by `--section`
+like every other event pass) reads the places the CMS already holds for that city, takes
+the ones whose `website` is their own site (`MenuSources.CanRead`, so Instagram and
+Facebook — which is what most of them store — are left alone), walks it for the page whose
+links say "agenda", "eventos", "actividades" or "programación", and keeps the candidate
+whose text states the most dates and weekdays. Fetching is the same throttled client the
+free photos and the menus use: not one Google request. The model is what turns that page
+into events, which is why the pass needs `--paid`: an agenda is prose written for a
+visitor ("los jueves se enciende con música en vivo"), and no portal states it as data.
+The event takes the place as its venue, so it carries its address, its coordinates — which
+is what puts it on the events map — and its photo, at no download: the picture of the bar
+is already in the Media library.
+
+**The prompt copies and the parser checks.** `EventAgendaPrompt` refuses a page about
+renting salones for a wedding (which is what "Eventos" means on a hotel's site), an
+opening hours table, and a hotel's animation programme for its own guests. That is not
+enough on its own: a schema that offers a day of the week gets one, and asked about a
+resort's *nightly* show the model answered "viernes" twice under two different wordings
+of the rules. So a weekly event only survives when the page names that day in so many
+words — `Parse` checks the answer against the page text, accents stripped — which is the
+same discipline that makes `MenuPrompt` refuse a carta of three dishes: the CMS only ever
+receives what this side could verify. Measured over the eighteen Juan Dolio places with a
+site of their own, that leaves zero events today, which is the honest answer; over Santo
+Domingo, where real sites are common, it is what the pass is for.
+
+**Most of what it finds repeats, and `recurrence` is how the portal keeps it.** A weekly
+activity has no date to store — it is every Thursday — so `eventItem` carries a
+`recurrence` ("semanal:jueves", added by `EnsureEventCategorySchemaAsync` and invariant,
+being a rule and not prose), and `EventSync` moves such an event to its next night as each
+one passes instead of deleting it (`EventRecurrence`, `RollAsync`: the time of day and the
+length are kept, and an event already in the future is left alone). Only an event *without*
+a rule can be past, and only an agent-made one is then deleted, so nothing an editor typed
+is touched — and an editor who wants a weekly event now has the field to say so, which is
+the tool a beach town needs more than another scraper. The frontend leads with the rule
+where it has one: a card and the event page read "Cada jueves" instead of a single date
+that would look like the only one (`recurrenceLabel` reads the day off the stored Spanish
+value and names it with `Intl`, so the English page says "Every Thursday" without a second
+table to keep in step). Every external request goes through `ThrottlingHandler` (min interval + jitter per host, `Throttle:SecondsBetweenRequests`) so the agent is slow on purpose and never trips rate limiters.
 
 Content model (all created in code, not in the backoffice):
 `site` → `city` → `categoryPage` → `subcategory` → `place`, plus `eventsPage`/`eventItem` and `thingsToDoPage` (“Qué Hacer”: aggregation-only guide page, planned for a day — the attractions open that day, its events (or the next ones), its most-shown movies (live cartelera cards, not a list of theaters — that is why “cines” is excluded from the idea sections), idea sections per category, every block capped at six with a link to its section; no child content) under each city, and `movie` (agent-maintained cartelera catalog) under `categoryPage`. `categoryPage` accepts `subcategory`, `place`, and `company` children; `subcategory` accepts `place` and `company`; `company` (empresa: logo + general info) accepts only `place` (its branches/sucursales).

@@ -51,10 +51,6 @@ public partial class MenuSources(WebFiles web, int maxPages, int maxTextCharacte
         RegexOptions.IgnoreCase | RegexOptions.Singleline)]
     private static partial Regex LdJsonBlock();
 
-    [GeneratedRegex("""<a\b[^>]*href=["']([^"']+)["'][^>]*>(.*?)</a>""",
-        RegexOptions.IgnoreCase | RegexOptions.Singleline)]
-    private static partial Regex AnchorTag();
-
     [GeneratedRegex("""<img\b[^>]*>""", RegexOptions.IgnoreCase)]
     private static partial Regex ImageTag();
 
@@ -67,16 +63,6 @@ public partial class MenuSources(WebFiles web, int maxPages, int maxTextCharacte
 
     [GeneratedRegex("""alt=["']([^"']*)["']""", RegexOptions.IgnoreCase)]
     private static partial Regex ImageAlt();
-
-    [GeneratedRegex("<[^>]+>")]
-    private static partial Regex Tag();
-
-    [GeneratedRegex("""<(script|style|noscript|svg)\b[^>]*>.*?</\1>""",
-        RegexOptions.IgnoreCase | RegexOptions.Singleline)]
-    private static partial Regex Noise();
-
-    [GeneratedRegex(@"\s+")]
-    private static partial Regex Whitespace();
 
     /// <summary>A price as a Dominican carta writes it. The currency is what tells a
     /// menu from an article about the restaurant.</summary>
@@ -298,7 +284,7 @@ public partial class MenuSources(WebFiles web, int maxPages, int maxTextCharacte
             if (href.StartsWith('#')
                 || !Uri.TryCreate(page, href.Trim(), out Uri? url)
                 || (url.Scheme != Uri.UriSchemeHttp && url.Scheme != Uri.UriSchemeHttps)
-                || !SameSite(url, page)
+                || !WebFiles.SameSite(url, page)
                 || !seen.Add(url.AbsoluteUri))
             {
                 return;
@@ -312,10 +298,8 @@ public partial class MenuSources(WebFiles web, int maxPages, int maxTextCharacte
             Add(declared, href);
         }
 
-        foreach (Match anchor in AnchorTag().Matches(html))
+        foreach ((string href, string text) in WebFiles.Anchors(html))
         {
-            string href = anchor.Groups[1].Value;
-            string text = Tag().Replace(anchor.Groups[2].Value, " ");
             if (!SaysMenu(href) && !SaysMenu(text))
             {
                 continue;
@@ -339,7 +323,7 @@ public partial class MenuSources(WebFiles web, int maxPages, int maxTextCharacte
     /// </summary>
     private FoundMenu? MenuText(string html, Uri url)
     {
-        string text = ReadableText(html);
+        string text = WebFiles.ReadableText(html);
         if (text.Length < MinTextLength || Price().Matches(text).Count < MinPrices)
         {
             return null;
@@ -350,29 +334,6 @@ public partial class MenuSources(WebFiles web, int maxPages, int maxTextCharacte
             url.AbsoluteUri,
             text.Length > maxTextCharacters ? text[..maxTextCharacters] : text);
     }
-
-    /// <summary>An HTML page as the text a reader sees: scripts and styles dropped, every
-    /// tag a line break, entities decoded, blank lines collapsed. Crude on purpose — the
-    /// model reads it, and a carta survives being flattened.</summary>
-    private static string ReadableText(string html)
-    {
-        string stripped = Tag().Replace(Noise().Replace(html, " "), "\n");
-        IEnumerable<string> lines = System.Net.WebUtility.HtmlDecode(stripped)
-            .Split('\n')
-            .Select(line => Whitespace().Replace(line, " ").Trim())
-            .Where(line => line.Length > 0);
-        return string.Join("\n", lines);
-    }
-
-    /// <summary>Whether two addresses belong to the same site. "www" is not part of
-    /// the answer: a site served at www.restaurante.com links its own carta as
-    /// restaurante.com half the time, and reading that as another site is what would
-    /// leave the PDF unread.</summary>
-    private static bool SameSite(Uri url, Uri page) =>
-        Bare(url).Equals(Bare(page), StringComparison.OrdinalIgnoreCase);
-
-    private static string Bare(Uri url) =>
-        url.Host.StartsWith("www.", StringComparison.OrdinalIgnoreCase) ? url.Host[4..] : url.Host;
 
     /// <summary>An address that is the menu rather than a page about it.</summary>
     private static bool IsFile(Uri url) =>

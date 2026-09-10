@@ -129,6 +129,33 @@ public class EventsConfig
     /// cities and each city keeps only what its rectangle contains; the scrape
     /// itself is shared (see EventSync.ScrapeCache).</summary>
     public List<EventsCityConfig> Cities { get; set; } = [];
+
+    public VenueEventsConfig Venues { get; set; } = new();
+}
+
+/// <summary>
+/// What "--venue-events" reads and how far it goes. The pass exists because a ticket
+/// portal has nothing to say about a town without a box office: Juan Dolio's events
+/// are the live music its bars announce on their own pages, one night a week, and
+/// nobody publishes them as a listing.
+/// </summary>
+public class VenueEventsConfig
+{
+    /// <summary>How many places one pass covers when the command line does not say
+    /// ("--venue-events 30"). Each place is a handful of requests to somebody else's
+    /// site, and the throttler makes them slow on purpose.</summary>
+    public int MaxPlaces { get; set; } = 30;
+
+    /// <summary>How much of an agenda page's text is put to the model. A programme runs
+    /// to a few thousand characters; past this it is the whole navigation flattened, and
+    /// the answer is no better for it.</summary>
+    public int MaxTextCharacters { get; set; } = 16_000;
+
+    /// <summary>How many Google reviews a place needs before the pass looks at it. Zero
+    /// on purpose, unlike the menu and gallery passes: a beach bar with eleven reviews
+    /// is exactly the kind of place that has live music on Thursdays, and ranking it out
+    /// would leave the section as empty as the portals do.</summary>
+    public int MinReviews { get; set; }
 }
 
 public class EventsCityConfig

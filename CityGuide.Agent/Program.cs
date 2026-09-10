@@ -190,6 +190,37 @@ if (args.Contains("--purge-event-source"))
     return 0;
 }
 
+// The events a city's own places announce on their own sites. It is what fills the
+// section of a town no ticket portal lists: Juan Dolio has no box office, so every
+// portal answers about it with Santo Domingo, while its bars announce live music one
+// night a week on their own pages. Not one Google request; the model reads the agenda
+// page, which is why it needs --paid. Most of what it finds is weekly and is stored
+// with its "recurrence", so the sync moves it forward instead of deleting it and the
+// pass does not have to run again. Nothing is written without --apply.
+if (args.Contains("--venue-events"))
+{
+    if (enricher is null)
+    {
+        Console.Error.WriteLine(
+            "--venue-events necesita el modelo de enriquecimiento, que se factura por "
+            + "token: la agenda de un local es prosa, no datos. Añade --paid para ejecutarlo.");
+        return 1;
+    }
+
+    int venuePlaces =
+        int.TryParse(args.SkipWhile(a => a != "--venue-events").Skip(1).FirstOrDefault(), out int askedVenues)
+            ? askedVenues
+            : config.Events.Venues.MaxPlaces;
+    var agendas = new EventSources(web, config.Events.Venues.MaxTextCharacters);
+    foreach (EventsCityConfig city in eventCities)
+    {
+        await new VenueEvents(agendas, umbraco, enricher, city, config.Events.Venues)
+            .RunAsync(args.Contains("--apply"), venuePlaces);
+    }
+
+    return 0;
+}
+
 // Maintenance pass: recategorize the events the agent already created — the sync
 // left them without a category until it learned to ask for one, and a startup of
 // the CMS stamped every category-less event as "Gastronomía". Prints the plan and

@@ -288,6 +288,7 @@ const es = {
     noMatches: "No hay eventos de esas categorías.",
     noneOnMap: "Ninguno de estos eventos tiene ubicación en el mapa.",
     tickets: "Entradas",
+    everyWeek: (day: string): string => `Cada ${day}`,
   },
   thingsToDo: {
     heading: (city: string): string => `Qué Hacer en ${city}`,
@@ -664,6 +665,7 @@ const en: typeof es = {
     noMatches: "No events in those categories.",
     noneOnMap: "None of these events has a location on the map.",
     tickets: "Tickets",
+    everyWeek: (day: string): string => `Every ${day}`,
   },
   thingsToDo: {
     heading: (city: string): string => `Things to Do in ${city}`,

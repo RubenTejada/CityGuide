@@ -1067,10 +1067,23 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
     /// Sets one text property of an existing document, preserving every other value
     /// and its published state.
     /// </summary>
-    public async Task SetTextValueAsync(Guid id, string alias, string value)
+    public async Task SetTextValueAsync(Guid id, string alias, string value) =>
+        await SetTextValuesAsync(id, [(alias, value)]);
+
+    /// <summary>
+    /// Sets several text properties of an existing document at once, preserving every
+    /// other value and its published state. One write rather than one per property: a
+    /// recurring event moves its start and its end together, and two writes would
+    /// publish the node twice with the pair disagreeing in between.
+    /// </summary>
+    public async Task SetTextValuesAsync(Guid id, IEnumerable<(string Alias, string Value)> properties)
     {
         (string name, string state, Dictionary<string, object?> values) = await ReadDocumentAsync(id);
-        values[alias] = value;
+        foreach ((string alias, string value) in properties)
+        {
+            values[alias] = value;
+        }
+
         await WriteDocumentAsync(id, name, values, state);
     }
 
