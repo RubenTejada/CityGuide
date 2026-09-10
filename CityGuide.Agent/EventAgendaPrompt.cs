@@ -1,6 +1,4 @@
-using System.Globalization;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 
 namespace CityGuide.Agent;
 
@@ -26,23 +24,12 @@ public record AgendaEvent(
 /// of it. So would a page that merely says the place is lively at night: an event needs
 /// a date the page states or a weekday it names, and nothing else counts.
 /// </summary>
-public static partial class EventAgendaPrompt
+public static class EventAgendaPrompt
 {
     public const string ToolName = "save_venue_events";
 
     public const string ToolDescription =
         "Save the events this venue's own page announces, for the city guide portal.";
-
-    /// <summary>What one page may yield before the rest is a listing of somebody
-    /// else's calendar. A page over this is cut, not dropped.</summary>
-    private const int MaxEvents = 20;
-
-    private const int MaxNameLength = 120;
-    private const int MaxDescriptionLength = 400;
-
-    /// <summary>How far ahead a stated date may be before it is somebody's archive
-    /// heading rather than a coming event. A year is generous for a beach town.</summary>
-    private const int MaxDaysAhead = 400;
 
     /// <summary>JSON schema of the forced tool call (same shape for Anthropic
     /// input_schema and OpenAI parameters).</summary>
@@ -165,17 +152,13 @@ public static partial class EventAgendaPrompt
     ///
     /// A schema that offers a day of the week gets one: asked about a resort's nightly
     /// show, the model answered "viernes", and no wording of the rules stopped it. So
-    /// the answer is checked against <paramref name="pageText"/> instead of trusted: a
-    /// weekly event survives only when the page names that day in so many words. It is
-    /// the same discipline the menu prompt applies to a carta of three dishes — the CMS
-    /// only ever receives what this side could verify.
+    /// the answer is checked against <paramref name="pageText"/> instead of trusted (see
+    /// <see cref="AgendaParsing.Announces"/>): a weekly event survives only when the page
+    /// names that day in so many words. It is the same discipline the menu prompt applies
+    /// to a carta of three dishes — the CMS only ever receives what this side could verify.
     /// </summary>
     public static IReadOnlyList<AgendaEvent> Parse(JsonElement input, string pageText)
     {
-        // The page is flattened before it is searched: ReadableText makes every tag a
-        // line break, so a sentence wrapped in a <b> arrives in three pieces and a quote
-        // of it would never be found. Both sides are compared as one run of words.
-        string page = Flatten(pageText);
         if (!input.TryGetProperty("events", out JsonElement events)
             || events.ValueKind != JsonValueKind.Array)
         {
@@ -186,14 +169,15 @@ public static partial class EventAgendaPrompt
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (JsonElement item in events.EnumerateArray())
         {
-            if (Text(item, "name") is not { Length: > 0 } name)
+            if (AgendaParsing.Text(item, "name") is not { Length: > 0 } name)
             {
                 continue;
             }
 
-            DateOnly? date = Date(Text(item, "date"));
-            DayOfWeek? weekday = EventRecurrence.WeekdayOf(Text(item, "weekday"));
-            if (weekday is { } day && !Announces(page, Text(item, "evidence"), day))
+            DateOnly? date = AgendaParsing.Date(AgendaParsing.Text(item, "date"));
+            DayOfWeek? weekday = EventRecurrence.WeekdayOf(AgendaParsing.Text(item, "weekday"));
+            if (weekday is { } day
+                && !AgendaParsing.Announces(pageText, AgendaParsing.Text(item, "evidence"), day))
             {
                 weekday = null;
             }
@@ -216,15 +200,13 @@ public static partial class EventAgendaPrompt
             }
 
             parsed.Add(new AgendaEvent(
-                Cut(name, MaxNameLength), date, weekday, Time(Text(item, "time")),
-                Text(item, "description") is { Length: > 0 } summary
-                    ? Cut(summary, MaxDescriptionLength)
+                AgendaParsing.Cut(name, AgendaParsing.MaxNameLength), date, weekday,
+                AgendaParsing.Time(AgendaParsing.Text(item, "time")),
+                AgendaParsing.Text(item, "description") is { Length: > 0 } summary
+                    ? AgendaParsing.Cut(summary, AgendaParsing.MaxDescriptionLength)
                     : null,
-                Text(item, "category") is { Length: > 0 } category
-                    && EventCategories.Options.Contains(category)
-                        ? category
-                        : null));
-            if (parsed.Count == MaxEvents)
+                AgendaParsing.Category(item)));
+            if (parsed.Count == AgendaParsing.MaxEvents)
             {
                 break;
             }
@@ -232,75 +214,4 @@ public static partial class EventAgendaPrompt
 
         return parsed;
     }
-
-    /// <summary>
-    /// Whether the page really announces something on <paramref name="weekday"/>, which
-    /// is the one question this side can answer for itself and the one the model keeps
-    /// getting wrong. It is asked to quote the sentence that says so, and the quote has
-    /// to be in the page: a resort's nightly show came back as "viernes" under two
-    /// different wordings of the rules, and no quote of it exists.
-    ///
-    /// A quote that does exist is still not always an announcement. "Miércoles a Sábado
-    /// – 20h" is when the restaurant opens, and a model asked for events read two
-    /// cultural evenings into it — so a sentence that runs from one day to another is
-    /// an opening-hours line and never an event.
-    /// </summary>
-    private static bool Announces(string page, string? evidence, DayOfWeek weekday)
-    {
-        if (evidence is not { Length: > 0 })
-        {
-            return false;
-        }
-
-        string quote = Flatten(evidence);
-        string day = TextMatch.Normalize(EventRecurrence.SpanishDays[(int)weekday]);
-        if (!quote.Contains(day, StringComparison.Ordinal)
-            || !page.Contains(quote, StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        // Two different weekdays with nothing but a connector between them: a range.
-        return DayRange().Matches(quote).All(range =>
-            range.Groups[1].Value.TrimEnd('s') == range.Groups[2].Value.TrimEnd('s'));
-    }
-
-    /// <summary>Text as one run of lowercase, unaccented words, which is how a quote is
-    /// compared with the page it should have come from.</summary>
-    private static string Flatten(string value) =>
-        Whitespace().Replace(TextMatch.Normalize(value), " ").Trim();
-
-    [GeneratedRegex(@"\s+")]
-    private static partial Regex Whitespace();
-
-    /// <summary>"miércoles a sábado", "de lunes a viernes", "jueves - domingo": how an
-    /// opening-hours line names the days a place is open. The days are matched without
-    /// their accents, since the quote is compared flattened.</summary>
-    [GeneratedRegex(
-        @"(lunes|martes|miercoles|jueves|viernes|sabados?|domingos?)"
-        + @"\s*(?:a|al|hasta|-|–|—|/)\s*"
-        + @"(lunes|martes|miercoles|jueves|viernes|sabados?|domingos?)")]
-    private static partial Regex DayRange();
-
-    private static DateOnly? Date(string? value) =>
-        DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None,
-            out DateOnly parsed)
-        && parsed >= DateOnly.FromDateTime(DateTime.Today)
-        && parsed <= DateOnly.FromDateTime(DateTime.Today.AddDays(MaxDaysAhead))
-            ? parsed
-            : null;
-
-    private static TimeOnly? Time(string? value) =>
-        TimeOnly.TryParseExact(value, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None,
-            out TimeOnly parsed)
-            ? parsed
-            : null;
-
-    private static string Cut(string value, int max) =>
-        value.Length > max ? value[..max].TrimEnd() : value;
-
-    private static string? Text(JsonElement item, string name) =>
-        item.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.String
-            ? value.GetString()?.Trim()
-            : null;
 }

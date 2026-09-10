@@ -242,6 +242,38 @@ if (args.Contains("--venue-events"))
     return 0;
 }
 
+// The events a city's own places announce on their own Instagram. It is the same gap
+// --venue-events answers, one step further down: in a beach town most bars have no site
+// at all, and what they do have is a feed whose handle the CMS already stores as the
+// place's "website". Not one Google request; the model reads the captions *and* the
+// flyers — half of what a bar announces is drawn inside the picture and written nowhere
+// — which is why it needs --paid. Nothing is written without --apply, and that matters
+// here more than anywhere: what is read off a flyer is a transcription no code can
+// check, so the plan prints the publication behind every event.
+if (args.Contains("--instagram-events"))
+{
+    if (enricher is null)
+    {
+        Console.Error.WriteLine(
+            "--instagram-events necesita el modelo de enriquecimiento, que se factura por "
+            + "token: lo que anuncia un bar está en la prosa del pie de foto y dentro del "
+            + "flyer. Añade --paid para ejecutarlo.");
+        return 1;
+    }
+
+    int instagramFeeds =
+        int.TryParse(args.SkipWhile(a => a != "--instagram-events").Skip(1).FirstOrDefault(), out int askedAccounts)
+            ? askedAccounts
+            : config.Events.Venues.MaxPlaces;
+    foreach (EventsCityConfig city in eventCities)
+    {
+        await new InstagramEvents(new MetaClient(http, config.Social), umbraco, city)
+            .RunAsync(args.Contains("--apply"), instagramFeeds, enricher);
+    }
+
+    return 0;
+}
+
 // Maintenance pass: recategorize the events the agent already created — the sync
 // left them without a category until it learned to ask for one, and a startup of
 // the CMS stamped every category-less event as "Gastronomía". Prints the plan and

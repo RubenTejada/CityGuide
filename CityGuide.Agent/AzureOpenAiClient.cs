@@ -77,6 +77,17 @@ public class AzureOpenAiClient(HttpClient http, AzureOpenAiConfig config) : IEnr
         return arguments is null ? [] : EventAgendaPrompt.Parse(arguments.Value, pageText);
     }
 
+    public async Task<IReadOnlyList<FeedEvent>> ReadFeedEventsAsync(
+        string placeName, string cityName, IReadOnlyList<InstagramPost> posts)
+    {
+        JsonElement? arguments = await CallToolAsync(
+            InstagramEventPrompt.ToolName, InstagramEventPrompt.ToolDescription,
+            InstagramEventPrompt.Schema,
+            Content(InstagramEventPrompt.UserMessage(placeName, cityName, posts)), placeName,
+            temperature: 0);
+        return arguments is null ? [] : InstagramEventPrompt.Parse(arguments.Value, posts);
+    }
+
     public async Task<Dictionary<int, Dictionary<string, string>>> TranslateAsync(
         IReadOnlyList<TranslationRequest> entries)
     {
@@ -95,7 +106,7 @@ public class AzureOpenAiClient(HttpClient http, AzureOpenAiConfig config) : IEnr
     /// answer is a label, so two runs over the same events agree.
     /// </summary>
     private async Task<JsonElement?> CallToolAsync(
-        string toolName, string toolDescription, object schema, string userMessage, string subject,
+        string toolName, string toolDescription, object schema, object userContent, string subject,
         double temperature = 1, int maxTokens = 2048)
     {
         var payload = new
@@ -120,7 +131,7 @@ public class AzureOpenAiClient(HttpClient http, AzureOpenAiConfig config) : IEnr
             tool_choice = new { type = "function", function = new { name = toolName } },
             messages = new object[]
             {
-                new { role = "user", content = userMessage },
+                new { role = "user", content = userContent },
             },
         };
 
@@ -186,4 +197,13 @@ public class AzureOpenAiClient(HttpClient http, AzureOpenAiConfig config) : IEnr
 
         throw new InvalidOperationException("Azure OpenAI response contained no tool call.");
     }
+
+    /// <summary>A multimodal user message in the shape chat completions takes: text
+    /// parts as they are, an image as the address the model fetches it from.</summary>
+    private static object[] Content(IReadOnlyList<PromptPart> parts) =>
+    [
+        .. parts.Select(part => part.Text is not null
+            ? new { type = "text", text = part.Text }
+            : (object)new { type = "image_url", image_url = new { url = part.ImageUrl } }),
+    ];
 }

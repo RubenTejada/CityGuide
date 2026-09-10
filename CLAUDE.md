@@ -101,9 +101,19 @@ cd CityGuide.Agent && dotnet run -- --scrape-events
 # nothing and spends nothing — no Google request, no model token. Without the
 # credentials it lists the accounts the CMS holds and reads none. The number is how
 # many accounts to read (default Events:Venues:MaxPlaces), and --section picks the city.
-# The "Run agent" workflow exposes it as the scrape_instagram input, which is how it
-# runs with the Meta credentials that live in Azure without them leaving the workflow.
+# The "Run agent" workflow exposes it as the "scrape" value of the instagram input,
+# which is how it runs with the Meta credentials that live in Azure without them
+# leaving the workflow.
 cd CityGuide.Agent && dotnet run -- --scrape-instagram 30 --section juan-dolio-y-guayacanes
+# The writing half of the same feeds: the events those places announce on Instagram.
+# Same two Meta credentials and no Google request, but the model reads the flyers as
+# well as the captions — half of what a bar announces is drawn inside the picture and
+# written nowhere — which is what needs --paid. --section picks the city, and the
+# number is how many accounts to read (default Events:Venues:MaxPlaces).
+# Plan until --apply, which matters here: a date read off a flyer is a transcription
+# no code can check, so the plan prints the publication behind every event.
+cd CityGuide.Agent && dotnet run -- --paid --instagram-events --section juan-dolio-y-guayacanes
+cd CityGuide.Agent && dotnet run -- --paid --instagram-events 30 --section juan-dolio-y-guayacanes --apply
 
 # File under the cuisine they actually serve the restaurants stuck in "Otros": Google
 # types most restaurants as nothing more than "restaurant", so the cuisine map had no
@@ -545,7 +555,11 @@ into events, which is why the pass needs `--paid`: an agenda is prose written fo
 visitor ("los jueves se enciende con música en vivo"), and no portal states it as data.
 The event takes the place as its venue, so it carries its address, its coordinates — which
 is what puts it on the events map — and its photo, at no download: the picture of the bar
-is already in the Media library.
+is already in the Media library. Turning what was read into an event node is not this
+pass's own business and does not live here: `EventWriter` owns it — the schedule, the
+values, the dedupe key and the printed line — and the Instagram pass below writes through
+the very same one, which is what keeps a bar that announces its Thursday in both places
+from being published twice.
 
 **The prompt copies, and the parser checks that it did.** `EventAgendaPrompt` refuses a
 page about renting salones for a wedding (which is what "Eventos" means on a hotel's
@@ -577,7 +591,49 @@ the tool a beach town needs more than another scraper. The frontend leads with t
 where it has one: a card and the event page read "Cada jueves" instead of a single date
 that would look like the only one (`recurrenceLabel` reads the day off the stored Spanish
 value and names it with `Intl`, so the English page says "Every Thursday" without a second
-table to keep in step). Every external request goes through `ThrottlingHandler` (min interval + jitter per host, `Throttle:SecondsBetweenRequests`) so the agent is slow on purpose and never trips rate limiters.
+table to keep in step).
+
+**Most of those bars have no site at all, and the feed is the last source there is.**
+`--venue-events` reads a `website`, and in Juan Dolio what a place stores there is usually
+an Instagram account — which `MenuSources.CanRead` refuses like every other social profile,
+so that pass leaves it alone. `--instagram-events [n]` (`InstagramEvents.RunAsync` over
+`InstagramEventPrompt`, scoped by `--section` like every event pass) is the other half:
+`InstagramFeeds.HandleOf` reads the handle out of that same stored website (a bare
+"instagram.com/…", a plain "@cuenta"), Meta's business discovery hands over the recent
+publications (`MetaClient.DiscoverAsync` — the only way in, since scraping instagram.com
+is a login wall from a datacenter address and against the network's terms besides), and
+the model reads them. It needs the two credentials the social pass publishes with,
+`Social:InstagramUserId` and `Social:AccessToken`: an account is read as a business by a
+business, and a personal account is refused by Meta by design — which is a finding the
+pass prints, not a fault. Not one Google request. One account is read once however many
+places point at it, only publications from the last sixty days are put to the model, and
+the events land through `EventWriter` as `agent:instagram`, so `--purge-event-source
+instagram` undoes the pass and the recurrence roll carries its weekly nights forward like
+any other.
+
+**The flyer is why it costs anything.** Half of what a bar announces is drawn inside the
+picture and written nowhere in the caption — that is what `--scrape-instagram` was built
+to measure — so the pictures go to the model with the captions, one call per account.
+It is the one step of the agent that reads an image (`PromptPart`, a text run or the
+address of one, which both providers render in their own shape), and it is what `--paid`
+buys here. The checking is `AgendaParsing`, shared with the agenda pass since the model
+gets the same thing wrong on a flyer as on a page: a schema that offers a day of the week
+gets one. Every activity has to quote the sentence announcing it *and* say where it read
+it. A quote from the caption is verified word for word against that caption and dropped
+when it is not there; a quote read inside the picture is a transcription nothing here can
+confirm, so it is accepted only from a publication that really carries an image — a
+caption-only post claiming to quote a flyer had no flyer to read. On top of that a date
+may not precede the publication announcing it (an announcement never precedes itself, and
+a photo of last Saturday's party is not a coming event), a run of days is the opening
+hours and never an event, and an activity the model marks as happening somewhere else —
+another venue, another city, a touring artist's poster — is dropped. What survives is
+still a transcription, so the plan prints the permalink of the publication behind every
+event and nothing is written without `--apply`. The workflow exposes all of it as the one
+`instagram` input (`scrape` for the diagnostic, `plan`/`apply` for the pass), which
+replaced `scrape_instagram`: the file sits at GitHub's 25-input ceiling, so a new pass
+buys its place by sharing an existing input rather than adding one.
+
+Every external request goes through `ThrottlingHandler` (min interval + jitter per host, `Throttle:SecondsBetweenRequests`) so the agent is slow on purpose and never trips rate limiters.
 
 **Una sección "Tours", y solo en Juan Dolio y Guayacanes.** Las excursiones vivían como
 subcategoría de "Empresas y Servicios" — y ahí una salida en catamarán se leía como un

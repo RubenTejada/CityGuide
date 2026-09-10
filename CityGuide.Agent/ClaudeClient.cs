@@ -52,6 +52,16 @@ public class ClaudeClient(HttpClient http, string apiKey, string model) : IEnric
         return EventAgendaPrompt.Parse(arguments, pageText);
     }
 
+    public async Task<IReadOnlyList<FeedEvent>> ReadFeedEventsAsync(
+        string placeName, string cityName, IReadOnlyList<InstagramPost> posts)
+    {
+        JsonElement arguments = await CallToolAsync(
+            InstagramEventPrompt.ToolName, InstagramEventPrompt.ToolDescription,
+            InstagramEventPrompt.Schema,
+            Content(InstagramEventPrompt.UserMessage(placeName, cityName, posts)), temperature: 0);
+        return InstagramEventPrompt.Parse(arguments, posts);
+    }
+
     public async Task<Dictionary<int, Dictionary<string, string>>> TranslateAsync(
         IReadOnlyList<TranslationRequest> entries)
     {
@@ -64,7 +74,7 @@ public class ClaudeClient(HttpClient http, string apiKey, string model) : IEnric
     /// <summary>One forced tool call, returning its input. <paramref name="temperature"/>
     /// is 0 where the answer is a label, so two runs agree, and 1 for the descriptions.</summary>
     private async Task<JsonElement> CallToolAsync(
-        string toolName, string toolDescription, object schema, string userMessage,
+        string toolName, string toolDescription, object schema, object userContent,
         double temperature = 1, int maxTokens = 2048)
     {
         var payload = new
@@ -86,7 +96,7 @@ public class ClaudeClient(HttpClient http, string apiKey, string model) : IEnric
             tool_choice = new { type = "tool", name = toolName },
             messages = new object[]
             {
-                new { role = "user", content = userMessage },
+                new { role = "user", content = userContent },
             },
         };
 
@@ -117,4 +127,13 @@ public class ClaudeClient(HttpClient http, string apiKey, string model) : IEnric
 
         throw new InvalidOperationException("Claude response contained no tool_use block.");
     }
+
+    /// <summary>A multimodal user message in the shape the Messages API takes: text
+    /// blocks as they are, an image as the address the model fetches it from.</summary>
+    private static object[] Content(IReadOnlyList<PromptPart> parts) =>
+    [
+        .. parts.Select(part => part.Text is not null
+            ? new { type = "text", text = part.Text }
+            : (object)new { type = "image", source = new { type = "url", url = part.ImageUrl } }),
+    ];
 }

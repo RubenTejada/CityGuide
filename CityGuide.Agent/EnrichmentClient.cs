@@ -18,11 +18,24 @@ public record Enrichment(
     string MetaDescriptionEn);
 
 /// <summary>
+/// A piece of what is put to the model: a run of text, or the address of an image it
+/// should look at. Almost every step the agent asks about is text and passes one string;
+/// the Instagram pass is the exception, because half of what a bar announces is drawn
+/// inside the flyer and nowhere in the caption.
+/// </summary>
+public record PromptPart(string? Text, string? ImageUrl)
+{
+    public static PromptPart Say(string text) => new(text, null);
+
+    public static PromptPart Show(string imageUrl) => new(null, imageUrl);
+}
+
+/// <summary>
 /// The agent's model-backed steps: a Spanish description + facility mapping for a
 /// newly discovered place, the category of a scraped event, the cuisine of a restaurant
 /// Google types generically, the carta behind a restaurant's menu page, the agenda a
-/// venue writes on its own site, and the English translation of the prose already in
-/// the CMS. Implemented by
+/// venue writes on its own site or announces on its Instagram, and the English
+/// translation of the prose already in the CMS. Implemented by
 /// AzureOpenAiClient (production) and ClaudeClient (fallback). Everything else
 /// (dedupe, rating refresh, cinema sync, trailers, event scraping) is plain code.
 /// </summary>
@@ -48,6 +61,13 @@ public interface IEnrichmentClient
     /// hotel's site is its salones for hire and not an agenda.</summary>
     Task<IReadOnlyList<AgendaEvent>> ReadAgendaAsync(
         string placeName, string cityName, string pageUrl, string pageText);
+
+    /// <summary>The activities a place announces in its own Instagram publications,
+    /// each with the publication it was read from. The captions and the pictures go
+    /// together: it is the one step of the agent that looks at an image, because half
+    /// of what a bar announces is written only inside the flyer.</summary>
+    Task<IReadOnlyList<FeedEvent>> ReadFeedEventsAsync(
+        string placeName, string cityName, IReadOnlyList<InstagramPost> posts);
 
     /// <summary>Translates a batch of Spanish prose into English, keyed by the entry's
     /// position in the list and then by property alias. Entries or fields the model left
