@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace CityGuide.Agent;
 
@@ -25,7 +26,7 @@ public record AgendaEvent(
 /// of it. So would a page that merely says the place is lively at night: an event needs
 /// a date the page states or a weekday it names, and nothing else counts.
 /// </summary>
-public static class EventAgendaPrompt
+public static partial class EventAgendaPrompt
 {
     public const string ToolName = "save_venue_events";
 
@@ -104,8 +105,17 @@ public static class EventAgendaPrompt
                                 + "la página y nada más. Sin precios que la página no dé.",
                         },
                         category = new { type = "string", @enum = EventCategories.Options },
+                        evidence = new
+                        {
+                            type = "string",
+                            description =
+                                "La frase de la página, copiada palabra por palabra, que dice "
+                                + "que esta actividad ocurre ese día o esa fecha. Cópiala tal "
+                                + "cual, sin resumirla ni corregirla. Si no puedes señalar una "
+                                + "frase así, la actividad no va en la respuesta.",
+                        },
                     },
-                    required = new[] { "name" },
+                    required = new[] { "name", "evidence" },
                 },
             },
         },
@@ -135,7 +145,12 @@ public static class EventAgendaPrompt
            ciudad. Un concierto, una fiesta o un show al que se puede ir sí lo es.
         6. Si dice que algo pasa todas las semanas el mismo día, responde "weekday"
            y no inventes una fecha. Si da una fecha concreta, responde "date".
-        7. No repitas la misma actividad dos veces.
+        7. Un rango de días es el horario del local, no un evento: "Miércoles a
+           Sábado – 20h" dice cuándo abre y nada más.
+        8. Por cada actividad copia en "evidence" la frase exacta de la página que
+           la anuncia con su día o su fecha. Se comprueba contra la página: si no
+           aparece tal cual, la actividad se descarta.
+        9. No repitas la misma actividad dos veces.
 
         Hoy es {DateTime.Today:yyyy-MM-dd}.
 
@@ -157,7 +172,10 @@ public static class EventAgendaPrompt
     /// </summary>
     public static IReadOnlyList<AgendaEvent> Parse(JsonElement input, string pageText)
     {
-        string page = TextMatch.Normalize(pageText);
+        // The page is flattened before it is searched: ReadableText makes every tag a
+        // line break, so a sentence wrapped in a <b> arrives in three pieces and a quote
+        // of it would never be found. Both sides are compared as one run of words.
+        string page = Flatten(pageText);
         if (!input.TryGetProperty("events", out JsonElement events)
             || events.ValueKind != JsonValueKind.Array)
         {
@@ -175,12 +193,7 @@ public static class EventAgendaPrompt
 
             DateOnly? date = Date(Text(item, "date"));
             DayOfWeek? weekday = EventRecurrence.WeekdayOf(Text(item, "weekday"));
-            // A day the page does not name is a day the model chose. "sábado" is
-            // matched without its accent, and "miércoles" without it too, because the
-            // page is normalized the same way.
-            if (weekday is { } day
-                && !page.Contains(TextMatch.Normalize(EventRecurrence.SpanishDays[(int)day]),
-                    StringComparison.Ordinal))
+            if (weekday is { } day && !Announces(page, Text(item, "evidence"), day))
             {
                 weekday = null;
             }
@@ -219,6 +232,55 @@ public static class EventAgendaPrompt
 
         return parsed;
     }
+
+    /// <summary>
+    /// Whether the page really announces something on <paramref name="weekday"/>, which
+    /// is the one question this side can answer for itself and the one the model keeps
+    /// getting wrong. It is asked to quote the sentence that says so, and the quote has
+    /// to be in the page: a resort's nightly show came back as "viernes" under two
+    /// different wordings of the rules, and no quote of it exists.
+    ///
+    /// A quote that does exist is still not always an announcement. "Miércoles a Sábado
+    /// – 20h" is when the restaurant opens, and a model asked for events read two
+    /// cultural evenings into it — so a sentence that runs from one day to another is
+    /// an opening-hours line and never an event.
+    /// </summary>
+    private static bool Announces(string page, string? evidence, DayOfWeek weekday)
+    {
+        if (evidence is not { Length: > 0 })
+        {
+            return false;
+        }
+
+        string quote = Flatten(evidence);
+        string day = TextMatch.Normalize(EventRecurrence.SpanishDays[(int)weekday]);
+        if (!quote.Contains(day, StringComparison.Ordinal)
+            || !page.Contains(quote, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        // Two different weekdays with nothing but a connector between them: a range.
+        return DayRange().Matches(quote).All(range =>
+            range.Groups[1].Value.TrimEnd('s') == range.Groups[2].Value.TrimEnd('s'));
+    }
+
+    /// <summary>Text as one run of lowercase, unaccented words, which is how a quote is
+    /// compared with the page it should have come from.</summary>
+    private static string Flatten(string value) =>
+        Whitespace().Replace(TextMatch.Normalize(value), " ").Trim();
+
+    [GeneratedRegex(@"\s+")]
+    private static partial Regex Whitespace();
+
+    /// <summary>"miércoles a sábado", "de lunes a viernes", "jueves - domingo": how an
+    /// opening-hours line names the days a place is open. The days are matched without
+    /// their accents, since the quote is compared flattened.</summary>
+    [GeneratedRegex(
+        @"(lunes|martes|miercoles|jueves|viernes|sabados?|domingos?)"
+        + @"\s*(?:a|al|hasta|-|–|—|/)\s*"
+        + @"(lunes|martes|miercoles|jueves|viernes|sabados?|domingos?)")]
+    private static partial Regex DayRange();
 
     private static DateOnly? Date(string? value) =>
         DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None,

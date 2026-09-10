@@ -518,17 +518,23 @@ The event takes the place as its venue, so it carries its address, its coordinat
 is what puts it on the events map — and its photo, at no download: the picture of the bar
 is already in the Media library.
 
-**The prompt copies and the parser checks.** `EventAgendaPrompt` refuses a page about
-renting salones for a wedding (which is what "Eventos" means on a hotel's site), an
-opening hours table, and a hotel's animation programme for its own guests. That is not
-enough on its own: a schema that offers a day of the week gets one, and asked about a
-resort's *nightly* show the model answered "viernes" twice under two different wordings
-of the rules. So a weekly event only survives when the page names that day in so many
-words — `Parse` checks the answer against the page text, accents stripped — which is the
-same discipline that makes `MenuPrompt` refuse a carta of three dishes: the CMS only ever
-receives what this side could verify. Measured over the eighteen Juan Dolio places with a
-site of their own, that leaves zero events today, which is the honest answer; over Santo
-Domingo, where real sites are common, it is what the pass is for.
+**The prompt copies, and the parser checks that it did.** `EventAgendaPrompt` refuses a
+page about renting salones for a wedding (which is what "Eventos" means on a hotel's
+site), an opening hours table, and a hotel's animation programme for its own guests. No
+wording of those rules held on its own: a schema offering a day of the week gets one, and
+asked about a resort's *nightly* show the model answered "viernes" twice running. So the
+answer is verified instead of trusted, in code. Every weekly activity has to quote the
+sentence of the page that announces it (`evidence`, required by the schema), and `Parse`
+drops it unless that quote names the day *and* appears in the page text, accents
+stripped — there is no quote for a Friday show that does not exist. Nor is a quote that
+does exist always an announcement: "Miércoles a Sábado – 20h" is when a restaurant opens,
+and a model asked for events read two cultural evenings into it, so a sentence running
+from one weekday to another is an opening-hours line and never an event
+(`Announces`/`DayRange`). It is the same discipline that makes `MenuPrompt` refuse a
+carta of three dishes: the CMS only ever receives what this side could check. Measured
+over the eighteen Juan Dolio places with a site of their own that leaves zero events
+today, which is the honest answer; over Santo Domingo, where real sites are common, it is
+what the pass is for.
 
 **Most of what it finds repeats, and `recurrence` is how the portal keeps it.** A weekly
 activity has no date to store — it is every Thursday — so `eventItem` carries a

@@ -90,9 +90,12 @@ export function recurrenceLabel(recurrence: string, locale: Locale): string {
     .replace(/[\u0300-\u036f]/g, "");
   const day = RECURRENCE_DAYS.indexOf(written);
   if (day < 0) return "";
-  // 2024-01-07 is a Sunday, so adding the index lands on the day itself.
+  // 2024-01-07 is a Sunday, so adding the index lands on the day itself — read
+  // back in UTC, since formatting that instant in Santo Domingo's own zone lands
+  // on the evening before and names the day that comes first.
   const named = new Intl.DateTimeFormat(INTL_LOCALE[locale], {
     weekday: "long",
+    timeZone: "UTC",
   }).format(new Date(Date.UTC(2024, 0, 7 + day)));
   return t(locale).events.everyWeek(named);
 }
