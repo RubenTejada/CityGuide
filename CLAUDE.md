@@ -314,7 +314,11 @@ under "Otros establecimientos". The picker is expanded by the Delivery API
 (`getItem(path, "properties[establishments]")`) so the cards get photo and
 rating, and a branch is qualified with the company it hangs from. `.github/workflows/run-agent.yml`
 exposes every maintenance pass as a dispatch input, so they run against Azure without the
-CMS client secret leaving the workflow. Branch places
+CMS client secret leaving the workflow. **That form is capped at 25 inputs**: a
+twenty-sixth makes GitHub refuse the whole file ("This run likely failed because of a
+workflow file issue", the workflow's name replaced by its path, and no job at all), which
+is why the passes that take a number share one `count` input instead of one each — a
+dispatch runs a single pass, so there is never a second number to give. Branch places
 store only their own data — no description, phone, website or hours — so they inherit the
 company's, and they cost no LLM tokens. A discovered branch is named "Chain — what tells it
 apart" (`BranchNaming`): Google calls most branches by the chain ("Banreservas" twenty-seven
