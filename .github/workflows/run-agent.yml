@@ -212,6 +212,15 @@ on:
         description: How many places the menu pass covers. Empty uses the default (25).
         required: false
         default: ""
+      venue_events:
+        description: Venue events pass. "plan" only lists what it would create.
+        type: choice
+        required: false
+        options:
+          - "no"
+          - plan
+          - apply
+        default: "no"
       social:
         description: >-
           Maintenance pass instead of the ingestion run: announces the portal's own
@@ -316,6 +325,7 @@ jobs:
           Social__PageId: ${{ secrets.META_PAGE_ID }}
           Social__InstagramUserId: ${{ secrets.META_INSTAGRAM_USER_ID }}
           Social__AccessToken: ${{ secrets.META_ACCESS_TOKEN }}
+          VENUE_EVENTS: ${{ inputs.venue_events }}
           SOCIAL: ${{ inputs.social }}
           SOCIAL_POSTS: ${{ inputs.social_posts }}
           PUBLISH: ${{ inputs.publish }}
