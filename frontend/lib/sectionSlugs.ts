@@ -23,6 +23,7 @@ const SPANISH_SLUG: Record<string, string> = {
   brazilian: "brasilena",
   "breakfast-brunch": "desayunos-y-brunch",
   "businesses-services": "empresas-y-servicios",
+  "car-rentals": "rent-a-car",
   chinese: "china",
   "clothing-fashion": "ropa-y-moda",
   "department-stores": "tiendas-por-departamento",
