@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace CityGuide.Agent;
 
@@ -16,7 +18,7 @@ namespace CityGuide.Agent;
 /// Meta downloads the image itself, so what it is handed has to be a public URL — the
 /// portal's own /media proxy, never the CMS host on localhost.
 /// </summary>
-public class MetaClient(HttpClient http, SocialConfig config)
+public partial class MetaClient(HttpClient http, SocialConfig config)
 {
     private string Root => $"https://graph.facebook.com/{config.ApiVersion}";
 
@@ -25,6 +27,49 @@ public class MetaClient(HttpClient http, SocialConfig config)
 
     public bool CanPostToInstagram =>
         !string.IsNullOrEmpty(config.InstagramUserId) && !string.IsNullOrEmpty(config.AccessToken);
+
+    /// <summary>
+    /// Reading another account through business discovery needs exactly what publishing
+    /// needs: the portal's own Instagram business account and the token of the Page it
+    /// hangs from. There is no other way in — an account is read as a business by a
+    /// business.
+    /// </summary>
+    public bool CanReadInstagram => CanPostToInstagram;
+
+    /// <summary>
+    /// What another account publishes, read through business discovery: the one way
+    /// Meta gives to see a feed that is not the portal's own. The account asked about
+    /// has to be a business or a creator — a personal one is refused by the API itself,
+    /// which is the answer this returns as an exception for the caller to report — and
+    /// what comes back is publications and reels, never stories.
+    ///
+    /// Only the caption is worth reading: it is the prose a bar writes about its own
+    /// Thursday, the same kind of sentence <see cref="EventSources"/> pulls off an
+    /// agenda page. The picture is named beside it, because half of what a bar
+    /// announces is drawn inside a flyer and nowhere in the text.
+    /// </summary>
+    public async Task<InstagramProfile?> DiscoverAsync(string username, int posts)
+    {
+        string fields =
+            $"business_discovery.username({username})"
+            + "{username,name,followers_count,media_count,"
+            + $"media.limit({posts}){{caption,media_type,media_url,permalink,timestamp}}}}";
+
+        using JsonDocument answer = await GetAsync(
+            $"{Root}/{config.InstagramUserId}?fields={Uri.EscapeDataString(fields)}");
+
+        if (!answer.RootElement.TryGetProperty("business_discovery", out JsonElement account))
+        {
+            return null;
+        }
+
+        return new InstagramProfile(
+            Text(account, "username") ?? username,
+            Text(account, "name"),
+            Number(account, "followers_count"),
+            Number(account, "media_count"),
+            [.. Media(account).Select(Post).OfType<InstagramPost>()]);
+    }
 
     /// <summary>A photo post on the Page: the picture is the post, the caption its text.</summary>
     public async Task<string> PostFacebookPhotoAsync(string caption, string imageUrl)
@@ -126,6 +171,64 @@ public class MetaClient(HttpClient http, SocialConfig config)
 
         return JsonDocument.Parse(body);
     }
+
+    private async Task<JsonDocument> GetAsync(string url)
+    {
+        // The token travels in the query string here because a GET has no body. It is
+        // the one place a log line could carry it, so nothing else is ever fetched.
+        HttpResponseMessage response = await http.GetAsync($"{url}&access_token={config.AccessToken}");
+        string body = await response.Content.ReadAsStringAsync();
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException($"Graph API {(int)response.StatusCode}: {Error(body)}");
+        }
+
+        return JsonDocument.Parse(body);
+    }
+
+    private static IEnumerable<JsonElement> Media(JsonElement account) =>
+        account.TryGetProperty("media", out JsonElement media)
+        && media.TryGetProperty("data", out JsonElement data)
+        && data.ValueKind == JsonValueKind.Array
+            ? data.EnumerateArray()
+            : [];
+
+    /// <summary>A publication without a date or a permalink is one this side cannot
+    /// place in time or point an editor at, so it is dropped rather than half-read.</summary>
+    private static InstagramPost? Post(JsonElement item) =>
+        Taken(Text(item, "timestamp")) is DateTimeOffset taken && Text(item, "permalink") is string link
+            ? new InstagramPost(taken, Text(item, "media_type") ?? "", Text(item, "caption"), link,
+                Text(item, "media_url"))
+            : null;
+
+    /// <summary>Graph writes the offset without its colon ("+0000"), which is one of the
+    /// few ISO shapes .NET does not parse on its own.</summary>
+    private static DateTimeOffset? Taken(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return null;
+        }
+
+        string normalized = GraphOffset().Replace(value, "$1:$2");
+        return DateTimeOffset.TryParse(normalized, CultureInfo.InvariantCulture,
+            DateTimeStyles.None, out DateTimeOffset parsed)
+            ? parsed
+            : null;
+    }
+
+    [GeneratedRegex(@"([+-]\d{2})(\d{2})$")]
+    private static partial Regex GraphOffset();
+
+    private static string? Text(JsonElement item, string name) =>
+        item.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    private static int Number(JsonElement item, string name) =>
+        item.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.Number
+            ? value.GetInt32()
+            : 0;
 
     private static string Id(JsonDocument answer) =>
         answer.RootElement.TryGetProperty("id", out JsonElement id) ? id.GetString() ?? "" : "";

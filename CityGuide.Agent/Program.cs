@@ -169,6 +169,27 @@ if (args.Contains("--scrape-events"))
     return 0;
 }
 
+// Diagnostic: what the places of a city announce on their own Instagram. Reads the
+// CMS and Meta's business discovery, writes nothing and spends nothing — not one
+// Google request and not one model token. It is the measurement the Instagram pass
+// has to rest on: how many of those accounts are businesses (Meta refuses to describe
+// a personal one), and how much of what a bar announces is written in the caption
+// rather than drawn inside the flyer.
+if (args.Contains("--scrape-instagram"))
+{
+    int instagramAccounts =
+        int.TryParse(args.SkipWhile(a => a != "--scrape-instagram").Skip(1).FirstOrDefault(), out int askedFeeds)
+            ? askedFeeds
+            : config.Events.Venues.MaxPlaces;
+    foreach (EventsCityConfig city in eventCities)
+    {
+        await new InstagramEvents(new MetaClient(http, config.Social), umbraco, city)
+            .ReportAsync(instagramAccounts);
+    }
+
+    return 0;
+}
+
 // Maintenance pass: send to the recycle bin the events imported from a portal the
 // sync no longer scrapes ("--purge-event-source TicketExpress"). Plan until --apply.
 if (args.Contains("--purge-event-source"))

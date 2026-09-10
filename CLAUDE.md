@@ -95,6 +95,15 @@ cd CityGuide.Agent && dotnet run -- --purge-foreign-events
 # What each event source yields right now and whether the city filter keeps it
 # (reads the city node and Google; writes nothing).
 cd CityGuide.Agent && dotnet run -- --scrape-events
+# What the places of a city announce on their own Instagram, read through Meta's
+# business discovery with the same two credentials the social pass publishes with
+# (Social:InstagramUserId, Social:AccessToken). Reads the CMS and Meta, writes
+# nothing and spends nothing — no Google request, no model token. Without the
+# credentials it lists the accounts the CMS holds and reads none. The number is how
+# many accounts to read (default Events:Venues:MaxPlaces), and --section picks the city.
+# The "Run agent" workflow exposes it as the scrape_instagram input, which is how it
+# runs with the Meta credentials that live in Azure without them leaving the workflow.
+cd CityGuide.Agent && dotnet run -- --scrape-instagram 30 --section juan-dolio-y-guayacanes
 
 # File under the cuisine they actually serve the restaurants stuck in "Otros": Google
 # types most restaurants as nothing more than "restaurant", so the cuisine map had no

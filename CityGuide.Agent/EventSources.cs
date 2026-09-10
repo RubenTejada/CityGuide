@@ -53,6 +53,12 @@ public partial class EventSources(WebFiles web, int maxTextCharacters)
         RegexOptions.IgnoreCase)]
     private static partial Regex DateSignal();
 
+    /// <summary>How many dates or weekdays a text states. It is what tells a programme
+    /// from prose about the place, on a page of a site and equally in the caption of a
+    /// publication — one signal is "abierto de lunes a domingo", several are an agenda.</summary>
+    public static int DateSignals(string? text) =>
+        string.IsNullOrEmpty(text) ? 0 : DateSignal().Matches(TextMatch.Normalize(text)).Count;
+
     private static bool SaysAgenda(string? text) =>
         text is not null && AgendaWords.Any(TextMatch.Normalize(text).Contains);
 
@@ -95,7 +101,7 @@ public partial class EventSources(WebFiles web, int maxTextCharacters)
     private (FoundAgenda? Found, int Signals) Agenda(string html, Uri url)
     {
         string text = WebFiles.ReadableText(html);
-        int signals = DateSignal().Matches(TextMatch.Normalize(text)).Count;
+        int signals = DateSignals(text);
         if (text.Length < MinTextLength || signals < MinDateSignals)
         {
             return (null, 0);

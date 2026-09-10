@@ -249,6 +249,19 @@ on:
         description: How many posts the social pass may publish per city. Empty uses the default (3).
         required: false
         default: ""
+      scrape_instagram:
+        description: >-
+          Diagnostic instead of the ingestion run: prints what the places of each city
+          announce on their own Instagram, read through Meta's business discovery with
+          the same credentials the social pass publishes with. Reads the CMS and Meta,
+          writes nothing and spends nothing — no Google request, no model token.
+        type: boolean
+        required: false
+        default: false
+      scrape_instagram_accounts:
+        description: How many accounts the Instagram diagnostic reads per city. Empty uses the default (30).
+        required: false
+        default: ""
       paid:
         description: >-
           Let the run use the two services that charge: Google Places (billed per
@@ -339,6 +352,8 @@ jobs:
           VENUE_EVENTS_PLACES: ${{ inputs.venue_events_places }}
           SOCIAL: ${{ inputs.social }}
           SOCIAL_POSTS: ${{ inputs.social_posts }}
+          SCRAPE_INSTAGRAM: ${{ inputs.scrape_instagram }}
+          SCRAPE_INSTAGRAM_ACCOUNTS: ${{ inputs.scrape_instagram_accounts }}
           PUBLISH: ${{ inputs.publish }}
           PAID: ${{ inputs.paid }}
         run: |
@@ -348,7 +363,9 @@ jobs:
           if [ "$PAID" = "true" ]; then paid_flag="--paid"; fi
           section_flag=""
           if [ -n "$SECTION" ]; then section_flag="--section $SECTION"; fi
-          if [ "$SOCIAL" = "plan" ] || [ "$SOCIAL" = "apply" ]; then
+          if [ "$SCRAPE_INSTAGRAM" = "true" ]; then
+            dotnet run -c Release -- --scrape-instagram $SCRAPE_INSTAGRAM_ACCOUNTS $section_flag
+          elif [ "$SOCIAL" = "plan" ] || [ "$SOCIAL" = "apply" ]; then
             apply_flag=""
             if [ "$SOCIAL" = "apply" ]; then apply_flag="--apply"; fi
             dotnet run -c Release -- --social $SOCIAL_POSTS $apply_flag $section_flag
