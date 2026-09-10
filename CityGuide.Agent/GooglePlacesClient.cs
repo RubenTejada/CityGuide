@@ -85,31 +85,34 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
         string? pageToken = null;
         do
         {
-            var request = new HttpRequestMessage(HttpMethod.Post, "https://places.googleapis.com/v1/places:searchText")
+            HttpResponseMessage response = await SendAsync(() =>
             {
-                Content = JsonContent.Create(new
+                var request = new HttpRequestMessage(HttpMethod.Post, "https://places.googleapis.com/v1/places:searchText")
                 {
-                    textQuery = query,
-                    languageCode = "es",
-                    pageSize = Math.Clamp(max - collected.Count, 1, 20),
-                    pageToken,
-                    // Without this Google answers a city query with the whole country:
-                    // "bares en Santo Domingo" brings back Punta Cana. Text Search only
-                    // takes a rectangle here, never a radius.
-                    locationRestriction = area is null ? null : new
+                    Content = JsonContent.Create(new
                     {
-                        rectangle = new
+                        textQuery = query,
+                        languageCode = "es",
+                        pageSize = Math.Clamp(max - collected.Count, 1, 20),
+                        pageToken,
+                        // Without this Google answers a city query with the whole country:
+                        // "bares en Santo Domingo" brings back Punta Cana. Text Search only
+                        // takes a rectangle here, never a radius.
+                        locationRestriction = area is null ? null : new
                         {
-                            low = new { latitude = area.SouthLat, longitude = area.WestLng },
-                            high = new { latitude = area.NorthLat, longitude = area.EastLng },
+                            rectangle = new
+                            {
+                                low = new { latitude = area.SouthLat, longitude = area.WestLng },
+                                high = new { latitude = area.NorthLat, longitude = area.EastLng },
+                            },
                         },
-                    },
-                }),
-            };
-            request.Headers.Add("X-Goog-Api-Key", apiKey);
-            request.Headers.Add("X-Goog-FieldMask", $"nextPageToken,{Mask(FullFields, search: true)}");
+                    }),
+                };
+                request.Headers.Add("X-Goog-Api-Key", apiKey);
+                request.Headers.Add("X-Goog-FieldMask", $"nextPageToken,{Mask(FullFields, search: true)}");
 
-            HttpResponseMessage response = await http.SendAsync(request);
+                return request;
+            });
             if (!response.IsSuccessStatusCode)
             {
                 throw new InvalidOperationException(
@@ -147,11 +150,14 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
             return null;
         }
 
-        var request = new HttpRequestMessage(
-            HttpMethod.Get, $"https://places.googleapis.com/v1/{photoName}/media?maxWidthPx={maxWidthPx}");
-        request.Headers.Add("X-Goog-Api-Key", apiKey);
+        HttpResponseMessage response = await SendAsync(() =>
+        {
+            var request = new HttpRequestMessage(
+                HttpMethod.Get, $"https://places.googleapis.com/v1/{photoName}/media?maxWidthPx={maxWidthPx}");
+            request.Headers.Add("X-Goog-Api-Key", apiKey);
 
-        HttpResponseMessage response = await http.SendAsync(request);
+            return request;
+        });
         if (!response.IsSuccessStatusCode)
         {
             return null;
@@ -176,14 +182,17 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
             return null;
         }
 
-        var request = new HttpRequestMessage(HttpMethod.Post, "https://places.googleapis.com/v1/places:searchText")
+        HttpResponseMessage response = await SendAsync(() =>
         {
-            Content = JsonContent.Create(new { textQuery = query, languageCode = "es", pageSize = 1 }),
-        };
-        request.Headers.Add("X-Goog-Api-Key", apiKey);
-        request.Headers.Add("X-Goog-FieldMask", Mask(PhotoFields, search: true));
+            var request = new HttpRequestMessage(HttpMethod.Post, "https://places.googleapis.com/v1/places:searchText")
+            {
+                Content = JsonContent.Create(new { textQuery = query, languageCode = "es", pageSize = 1 }),
+            };
+            request.Headers.Add("X-Goog-Api-Key", apiKey);
+            request.Headers.Add("X-Goog-FieldMask", Mask(PhotoFields, search: true));
 
-        HttpResponseMessage response = await http.SendAsync(request);
+            return request;
+        });
         if (!response.IsSuccessStatusCode)
         {
             return null;
@@ -218,12 +227,15 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
             return [];
         }
 
-        var request = new HttpRequestMessage(
-            HttpMethod.Get, $"https://places.googleapis.com/v1/places/{placeId}");
-        request.Headers.Add("X-Goog-Api-Key", apiKey);
-        request.Headers.Add("X-Goog-FieldMask", Mask(PhotoFields, search: false));
+        HttpResponseMessage response = await SendAsync(() =>
+        {
+            var request = new HttpRequestMessage(
+                HttpMethod.Get, $"https://places.googleapis.com/v1/places/{placeId}");
+            request.Headers.Add("X-Goog-Api-Key", apiKey);
+            request.Headers.Add("X-Goog-FieldMask", Mask(PhotoFields, search: false));
 
-        HttpResponseMessage response = await http.SendAsync(request);
+            return request;
+        });
         if (!response.IsSuccessStatusCode)
         {
             return [];
@@ -251,12 +263,15 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
             return null;
         }
 
-        var request = new HttpRequestMessage(
-            HttpMethod.Get, $"https://places.googleapis.com/v1/places/{placeId}");
-        request.Headers.Add("X-Goog-Api-Key", apiKey);
-        request.Headers.Add("X-Goog-FieldMask", Mask(FullFields, search: false));
+        HttpResponseMessage response = await SendAsync(() =>
+        {
+            var request = new HttpRequestMessage(
+                HttpMethod.Get, $"https://places.googleapis.com/v1/places/{placeId}");
+            request.Headers.Add("X-Goog-Api-Key", apiKey);
+            request.Headers.Add("X-Goog-FieldMask", Mask(FullFields, search: false));
 
-        HttpResponseMessage response = await http.SendAsync(request);
+            return request;
+        });
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
             return null;
@@ -288,27 +303,30 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
         }
 
         string query = $"{name} {address}".Trim();
-        var request = new HttpRequestMessage(HttpMethod.Post, "https://places.googleapis.com/v1/places:searchText")
+        HttpResponseMessage response = await SendAsync(() =>
         {
-            Content = JsonContent.Create(new
+            var request = new HttpRequestMessage(HttpMethod.Post, "https://places.googleapis.com/v1/places:searchText")
             {
-                textQuery = query,
-                languageCode = "es",
-                pageSize = 5,
-                locationBias = new
+                Content = JsonContent.Create(new
                 {
-                    circle = new
+                    textQuery = query,
+                    languageCode = "es",
+                    pageSize = 5,
+                    locationBias = new
                     {
-                        center = new { latitude, longitude },
-                        radius = 500.0,
+                        circle = new
+                        {
+                            center = new { latitude, longitude },
+                            radius = 500.0,
+                        },
                     },
-                },
-            }),
-        };
-        request.Headers.Add("X-Goog-Api-Key", apiKey);
-        request.Headers.Add("X-Goog-FieldMask", Mask(FullFields, search: true));
+                }),
+            };
+            request.Headers.Add("X-Goog-Api-Key", apiKey);
+            request.Headers.Add("X-Goog-FieldMask", Mask(FullFields, search: true));
 
-        HttpResponseMessage response = await http.SendAsync(request);
+            return request;
+        });
         if (!response.IsSuccessStatusCode)
         {
             throw new InvalidOperationException(
@@ -347,6 +365,33 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
     /// <summary>One Google place as the agent stores it. A field the mask left out
     /// comes back empty, which is exactly how the callers read it: what Google did
     /// not say, the node keeps as it was.</summary>
+    /// <summary>
+    /// Every request to Google goes through here, because a 503 is not an answer.
+    /// The service returns one now and then, and an unretried one used to end a paid
+    /// pass in the middle: the queries already answered stayed paid for and the rest
+    /// of the city never ran. A request that fails is not billed, so a retry costs
+    /// nothing but the wait. Three attempts, and then the caller decides what a
+    /// failure means — a place without its photo, or a pass that stops.
+    /// </summary>
+    private async Task<HttpResponseMessage> SendAsync(Func<HttpRequestMessage> newRequest)
+    {
+        for (int attempt = 1; ; attempt++)
+        {
+            HttpResponseMessage response = await http.SendAsync(newRequest());
+            bool transient = (int)response.StatusCode is 429 or >= 500;
+            if (!transient || attempt == 3)
+            {
+                return response;
+            }
+
+            TimeSpan delay = response.Headers.RetryAfter?.Delta ?? TimeSpan.FromSeconds(10 * attempt);
+            Console.Error.WriteLine(
+                $"    (Google {(int)response.StatusCode}: reintento {attempt} en {delay.TotalSeconds:0} s)");
+            response.Dispose();
+            await Task.Delay(delay);
+        }
+    }
+
     private static DiscoveredPlace Convert(PlaceModel p) => new(
         p.Id ?? "", p.DisplayName?.Text ?? "", p.FormattedAddress, p.NationalPhoneNumber, p.WebsiteUri,
         p.RegularOpeningHours?.WeekdayDescriptions ?? [],
