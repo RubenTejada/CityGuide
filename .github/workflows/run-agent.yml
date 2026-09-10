@@ -212,21 +212,6 @@ on:
         description: How many places the menu pass covers. Empty uses the default (25).
         required: false
         default: ""
-      venue_events:
-        description: >-
-          Maintenance pass instead of the ingestion run: fills a city's "Eventos"
-          from what its own places announce on their own sites. It is what fills the
-          section of a town no ticket portal lists — Juan Dolio has no box office, so
-          every portal answers about it with Santo Domingo. No Google request; the
-          model reads each agenda page, so it needs "paid". Scoped by "section",
-          whose city slug picks one city. "plan" only lists what it would create.
-        type: choice
-        required: false
-        options:
-          - "no"
-          - plan
-          - apply
-        default: "no"
       social:
         description: >-
           Maintenance pass instead of the ingestion run: announces the portal's own
@@ -331,8 +316,6 @@ jobs:
           Social__PageId: ${{ secrets.META_PAGE_ID }}
           Social__InstagramUserId: ${{ secrets.META_INSTAGRAM_USER_ID }}
           Social__AccessToken: ${{ secrets.META_ACCESS_TOKEN }}
-          VENUE_EVENTS: ${{ inputs.venue_events }}
-          VENUE_EVENTS_PLACES: ${{ inputs.venue_events_places }}
           SOCIAL: ${{ inputs.social }}
           SOCIAL_POSTS: ${{ inputs.social_posts }}
           PUBLISH: ${{ inputs.publish }}
@@ -356,10 +339,6 @@ jobs:
             apply_flag=""
             if [ "$MENUS" = "apply" ]; then apply_flag="--apply"; fi
             dotnet run -c Release -- --menus $MENUS_PLACES $apply_flag $section_flag $paid_flag
-          elif [ "$VENUE_EVENTS" = "plan" ] || [ "$VENUE_EVENTS" = "apply" ]; then
-            apply_flag=""
-            if [ "$VENUE_EVENTS" = "apply" ]; then apply_flag="--apply"; fi
-            dotnet run -c Release -- --venue-events $VENUE_EVENTS_PLACES $apply_flag $section_flag $paid_flag
           elif [ "$TRANSLATE" = "plan" ]; then
             dotnet run -c Release -- --translate $section_flag $paid_flag
           elif [ "$TRANSLATE" = "apply" ]; then
