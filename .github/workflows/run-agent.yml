@@ -227,10 +227,6 @@ on:
           - plan
           - apply
         default: "no"
-      venue_events_places:
-        description: How many places the venue-events pass reads. Empty uses the default (30).
-        required: false
-        default: ""
       social:
         description: >-
           Maintenance pass instead of the ingestion run: announces the portal's own
