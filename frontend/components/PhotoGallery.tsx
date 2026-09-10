@@ -1,13 +1,16 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { type CSSProperties, useEffect, useState } from "react";
 
 import ImageViewer from "@/components/ImageViewer";
 import { useWords } from "@/components/LocaleProvider";
 
-/** Cada cuánto sube a la foto principal la siguiente de la tira. */
-const INTERVAL_MS = 4500;
+/** Cada cuánto sube a la foto principal la siguiente de la tira. Tiene que dejar la
+ *  foto quieta un rato después del fundido, o la galería no para de moverse. */
+const INTERVAL_MS = 7000;
+/** Lo que tarda el fundido de la principal (`gallery-enter` en globals.css). */
+const FADE_MS = 2400;
 /** Con siete fotos o más la tira de abajo es de seis; con menos, de tres. Siete es lo
  *  que baja el agente: las seis de la tira y una más que solo se ve en el visor. */
 const WIDE_FROM = 7;
@@ -73,6 +76,7 @@ export default function PhotoGallery({
           sizes="(min-width: 1024px) 26rem, 100vw"
           // Un 16/9 subido un 30%: la principal manda sobre la tira que lleva debajo.
           className="aspect-11/8"
+          fade={FADE_MS}
           onOpen={setViewing}
         />
         <div className="grid grid-cols-3 gap-1">
@@ -84,9 +88,12 @@ export default function PhotoGallery({
               photos={photos}
               name={name}
               sizes="(min-width: 1024px) 9rem, 33vw"
-              className={`aspect-square transition-opacity duration-500 ${
+              // La marca de la tira se apaga y se enciende con el mismo fundido que
+              // la principal, o el salto de la tira delata el cambio antes de tiempo.
+              className={`aspect-square transition-opacity ${
                 tile === active ? "" : "opacity-70"
               }`}
+              style={{ transitionDuration: `${FADE_MS}ms` }}
               onOpen={setViewing}
             />
           ))}
@@ -126,6 +133,8 @@ function Cell({
   name,
   sizes,
   className,
+  style,
+  fade,
   onOpen,
 }: {
   index: number;
@@ -134,6 +143,8 @@ function Cell({
   name: string;
   sizes: string;
   className: string;
+  style?: CSSProperties;
+  fade?: number;
   onOpen: (index: number) => void;
 }) {
   const words = useWords();
@@ -145,6 +156,11 @@ function Cell({
       onClick={() => onOpen(index)}
       aria-label={words.place.galleryOpen(index + 1, photos.length)}
       className={`group relative block w-full cursor-zoom-in overflow-hidden bg-neutral-200 ${className}`}
+      style={
+        fade
+          ? ({ ...style, "--gallery-fade": `${fade}ms` } as CSSProperties)
+          : style
+      }
     >
       {fading && (
         <Image

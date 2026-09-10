@@ -201,6 +201,11 @@ html.dark .theme-icon-light {
    Galería de fotos de un lugar (PhotoGallery) y visor (ImageViewer)
    La foto que entra se funde despacio sobre la que sale, que se queda debajo
    hasta que termina. La misma entrada usa el visor al cambiar de foto.
+
+   La duración es una variable porque los dos sitios no piden lo mismo: la
+   principal de la galería rota sola y se funde muy despacio (--gallery-fade en
+   PhotoGallery), mientras que en el visor la foto la cambia el visitante y
+   tiene que responder.
    --------------------------------------------------------------------------- */
 @keyframes gallery-enter {
   from {
@@ -212,7 +217,10 @@ html.dark .theme-icon-light {
 }
 
 .gallery-enter {
-  animation: gallery-enter 1200ms ease-in-out both;
+  /* Una curva más plana que ease-in-out: el fundido arranca y termina casi sin
+     pendiente, que es lo que quita el escalón al principio y al final. */
+  animation: gallery-enter var(--gallery-fade, 1200ms) cubic-bezier(0.33, 0, 0.2, 1)
+    both;
 }
 
 @media (prefers-reduced-motion: reduce) {

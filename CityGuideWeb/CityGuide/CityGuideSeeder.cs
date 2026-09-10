@@ -144,6 +144,8 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
 
         await EnsurePlaceMenuSchemaAsync();
 
+        await EnsurePlaceReservationSchemaAsync();
+
         await EnsureAgentSchemaAsync();
 
         await EnsureCityStatusSchemaAsync();
@@ -158,6 +160,8 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
 
         await EnsureContactSchemaAsync();
 
+        await EnsureReservationSchemaAsync();
+
         await EnsureAgentApiUserAsync();
 
         bool citiesSeeded = EnsureCitiesSeeded();
@@ -165,6 +169,8 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         bool cityContentSeeded = EnsureCityContentSeeded();
 
         EnsureContactInboxSeeded();
+
+        EnsureReservationInboxSeeded();
 
         bool agentConfigSeeded = EnsureAgentConfigSeeded();
 
@@ -3452,23 +3458,32 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
             await CreateAsync(inbox);
         }
 
-        IContentType inboxType = _contentTypeService.Get("contactInbox")!;
+        await AllowUnderSiteAsync(_contentTypeService.Get("contactInbox")!);
+    }
+
+    /// <summary>
+    /// Allows a container document type as a child of "site", once. Both public inboxes
+    /// — the contact one and the reservations one — hang from the root, and an
+    /// installation created before either existed picks it up on the next startup.
+    /// </summary>
+    private async Task AllowUnderSiteAsync(IContentType child)
+    {
         IContentType? site = _contentTypeService.Get("site");
-        if (site is null || site.AllowedContentTypes!.Any(c => c.Key == inboxType.Key))
+        if (site is null || site.AllowedContentTypes!.Any(c => c.Key == child.Key))
         {
             return;
         }
 
-        _logger.LogInformation("CityGuide: allowing 'contactInbox' under 'site'");
+        _logger.LogInformation("CityGuide: allowing '{Alias}' under 'site'", child.Alias);
         int nextSort = site.AllowedContentTypes!.Count();
         site.AllowedContentTypes =
-            [.. site.AllowedContentTypes!, new ContentTypeSort(inboxType.Key, nextSort, inboxType.Alias)];
+            [.. site.AllowedContentTypes!, new ContentTypeSort(child.Key, nextSort, child.Alias)];
         Attempt<ContentTypeOperationStatus> attempt =
             await _contentTypeService.UpdateAsync(site, Constants.Security.SuperUserKey);
         if (!attempt.Success)
         {
             throw new InvalidOperationException(
-                $"Failed to allow 'contactInbox' under 'site': {attempt.Result}");
+                $"Failed to allow '{child.Alias}' under 'site': {attempt.Result}");
         }
     }
 
@@ -3476,25 +3491,146 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
     /// Idempotent, runs every startup: creates the single "Mensajes de Contacto" node the
     /// contact form writes into. Saved, never published — see <see cref="EnsureContactSchemaAsync"/>.
     /// </summary>
-    private void EnsureContactInboxSeeded()
+    private void EnsureContactInboxSeeded() => EnsureInboxSeeded("contactInbox", ContactInboxName);
+
+    /// <summary>
+    /// Idempotent, runs every startup: creates the single "Reservas" node the reservation
+    /// form writes into. Like a contact message, a reservation carries personal data and
+    /// is saved but never published.
+    /// </summary>
+    private void EnsureReservationInboxSeeded() =>
+        EnsureInboxSeeded("reservationInbox", ReservationInboxName);
+
+    /// <summary>Creates the one node of an inbox type under "site", if it is not there yet.</summary>
+    private void EnsureInboxSeeded(string contentTypeAlias, string name)
     {
         IContent? site = _contentService.GetRootContent().FirstOrDefault(c => c.ContentType.Alias == "site");
         if (site is null
-            || _contentTypeService.Get("contactInbox") is null
+            || _contentTypeService.Get(contentTypeAlias) is null
             || _contentService
                 .GetPagedChildren(site.Id, 0, 100, out _, null, null, null, false)
-                .Any(c => c.ContentType.Alias == "contactInbox"))
+                .Any(c => c.ContentType.Alias == contentTypeAlias))
         {
             return;
         }
 
-        _logger.LogInformation("CityGuide: seeding the contact inbox");
-        IContent inbox = CreateContent(ContactInboxName, site.Id, "contactInbox");
+        _logger.LogInformation("CityGuide: seeding the '{Name}' inbox", name);
+        IContent inbox = CreateContent(name, site.Id, contentTypeAlias);
         _contentService.Save(inbox);
+    }
+
+    /// <summary>
+    /// Idempotent, runs every startup: the two fields that turn reservations on for one
+    /// establishment. A place takes reservations because whoever runs it agreed to answer
+    /// them — a fact about that establishment and not about its category — so it is a
+    /// switch per node, with the address the requests are sent to beside it. Both are
+    /// invariant: a checkbox and an email address say the same thing in either language.
+    /// </summary>
+    private async Task EnsurePlaceReservationSchemaAsync()
+    {
+        IContentType? place = _contentTypeService.Get("place");
+        if (place is null)
+        {
+            return;
+        }
+
+        IDataType checkbox = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.CheckboxGuid))!;
+        IDataType textstring = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.TextstringGuid))!;
+
+        var wanted = new (string Alias, IDataType Editor, string Name, string Description, int SortOrder)[]
+        {
+            ("acceptsReservations", checkbox, "Acepta reservas",
+                "Muestra en la ficha del lugar el botón que abre el formulario de reserva. "
+                + "Marcarlo solo para los establecimientos que se comprometieron a responderlas.", 1),
+            ("reservationEmail", textstring, "Correo para reservas",
+                "A dónde se envía cada solicitud. Sin él la reserva queda igualmente guardada "
+                + $"en \"{ReservationInboxName}\" y se avisa al correo del portal.", 2),
+        };
+
+        var added = new List<string>();
+        foreach ((string alias, IDataType editor, string name, string description, int sortOrder) in wanted)
+        {
+            if (place.PropertyTypeExists(alias))
+            {
+                continue;
+            }
+
+            place.AddPropertyType(new PropertyType(_shortStringHelper, editor, alias)
+            {
+                Name = name,
+                Description = description,
+                SortOrder = sortOrder,
+            }, "reservations", "Reservas");
+            added.Add(alias);
+        }
+
+        if (added.Count == 0)
+        {
+            return;
+        }
+
+        _logger.LogInformation("CityGuide: adding {Properties} to the 'Reservas' tab on 'place'",
+            string.Join(", ", added));
+        Attempt<ContentTypeOperationStatus> attempt =
+            await _contentTypeService.UpdateAsync(place, Constants.Security.SuperUserKey);
+        if (!attempt.Success)
+        {
+            throw new InvalidOperationException(
+                $"Failed to add the reservation properties to 'place': {attempt.Result}");
+        }
+    }
+
+    /// <summary>
+    /// Idempotent, runs every startup: creates the "reservationInbox" / "reservationRequest"
+    /// document types the reservation form writes into, and allows the inbox under "site".
+    /// A reservation is a request, not content: it carries the visitor's name, email and
+    /// phone, so it is saved and never published, which keeps it out of the Delivery API
+    /// and leaves the backoffice as the one place it is read.
+    /// </summary>
+    private async Task EnsureReservationSchemaAsync()
+    {
+        if (_contentTypeService.Get("reservationRequest") is null)
+        {
+            _logger.LogInformation("CityGuide: creating 'reservationRequest' document type");
+            IDataType textstring = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.TextstringGuid))!;
+            IDataType textarea = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.TextareaGuid))!;
+            IDataType dateTime = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.DatePickerWithTimeGuid))!;
+            IDataType numeric = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.NumericGuid))!;
+            IDataType checkbox = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.CheckboxGuid))!;
+
+            IContentType request = NewContentType("reservationRequest", "Reservation Request", "icon-calendar");
+            AddProperty(request, "placeName", "Lugar", textstring, 1);
+            AddProperty(request, "placeUrl", "Página del lugar", textstring, 2);
+            // The wall clock of the restaurant, not an instant: 8 p.m. is 8 p.m. there.
+            AddProperty(request, "reservationAt", "Fecha y hora", dateTime, 3);
+            AddProperty(request, "partySize", "Personas", numeric, 4);
+            AddProperty(request, "guestName", "Nombre", textstring, 5);
+            AddProperty(request, "email", "Correo", textstring, 6);
+            AddProperty(request, "phone", "Teléfono", textstring, 7);
+            AddProperty(request, "notes", "Notas", textarea, 8);
+            AddProperty(request, "submittedAt", "Recibido", dateTime, 9);
+            AddProperty(request, "handled", "Atendido", checkbox, 10);
+            await CreateAsync(request);
+        }
+
+        IContentType requestType = _contentTypeService.Get("reservationRequest")!;
+
+        if (_contentTypeService.Get("reservationInbox") is null)
+        {
+            _logger.LogInformation("CityGuide: creating 'reservationInbox' document type");
+            IContentType inbox = NewContentType("reservationInbox", "Reservation Inbox", "icon-calendar-alt");
+            inbox.AllowedContentTypes = [new ContentTypeSort(requestType.Key, 0, requestType.Alias)];
+            await CreateAsync(inbox);
+        }
+
+        await AllowUnderSiteAsync(_contentTypeService.Get("reservationInbox")!);
     }
 
     /// <summary>Name of the node <see cref="ContactController"/> files messages under.</summary>
     public const string ContactInboxName = "Mensajes de Contacto";
+
+    /// <summary>Name of the node <see cref="ReservationController"/> files reservations under.</summary>
+    public const string ReservationInboxName = "Reservas";
 
     private IContent? Descendant(IContent parent, string contentTypeAlias, string name) =>
         _contentService

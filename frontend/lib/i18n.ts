@@ -280,6 +280,53 @@ const es = {
     establishments: "Otros establecimientos",
     establishmentsEmpty: "No hay establecimientos publicados todavía.",
   },
+  reservation: {
+    /** El botón de la ficha: lo que el visitante viene a hacer, dicho en una palabra. */
+    open: "Reservar una mesa",
+    openHint: "Respuesta por correo",
+    heading: (name: string): string => `Reservar en ${name}`,
+    /** Lo primero del modal: qué es esto y qué pasa después de enviarlo. */
+    lead: (name: string): string =>
+      `Cuéntanos cuándo quieres ir y ${name} te confirma la mesa por correo. La reserva no queda hecha hasta que te respondan.`,
+    fields: {
+      date: "Fecha",
+      time: "Hora",
+      party: "Personas",
+      name: "Tu nombre",
+      email: "Tu correo",
+      phone: "Tu teléfono",
+      notes: "Algo que debamos saber",
+    },
+    notesHint: "(alergias, celebración, silla para niños…)",
+    optional: "(opcional)",
+    phoneHint: "(por si necesitan llamarte)",
+    partyHint: (max: number): string => `Hasta ${max} personas`,
+    /** La promesa que el formulario hace, repetida donde se pulsa enviar. */
+    confirmedByEmail:
+      "Al enviarla te llega un correo con lo que pediste, y la confirmación llega después desde el propio establecimiento.",
+    submit: "Enviar solicitud",
+    sending: "Enviando…",
+    sentHeading: "¡Solicitud enviada!",
+    sentBody: (name: string): string =>
+      `${name} recibió tu solicitud y te responde al correo que nos dejaste. Revisa también la carpeta de correo no deseado.`,
+    /** Lo pedido, repetido en la confirmación: "viernes 12 de septiembre · 20:30 · 4 personas". */
+    summary: (date: string, time: string, party: number): string =>
+      `${date} · ${time} · ${party === 1 ? "1 persona" : `${party} personas`}`,
+    close: "Cerrar",
+    privacy:
+      "Usamos tus datos solo para gestionar esta reserva con el establecimiento.",
+    honeypot: "No llenar",
+    errors: {
+      date: "Elige la fecha y la hora.",
+      past: "Elige una fecha y hora que no hayan pasado.",
+      party: (max: number): string => `¿Cuántas personas van? Hasta ${max}.`,
+      name: "Escribe tu nombre.",
+      email: "Escribe un correo válido.",
+      phone: "Escribe un teléfono donde te puedan llamar.",
+      tooMany: "Ya recibimos varias solicitudes tuyas. Intenta de nuevo en un rato.",
+      failed: "No pudimos enviar tu solicitud. Inténtalo más tarde.",
+    },
+  },
   events: {
     about: "Acerca del evento",
     past: "Eventos pasados",
@@ -656,6 +703,49 @@ const en: typeof es = {
     branchesEmpty: "No locations published yet.",
     establishments: "Other stores",
     establishmentsEmpty: "No stores published yet.",
+  },
+  reservation: {
+    open: "Book a table",
+    openHint: "Answered by email",
+    heading: (name: string): string => `Book at ${name}`,
+    lead: (name: string): string =>
+      `Tell us when you would like to come and ${name} confirms the table by email. The booking is not held until they answer.`,
+    fields: {
+      date: "Date",
+      time: "Time",
+      party: "People",
+      name: "Your name",
+      email: "Your email",
+      phone: "Your phone",
+      notes: "Anything we should know",
+    },
+    notesHint: "(allergies, a celebration, a high chair…)",
+    optional: "(optional)",
+    phoneHint: "(in case they need to call you)",
+    partyHint: (max: number): string => `Up to ${max} people`,
+    confirmedByEmail:
+      "You get an email with what you asked for right away, and the confirmation comes afterwards from the venue itself.",
+    submit: "Send request",
+    sending: "Sending…",
+    sentHeading: "Request sent!",
+    sentBody: (name: string): string =>
+      `${name} has your request and will answer the email address you gave us. Check your spam folder too.`,
+    summary: (date: string, time: string, party: number): string =>
+      `${date} · ${time} · ${party === 1 ? "1 person" : `${party} people`}`,
+    close: "Close",
+    privacy:
+      "We use your details only to arrange this booking with the venue.",
+    honeypot: "Do not fill in",
+    errors: {
+      date: "Choose a date and a time.",
+      past: "Choose a date and time still to come.",
+      party: (max: number): string => `How many people are coming? Up to ${max}.`,
+      name: "Write your name.",
+      email: "Write a valid email address.",
+      phone: "Write a phone number they can reach you on.",
+      tooMany: "We already have several requests from you. Try again in a while.",
+      failed: "We could not send your request. Please try again later.",
+    },
   },
   events: {
     about: "About this event",
