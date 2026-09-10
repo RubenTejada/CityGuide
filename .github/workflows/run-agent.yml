@@ -189,10 +189,6 @@ on:
           - plan
           - apply
         default: "no"
-      gallery_places:
-        description: How many places the gallery pass covers. Empty uses the default (10).
-        required: false
-        default: ""
       menus:
         description: >-
           Maintenance pass instead of the ingestion run: reads the menu of the
@@ -208,10 +204,6 @@ on:
           - plan
           - apply
         default: "no"
-      menus_places:
-        description: How many places the menu pass covers. Empty uses the default (25).
-        required: false
-        default: ""
       venue_events:
         description: >-
           Maintenance pass instead of the ingestion run: fills a city's "Eventos"
@@ -227,8 +219,27 @@ on:
           - plan
           - apply
         default: "no"
-      venue_events_places:
-        description: How many places the venue-events pass reads. Empty uses the default (30).
+      venue_events:
+        description: >-
+          Maintenance pass instead of the ingestion run: fills a city's "Eventos"
+          from what its own places announce on their own sites. It is what fills the
+          section of a town no ticket portal lists — Juan Dolio has no box office, so
+          every portal answers about it with Santo Domingo. No Google request; the
+          model reads each agenda page, so it needs "paid". Scoped by "section",
+          whose city slug picks one city. "plan" only lists what it would create.
+        type: choice
+        required: false
+        options:
+          - "no"
+          - plan
+          - apply
+        default: "no"
+      count:
+        description: >-
+          How much the chosen pass covers: places for "gallery" (default 10),
+          "menus" (25) and "venue_events" (30), posts per city for "social" (3).
+          Empty uses that pass's own default. One input for all four because a
+          dispatch runs one pass, and the form is capped at 25 inputs.
         required: false
         default: ""
       social:
@@ -245,10 +256,6 @@ on:
           - plan
           - apply
         default: "no"
-      social_posts:
-        description: How many posts the social pass may publish per city. Empty uses the default (3).
-        required: false
-        default: ""
       paid:
         description: >-
           Let the run use the two services that charge: Google Places (billed per
@@ -327,18 +334,17 @@ jobs:
           EXCLUDE_NOTE: ${{ inputs.exclude_note }}
           TRANSLATE: ${{ inputs.translate }}
           GALLERY: ${{ inputs.gallery }}
-          GALLERY_PLACES: ${{ inputs.gallery_places }}
           MENUS: ${{ inputs.menus }}
-          MENUS_PLACES: ${{ inputs.menus_places }}
+          VENUE_EVENTS: ${{ inputs.venue_events }}
+          # How many places (or posts) the chosen pass covers; empty leaves each
+          # pass on its own default.
+          COUNT: ${{ inputs.count }}
           # Publishing to the Page and to the linked Instagram account. Missing
           # secrets only mean the pass refuses to post: the plan still runs.
           Social__PageId: ${{ secrets.META_PAGE_ID }}
           Social__InstagramUserId: ${{ secrets.META_INSTAGRAM_USER_ID }}
           Social__AccessToken: ${{ secrets.META_ACCESS_TOKEN }}
-          VENUE_EVENTS: ${{ inputs.venue_events }}
-          VENUE_EVENTS_PLACES: ${{ inputs.venue_events_places }}
           SOCIAL: ${{ inputs.social }}
-          SOCIAL_POSTS: ${{ inputs.social_posts }}
           PUBLISH: ${{ inputs.publish }}
           PAID: ${{ inputs.paid }}
         run: |
@@ -351,19 +357,19 @@ jobs:
           if [ "$SOCIAL" = "plan" ] || [ "$SOCIAL" = "apply" ]; then
             apply_flag=""
             if [ "$SOCIAL" = "apply" ]; then apply_flag="--apply"; fi
-            dotnet run -c Release -- --social $SOCIAL_POSTS $apply_flag $section_flag
+            dotnet run -c Release -- --social $COUNT $apply_flag $section_flag
           elif [ "$GALLERY" = "plan" ] || [ "$GALLERY" = "apply" ]; then
             apply_flag=""
             if [ "$GALLERY" = "apply" ]; then apply_flag="--apply"; fi
-            dotnet run -c Release -- --gallery $GALLERY_PLACES $apply_flag $section_flag $paid_flag
+            dotnet run -c Release -- --gallery $COUNT $apply_flag $section_flag $paid_flag
           elif [ "$MENUS" = "plan" ] || [ "$MENUS" = "apply" ]; then
             apply_flag=""
             if [ "$MENUS" = "apply" ]; then apply_flag="--apply"; fi
-            dotnet run -c Release -- --menus $MENUS_PLACES $apply_flag $section_flag $paid_flag
+            dotnet run -c Release -- --menus $COUNT $apply_flag $section_flag $paid_flag
           elif [ "$VENUE_EVENTS" = "plan" ] || [ "$VENUE_EVENTS" = "apply" ]; then
             apply_flag=""
             if [ "$VENUE_EVENTS" = "apply" ]; then apply_flag="--apply"; fi
-            dotnet run -c Release -- --venue-events $VENUE_EVENTS_PLACES $apply_flag $section_flag $paid_flag
+            dotnet run -c Release -- --venue-events $COUNT $apply_flag $section_flag $paid_flag
           elif [ "$TRANSLATE" = "plan" ]; then
             dotnet run -c Release -- --translate $section_flag $paid_flag
           elif [ "$TRANSLATE" = "apply" ]; then
