@@ -81,6 +81,15 @@ const SUBCATEGORY_ICONS: Record<string, string> = {
   "rent-a-car": "🚗",
   "salones-de-eventos": "🎪",
   "tours-y-excursiones": "🧭",
+  "policia-y-emergencias": "🚔",
+  "clinicas-y-hospitales": "🏥",
+  "spas-y-masajes": "💆",
+  "taxis-y-traslados": "🚕",
+  "alquiler-de-motores-y-fourwheels": "🏍",
+  "casas-de-cambio": "💱",
+  "call-centers": "📞",
+  // Atracciones
+  "deportes-acuaticos": "🏄",
   // Tours: la clase de día que es cada excursión
   "islas-y-catamaranes": "⛵",
   "naturaleza-y-ballenas": "🐋",

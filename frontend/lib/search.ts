@@ -1,5 +1,7 @@
 // Search helpers shared by the /buscar page and the autocomplete index API.
 
+import { keywordsFor } from "./searchKeywords";
+
 /** Lowercase and strip accents so "cafe" matches "Café". */
 export function fold(value: string): string {
   return value.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
@@ -18,9 +20,15 @@ export interface SearchEntry {
   extra: string;
 }
 
-/** Everything an entry is matched against, already folded. */
+/**
+ * Everything an entry is matched against, already folded: what the entry says
+ * about itself, plus the words its kind of business is looked for by
+ * (`keywordsFor`) — nobody types "Banreservas — ATM" when they want a cajero.
+ */
 export function searchText(entry: SearchEntry): string {
-  return fold(`${entry.name} ${entry.category} ${entry.extra}`);
+  return fold(
+    `${entry.name} ${entry.category} ${entry.extra} ${keywordsFor(entry.path)}`,
+  );
 }
 
 /** A query as the words it has to match, in any order. Empty for a blank query. */

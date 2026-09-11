@@ -82,6 +82,17 @@ public static partial class TranslatedVocabulary
         ["Tiendas por Departamento"] = "Department Stores",
         ["Tours y Excursiones"] = "Tour Operators",
 
+        // Los servicios que busca quien está de paso: se llaman igual en cualquier
+        // ciudad, y su nombre es el segmento de URL inglés, así que se curan aquí.
+        ["Alquiler de Motores y Fourwheels"] = "Motorcycle & ATV Rentals",
+        ["Call Centers"] = "Call Centers",
+        ["Casas de Cambio"] = "Currency Exchange",
+        ["Clínicas y Hospitales"] = "Clinics & Hospitals",
+        ["Deportes Acuáticos"] = "Water Sports",
+        ["Policía y Emergencias"] = "Police & Emergency",
+        ["Spas y Masajes"] = "Spas & Massage",
+        ["Taxis y Traslados"] = "Taxis & Transfers",
+
         // Las clases de día que agrupan las excursiones de la sección "Tours"
         ["Islas y Catamaranes"] = "Islands & Catamarans",
         ["Naturaleza y Ballenas"] = "Nature & Whales",

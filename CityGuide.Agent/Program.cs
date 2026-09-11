@@ -1855,10 +1855,36 @@ foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelec
             {
                 if (!subcategories!.TryGetValue(cuisine, out Guid subcategoryId))
                 {
-                    subcategoryId = await umbraco.CreateDocumentAsync(
-                        parent.Value.Id, subcategoryTypeId, cuisine, [], alsoInEnglish: true);
+                    try
+                    {
+                        subcategoryId = await umbraco.CreateDocumentAsync(
+                            parent.Value.Id, subcategoryTypeId, cuisine, [], alsoInEnglish: true);
+                        Console.WriteLine($"  + subcategoría '{cuisine}'");
+                    }
+                    catch (Exception ex)
+                    {
+                        // The CMS can refuse a create it has in fact saved: a corrupt
+                        // Examine index answers 500 after the row is committed. Reading
+                        // the children back is what tells that apart from a create that
+                        // really did not happen — without it every place after this one
+                        // created the subcategory again, and the section filled up with
+                        // "Spas y Masajes (1)", "(2)", "(3)". A create that saved nothing
+                        // still throws, so the place is reported and the next one retries.
+                        UmbracoClient.ChildDocument? saved =
+                            (await umbraco.GetChildrenAsync(parent.Value.Id)).FirstOrDefault(
+                                c => c.DocumentTypeId == subcategoryTypeId
+                                    && string.Equals(c.Name, cuisine, StringComparison.OrdinalIgnoreCase));
+                        if (saved is null)
+                        {
+                            throw;
+                        }
+
+                        subcategoryId = saved.Id;
+                        Console.Error.WriteLine(
+                            $"  ~ subcategoría '{cuisine}' ya estaba creada pese al error: {ex.Message}");
+                    }
+
                     subcategories[cuisine] = subcategoryId;
-                    Console.WriteLine($"  + subcategoría '{cuisine}'");
                 }
 
                 targetParentId = subcategoryId;
