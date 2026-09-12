@@ -39,6 +39,16 @@ import {
 
 export const revalidate = 600;
 
+/**
+ * No city is prerendered at build time — the portal opens new ones from the
+ * backoffice — but a route with no `generateStaticParams` at all is rendered
+ * from scratch on every request. The empty array asks for the other behaviour:
+ * rendered the first time the path is asked for, then served from the ISR cache.
+ */
+export function generateStaticParams() {
+  return [];
+}
+
 /** What the home page's ticker rotates through: three windows of three. */
 const HOME_EVENTS = 9;
 /** What a place needs before its rating means anything for the front page. */

@@ -1,7 +1,8 @@
-"use client";
-
-import { usePathname, useSearchParams } from "next/navigation";
-import { otherLocale, t, type Locale } from "@/lib/i18n";
+import { Suspense } from "react";
+import LanguageToggleLink, {
+  LANGUAGE_TOGGLE_CLASS,
+} from "@/components/LanguageToggleLink";
+import { otherLocale, type Locale } from "@/lib/i18n";
 
 /**
  * Switches the page between Spanish and English.
@@ -13,21 +14,27 @@ import { otherLocale, t, type Locale } from "@/lib/i18n";
  * asked for and redirects — and falls back to the same path under the other prefix
  * for the pages the CMS does not own (contact, search) and for anything nobody has
  * translated yet.
+ *
+ * It carries the query string across with it, which is what `/api/language` puts
+ * back on the destination — the page of a listing, the day of a cartelera, the
+ * words typed into the search. Reading it is a request-time API, and this
+ * component sits in the layout of every city page: without the boundary below,
+ * one language link would keep the whole portal out of the prerender and every
+ * place, plaza and article would be rendered again on every visit. Inside it,
+ * a page rendered for the request still writes the href on the server, and a
+ * prerendered one — which has no query to carry anyway — ships the placeholder
+ * and fills it in as soon as the browser takes over.
  */
 export default function LanguageToggle({ locale }: { locale: Locale }) {
-  const pathname = usePathname();
-  const search = useSearchParams().toString();
-  const other = otherLocale(locale);
-  const target = `${pathname}${search ? `?${search}` : ""}`;
-
   return (
-    <a
-      href={`/api/language?to=${other}&path=${encodeURIComponent(target)}`}
-      hrefLang={other}
-      title={t(locale).nav.language}
-      className="rounded-lg px-2 py-1.5 text-xs font-semibold tracking-wide text-neutral-400 uppercase transition-colors hover:bg-neutral-800 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sun-300"
+    <Suspense
+      fallback={
+        <span className={LANGUAGE_TOGGLE_CLASS} aria-hidden>
+          {otherLocale(locale)}
+        </span>
+      }
     >
-      {other}
-    </a>
+      <LanguageToggleLink locale={locale} />
+    </Suspense>
   );
 }
