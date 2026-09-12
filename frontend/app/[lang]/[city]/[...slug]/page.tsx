@@ -1117,11 +1117,15 @@ async function CategoryView({
  * de apartarle el día — cuánto dura, si pasan a buscarte, en qué temporada se hace —,
  * qué cubre el precio y quién la lleva.
  *
- * Nada se reserva aquí: el portal traslada la solicitud y la confirma el operador,
- * que es lo mismo que promete el formulario de una mesa y por eso es el mismo, con
- * las frases de una excursión. El operador es un nodo del propio portal — vive en la
- * sección que dice lo que es, "Atracciones" o "Empresas y Servicios" — así que se
- * enlaza en vez de repetirse.
+ * Nada se reserva aquí, y por ahora el portal tampoco traslada la solicitud: la
+ * excursión se reserva con quien la lleva, así que lo que da la ficha son sus vías de
+ * contacto — el enlace de reserva del operador cuando lo hay, y por cada operador su
+ * página en el portal, su web y su teléfono. Por eso esta ficha no lee
+ * `acceptsReservations`, que es el interruptor de la mesa de un restaurante: una
+ * excursión la cotiza y la confirma el operador, y el correo del portal solo añadiría
+ * una espera de más. El operador es un nodo del propio portal — vive en la sección que
+ * dice lo que es, "Atracciones" o "Empresas y Servicios" — así que se enlaza en vez de
+ * repetirse.
  */
 async function TourView({ item }: { item: UmbracoItem }) {
   const locale = await activeLocale();
@@ -1211,42 +1215,56 @@ async function TourView({ item }: { item: UmbracoItem }) {
           <p className="text-lg font-semibold text-brand-700">
             {price ? words.priceFrom(price) : words.priceOnRequest}
           </p>
-          {acceptsReservations(item) && (
-            <div className="mt-4">
-              <ReservationDialog
-                placeId={item.id}
-                placeName={item.name}
-                placeUrl={item.route.path}
-                minDate={todayInDR()}
-                locale={locale}
-                variant="tour"
-              />
-            </div>
-          )}
           {booking && (
             <a
               href={booking}
               target="_blank"
               rel="noopener noreferrer"
-              className="mt-3 block rounded-xl border border-brand-600 px-4 py-2.5 text-center text-sm font-semibold text-brand-700 transition-colors hover:bg-brand-50"
+              className="mt-4 block rounded-xl bg-brand-600 px-4 py-2.5 text-center text-sm font-semibold text-white transition-colors hover:bg-brand-700"
             >
               {words.bookWithOperator}
             </a>
           )}
           {operators.length > 0 && (
             <div className="mt-5 border-t border-neutral-200 pt-4">
-              <h2 className="text-sm font-semibold">{words.operators}</h2>
-              <ul className="mt-2 space-y-1 text-sm">
-                {operators.map((operator) => (
-                  <li key={operator.id}>
-                    <Link
-                      href={operator.route.path}
-                      className="text-brand-700 hover:underline"
-                    >
-                      {operator.name}
-                    </Link>
-                  </li>
-                ))}
+              <h2 className="text-sm font-semibold">{words.bookHere}</h2>
+              <ul className="mt-3 space-y-3 text-sm">
+                {operators.map((operator) => {
+                  const site = text(operator, "website");
+                  const phone = text(operator, "phone");
+                  return (
+                    <li key={operator.id}>
+                      <Link
+                        href={operator.route.path}
+                        className="font-medium text-brand-700 hover:underline"
+                      >
+                        {operator.name}
+                      </Link>
+                      {(site || phone) && (
+                        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs">
+                          {site && (
+                            <a
+                              href={site}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-brand-600 hover:underline"
+                            >
+                              {words.operatorWebsite}
+                            </a>
+                          )}
+                          {phone && (
+                            <a
+                              href={`tel:${phone.replace(/[^+\d]/g, "")}`}
+                              className="text-brand-600 hover:underline"
+                            >
+                              {words.operatorPhone} {phone}
+                            </a>
+                          )}
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           )}

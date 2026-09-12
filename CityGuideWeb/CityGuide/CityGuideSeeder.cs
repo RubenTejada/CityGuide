@@ -2162,8 +2162,8 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
     /// Juan Dolio y Guayacanes with the excursions of the zone, one subcategory per kind
     /// of day. Every tour points at the operators that run it — nodes that live in
     /// "Atracciones" or under "Empresas y Servicios", referenced and never copied, the
-    /// same way a plaza lists the establishments inside it — and takes requests through
-    /// the portal, which passes them on: nothing is booked here.
+    /// same way a plaza lists the establishments inside it — and is booked with them:
+    /// the page carries their links and phone, not a form the portal forwards.
     /// </summary>
     private bool EnsureToursSeeded()
     {
@@ -2211,9 +2211,9 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
                 SetSeedValue(content, "hotelPickup", tour.HotelPickup);
                 SetSeedValue(content, "season", tour.Season);
                 SetSeedValue(content, "operators", OperatorPicker(city, tour.Operators));
-                // The portal takes the request and passes it to the operator; with no
-                // address of its own it reaches the portal's inbox, which is the point.
-                SetSeedValue(content, "acceptsReservations", true);
+                // No reservation switch: an excursion is booked with the operator that
+                // runs it, and the page gives its contact details instead of a form the
+                // portal would only forward.
                 SetSeedValue(content, "source", "manual");
                 _contentService.Save(content);
                 created.Add(content);

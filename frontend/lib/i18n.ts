@@ -356,10 +356,16 @@ const es = {
     priceOnRequest: "Precio a consultar",
     includes: "Qué incluye",
     meetingPoint: "Dónde empieza",
-    operators: "Quién la lleva",
+    /**
+     * El portal no reserva la excursión: la reserva quien la lleva, así que lo que da
+     * la ficha son las vías de contacto del operador — su página, su web, su teléfono.
+     */
+    bookHere: "Dónde reservar",
     operatorsHint:
-      "La excursión la opera y la confirma la empresa; el portal solo traslada tu solicitud.",
-    bookWithOperator: "Ver al operador",
+      "La excursión la opera, la cotiza y la confirma el operador: escríbele o llámalo directamente.",
+    bookWithOperator: "Reservar en línea",
+    operatorWebsite: "Sitio web",
+    operatorPhone: "Llamar",
     photoCredit: (credit: string): string => `Foto: ${credit}`,
   },
   events: {
@@ -807,10 +813,12 @@ const en: typeof es = {
     priceOnRequest: "Price on request",
     includes: "What is included",
     meetingPoint: "Where it starts",
-    operators: "Who runs it",
+    bookHere: "Where to book",
     operatorsHint:
-      "The tour is run and confirmed by the operator; the portal only passes your request on.",
-    bookWithOperator: "See the operator",
+      "The tour is run, quoted and confirmed by the operator: write or call them directly.",
+    bookWithOperator: "Book online",
+    operatorWebsite: "Website",
+    operatorPhone: "Call",
     photoCredit: (credit: string): string => `Photo: ${credit}`,
   },
   events: {
