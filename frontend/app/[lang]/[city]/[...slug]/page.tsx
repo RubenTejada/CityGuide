@@ -130,9 +130,11 @@ import {
   byRating,
   facilities,
   isUnder,
+  focalPosition,
   num,
+  photoOf,
+  photosOf,
   photoUrl,
-  photoUrls,
   picked,
   slugOf,
   text,
@@ -1128,9 +1130,11 @@ async function TourView({ item }: { item: UmbracoItem }) {
   // this the list of who runs the excursion comes back empty.
   const expanded = await getItem(item.route.path, "properties[operators]");
   const citySlug = contentSegments(item.route.path)[0] ?? "";
-  const own = photoUrl(item);
+  const own = photoOf(item);
   const photo =
-    own ?? curatedPhoto(citySlug, slugOf(item)) ?? sectionListImage(item.route.path);
+    own?.url ??
+    curatedPhoto(citySlug, slugOf(item)) ??
+    sectionListImage(item.route.path);
   // Las fotos curadas son de Commons y sus licencias piden crédito; una foto puesta
   // en el backoffice es del portal y no lleva ninguno.
   const credit = own ? null : curatedPhotoCredit(citySlug, slugOf(item));
@@ -1165,6 +1169,7 @@ async function TourView({ item }: { item: UmbracoItem }) {
               fill
               unoptimized={photo.endsWith(".svg")}
               className="object-cover"
+              style={{ objectPosition: focalPosition(own) }}
               sizes="(min-width: 1024px) 60vw, 100vw"
               priority
             />
@@ -1547,7 +1552,8 @@ async function MallView({ item }: { item: UmbracoItem }) {
     referenced,
     cityItem,
   );
-  const photo = photoUrl(item);
+  const own = photoOf(item);
+  const photo = own?.url ?? null;
   const website = text(item, "website");
   const directions = itemDirectionsUrl(item);
   const latitude = num(item, "latitude");
@@ -1571,6 +1577,7 @@ async function MallView({ item }: { item: UmbracoItem }) {
             alt={item.name}
             fill
             className="object-cover"
+            style={{ objectPosition: focalPosition(own) }}
             sizes="128px"
           />
         </div>
@@ -1834,18 +1841,19 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
   const displayName = branchDisplayName(item.name, company?.name);
   // La galería es el extra de los lugares que encabezan su sección: va al lado de la
   // foto principal, y con menos de cuatro fotos no hay rejilla que rote.
-  const gallery = photoUrls(item, "gallery");
+  const gallery = photosOf(item, "gallery");
   const hasGallery = gallery.length >= 4;
   // La carta va junto al horario: es lo mismo que el horario, algo que se consulta
   // antes de ir. Una sola página ya es un menú — hay restaurantes cuya carta cabe en
   // una hoja — así que basta con tener alguna.
-  const menu = photoUrls(item, "menu");
+  const menu = photosOf(item, "menu");
   const menuSections = placeMenu(item, locale);
   // El día que el portal leyó la carta, no el día del menú: con la fecha delante, y la
   // advertencia al lado, un precio viejo se lee por lo que es.
   const menuCaptured =
     formatDate(item.properties["menuUpdated"], locale) || null;
-  const ownPhoto = photoUrl(item);
+  const own = photoOf(item);
+  const ownPhoto = own?.url ?? null;
   const inheritedPhoto = ownPhoto ?? (company ? photoUrl(company) : null);
   // No photo and no company logo: fall back to the section's image.
   const photo = inheritedPhoto ?? sectionListImage(item.route.path);
@@ -1897,6 +1905,7 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
               fill
               unoptimized={photo.endsWith(".svg")}
               className={isLogo ? "object-contain p-6" : "object-cover"}
+              style={isLogo ? undefined : { objectPosition: focalPosition(own) }}
               sizes="(min-width: 1024px) 14rem, 100vw"
               priority
             />
@@ -2221,7 +2230,8 @@ async function EventView({ item }: { item: UmbracoItem }) {
   const locale = await activeLocale();
   const latitude = num(item, "latitude");
   const longitude = num(item, "longitude");
-  const photo = photoUrl(item);
+  const own = photoOf(item);
+  const photo = own?.url ?? null;
   const website = text(item, "website");
   const phone = text(item, "phone");
   // The route is to the venue, which is what the event's address describes.
@@ -2273,6 +2283,7 @@ async function EventView({ item }: { item: UmbracoItem }) {
                 alt={item.name}
                 fill
                 className="object-cover"
+                style={{ objectPosition: focalPosition(own) }}
                 sizes="(min-width: 1024px) 20rem, 100vw"
                 priority
               />

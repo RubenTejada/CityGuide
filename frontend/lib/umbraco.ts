@@ -8,6 +8,23 @@
 export interface MediaItem {
   url: string;
   name?: string;
+  focalPoint?: FocalPoint | null;
+}
+
+/**
+ * El punto de la imagen que un editor marcó en el backoffice como lo que no se
+ * puede perder, en tanto por uno desde la esquina superior izquierda. Es `null`
+ * mientras nadie lo toque, y entonces el recorte sigue siendo por el centro.
+ */
+export interface FocalPoint {
+  left: number;
+  top: number;
+}
+
+/** Una imagen elegida en un MediaPicker3, con el punto de interés que lleve. */
+export interface Photo {
+  url: string;
+  focalPoint: FocalPoint | null;
 }
 
 export interface UmbracoItem {
@@ -68,11 +85,43 @@ export function photoUrl(item: UmbracoItem, alias = "photo"): string | null {
  * both come back from the Delivery API as a list of media items.
  */
 export function photoUrls(item: UmbracoItem, alias = "gallery"): string[] {
+  return photosOf(item, alias).map((photo) => photo.url);
+}
+
+/** Lo mismo, con el punto de interés que el CMS guarda de cada imagen. */
+export function photosOf(item: UmbracoItem, alias = "gallery"): Photo[] {
   const value = item.properties[alias];
   if (!Array.isArray(value)) return [];
   return (value as MediaItem[])
-    .map((media) => media?.url)
-    .filter((url): url is string => Boolean(url));
+    .filter((media): media is MediaItem => Boolean(media?.url))
+    .map((media) => ({ url: media.url, focalPoint: media.focalPoint ?? null }));
+}
+
+/** La primera imagen de la propiedad, con su punto de interés. */
+export function photoOf(item: UmbracoItem, alias = "photo"): Photo | null {
+  return photosOf(item, alias)[0] ?? null;
+}
+
+/**
+ * El punto de interés como `object-position`, que es lo que decide qué parte de
+ * la foto sobrevive al recorte de `object-cover`.
+ *
+ * Una foto llena su caja recortando, y hasta ahora ese recorte era siempre por
+ * el centro: en una vertical de móvil dentro de una tarjeta cuadrada eso se
+ * lleva la cabeza del plato o el rótulo del local. Umbraco ya deja marcar en el
+ * backoffice, sobre la propia imagen, el punto que tiene que quedar dentro — y
+ * lo sirve con la imagen —, así que el editor decide foto a foto por dónde se
+ * corta. Sin marcar no hay nada que aplicar y el navegador recorta por el
+ * centro, que es lo de siempre.
+ */
+export function focalPosition(photo: Photo | null | undefined): string | undefined {
+  const point = photo?.focalPoint;
+  if (!point) return undefined;
+  return `${percent(point.left)}% ${percent(point.top)}%`;
+}
+
+function percent(value: number): number {
+  return Math.round(Math.min(1, Math.max(0, value)) * 1000) / 10;
 }
 
 /**

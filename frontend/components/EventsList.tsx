@@ -1,7 +1,13 @@
 import Image from "next/image";
 import Link from "next/link";
 import { INTL_LOCALE, t, type Locale } from "@/lib/i18n";
-import { num, photoUrl, text, type UmbracoItem } from "@/lib/umbraco";
+import {
+  focalPosition,
+  num,
+  photoOf,
+  text,
+  type UmbracoItem,
+} from "@/lib/umbraco";
 import { type MapMarker } from "./MarkersMap";
 
 export interface EventEntry {
@@ -16,12 +22,15 @@ export interface EventEntry {
   recurrence: string;
   description: string;
   photo: string | null;
+  /** El punto de interés del cartel, ya como `object-position`. */
+  photoPosition: string | undefined;
   latitude: number;
   longitude: number;
 }
 
 /** A published `eventItem` as the cards, the map and the guide read it. */
 export function eventEntry(event: UmbracoItem): EventEntry {
+  const photo = photoOf(event);
   return {
     id: event.id,
     href: event.route.path,
@@ -38,7 +47,8 @@ export function eventEntry(event: UmbracoItem): EventEntry {
     venueName: text(event, "venueName"),
     recurrence: text(event, "recurrence"),
     description: text(event, "description"),
-    photo: photoUrl(event),
+    photo: photo?.url ?? null,
+    photoPosition: focalPosition(photo),
     latitude: num(event, "latitude"),
     longitude: num(event, "longitude"),
   };
@@ -156,6 +166,7 @@ export function EventCard({
             alt={event.name}
             fill
             className="object-cover"
+            style={{ objectPosition: event.photoPosition }}
             // A compact card is never wider than a third of the 6xl grid, and
             // the home page's column is narrower still: asking for viewport
             // fractions there downloaded a 1080px poster for a 320px card.

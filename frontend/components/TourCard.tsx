@@ -5,7 +5,13 @@ import { contentSegments, t, type Locale } from "@/lib/i18n";
 import { curatedPhoto } from "@/lib/photos";
 import { sectionListImage } from "@/lib/sections";
 import { priceLabel, tourMeta } from "@/lib/tour";
-import { photoUrl, slugOf, text, type UmbracoItem } from "@/lib/umbraco";
+import {
+  focalPosition,
+  photoOf,
+  slugOf,
+  text,
+  type UmbracoItem,
+} from "@/lib/umbraco";
 
 /**
  * Una excursión en el listado: la foto del sitio adonde va, cuánto dura, si te
@@ -22,8 +28,9 @@ export default function TourCard({
 }) {
   const words = t(locale).tours;
   const citySlug = contentSegments(tour.route.path)[0] ?? "";
+  const own = photoOf(tour);
   const photo =
-    photoUrl(tour) ??
+    own?.url ??
     curatedPhoto(citySlug, slugOf(tour)) ??
     sectionListImage(tour.route.path);
   const meta = tourMeta(tour, locale, words);
@@ -41,6 +48,7 @@ export default function TourCard({
           fill
           unoptimized={photo.endsWith(".svg")}
           className="object-cover"
+          style={{ objectPosition: focalPosition(own) }}
           sizes="(min-width: 1280px) 33vw, (min-width: 640px) 50vw, 100vw"
         />
       </div>

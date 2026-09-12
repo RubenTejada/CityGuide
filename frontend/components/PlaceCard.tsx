@@ -1,6 +1,12 @@
 import Image from "next/image";
 import Link from "next/link";
-import { facilities, photoUrl, text, type UmbracoItem } from "@/lib/umbraco";
+import {
+  facilities,
+  focalPosition,
+  photoOf,
+  text,
+  type UmbracoItem,
+} from "@/lib/umbraco";
 import { type Locale } from "@/lib/i18n";
 import { branchDisplayName } from "@/lib/branches";
 import { sectionListImage } from "@/lib/sections";
@@ -23,7 +29,8 @@ export default function PlaceCard({
   compact?: boolean;
 }) {
   const name = branchDisplayName(place.name, company?.name);
-  const ownPhoto = photoUrl(place);
+  const own = photoOf(place);
+  const ownPhoto = own?.url ?? null;
   const inherited = ownPhoto ?? fallbackPhoto ?? null;
   // No photo and no inheritable logo: fall back to the section's image.
   const photo = inherited ?? sectionListImage(place.route.path);
@@ -54,6 +61,7 @@ export default function PlaceCard({
           fill
           unoptimized={photo.endsWith(".svg")}
           className={isLogo ? "object-contain p-2" : "object-cover"}
+          style={isLogo ? undefined : { objectPosition: focalPosition(own) }}
           sizes={compact ? "80px" : "(min-width: 640px) 144px, 112px"}
         />
       </div>

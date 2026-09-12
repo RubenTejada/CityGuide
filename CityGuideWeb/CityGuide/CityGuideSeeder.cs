@@ -148,6 +148,8 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
 
         await EnsurePlaceReservationSchemaAsync();
 
+        await EnsureImageFocalPointAsync();
+
         await EnsureAgentSchemaAsync();
 
         await EnsureCityStatusSchemaAsync();
@@ -4171,6 +4173,53 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
     /// switch per node, with the address the requests are sent to beside it. Both are
     /// invariant: a checkbox and an email address say the same thing in either language.
     /// </summary>
+    /// <summary>
+    /// Enciende el punto de interés en los selectores de imagen del portal.
+    /// </summary>
+    /// <remarks>
+    /// Una foto llena su caja recortando, y el navegador recorta por el centro: en
+    /// una vertical de móvil metida en una tarjeta cuadrada eso se lleva la cabeza
+    /// del plato o el rótulo del local, y no hay nada en el contenido que diga por
+    /// dónde cortarla. Umbraco sabe guardarlo —un punto sobre la propia imagen, que
+    /// el Delivery API sirve con ella y el portal aplica como `object-position`—,
+    /// pero el selector de imagen no lo ofrece mientras `enableLocalFocalPoint` esté
+    /// apagado, que es como vienen los tipos de dato que trae la instalación. Así que
+    /// se enciende aquí, en los dos que usa el portal (la foto única y las galerías),
+    /// y el editor decide foto a foto qué parte tiene que sobrevivir al recorte. Sin
+    /// tocar nada el punto es nulo y el recorte sigue siendo por el centro, que es lo
+    /// de siempre.
+    /// </remarks>
+    private async Task EnsureImageFocalPointAsync()
+    {
+        Guid[] pickers =
+        [
+            Constants.DataTypes.Guids.MediaPicker3SingleImageGuid,
+            Constants.DataTypes.Guids.MediaPicker3MultipleImagesGuid,
+        ];
+
+        foreach (Guid pickerId in pickers)
+        {
+            IDataType? picker = await _dataTypeService.GetAsync(pickerId);
+            if (picker is null)
+            {
+                continue;
+            }
+
+            var configuration = new Dictionary<string, object>(picker.ConfigurationData);
+            if (configuration.TryGetValue("enableLocalFocalPoint", out object? enabled)
+                && string.Equals(enabled?.ToString(), "true", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            configuration["enableLocalFocalPoint"] = true;
+            picker.ConfigurationData = configuration;
+            await _dataTypeService.UpdateAsync(picker, Constants.Security.SuperUserKey);
+            _logger.LogInformation(
+                "CityGuide: enabled the local focal point on data type '{DataType}'", picker.Name);
+        }
+    }
+
     private async Task EnsurePlaceReservationSchemaAsync()
     {
         IDataType checkbox = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.CheckboxGuid))!;

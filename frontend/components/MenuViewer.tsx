@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useState } from "react";
 
 import ImageViewer from "@/components/ImageViewer";
+import { focalPosition, type Photo } from "@/lib/umbraco";
 import { useWords } from "@/components/LocaleProvider";
 import MenuNote from "@/components/MenuNote";
 
@@ -23,7 +24,7 @@ export default function MenuViewer({
   source,
   captured,
 }: {
-  pages: string[];
+  pages: Photo[];
   name: string;
   source: string | null;
   captured: string | null;
@@ -40,11 +41,12 @@ export default function MenuViewer({
       >
         <span className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-neutral-100">
           <Image
-            src={pages[0]}
+            src={pages[0].url}
             alt=""
             fill
             sizes="3.5rem"
             className="object-cover"
+            style={{ objectPosition: focalPosition(pages[0]) }}
           />
         </span>
         <span className="min-w-0">
@@ -59,7 +61,7 @@ export default function MenuViewer({
 
       {viewing !== null && (
         <ImageViewer
-          images={pages}
+          images={pages.map((page) => page.url)}
           name={name}
           start={viewing}
           labels={{

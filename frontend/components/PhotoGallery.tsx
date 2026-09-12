@@ -5,6 +5,7 @@ import { type CSSProperties, useEffect, useState } from "react";
 
 import ImageViewer from "@/components/ImageViewer";
 import { useWords } from "@/components/LocaleProvider";
+import { focalPosition, type Photo } from "@/lib/umbraco";
 
 /** Cada cuánto sube a la foto principal la siguiente de la tira. Tiene que dejar la
  *  foto quieta un rato después del fundido, o la galería no para de moverse. */
@@ -34,7 +35,7 @@ export default function PhotoGallery({
   name,
   label,
 }: {
-  photos: string[];
+  photos: Photo[];
   name: string;
   label: string;
 }) {
@@ -102,7 +103,7 @@ export default function PhotoGallery({
 
       {viewing !== null && (
         <ImageViewer
-          images={photos}
+          images={photos.map((photo) => photo.url)}
           name={name}
           start={viewing}
           labels={{
@@ -138,8 +139,8 @@ function Cell({
   onOpen,
 }: {
   index: number;
-  previous: string | null;
-  photos: string[];
+  previous: Photo | null;
+  photos: Photo[];
   name: string;
   sizes: string;
   className: string;
@@ -148,8 +149,8 @@ function Cell({
   onOpen: (index: number) => void;
 }) {
   const words = useWords();
-  const url = photos[index];
-  const fading = previous !== null && previous !== url;
+  const photo = photos[index];
+  const fading = previous !== null && previous.url !== photo.url;
   return (
     <button
       type="button"
@@ -164,23 +165,25 @@ function Cell({
     >
       {fading && (
         <Image
-          src={previous}
+          src={previous.url}
           alt=""
           fill
           sizes={sizes}
           className="object-cover"
+          style={{ objectPosition: focalPosition(previous) }}
           aria-hidden
         />
       )}
       <Image
-        key={url}
-        src={url}
+        key={photo.url}
+        src={photo.url}
         alt={name}
         fill
         sizes={sizes}
         className={`object-cover transition-transform duration-300 group-hover:scale-105 ${
           fading ? "gallery-enter" : ""
         }`}
+        style={{ objectPosition: focalPosition(photo) }}
       />
     </button>
   );
