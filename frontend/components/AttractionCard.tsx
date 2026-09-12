@@ -1,9 +1,9 @@
-import PhotoFit from "@/components/PhotoFit";
+import Image from "next/image";
 import Link from "next/link";
 import { contentSegments, type Locale } from "@/lib/i18n";
 import {
   facilities,
-  photoOf,
+  photoUrl,
   slugOf,
   text,
   type UmbracoItem,
@@ -27,9 +27,8 @@ export default function AttractionCard({
   compact?: boolean;
 }) {
   const citySlug = contentSegments(place.route.path)[0] ?? "";
-  const own = photoOf(place);
   const photo =
-    own?.url ??
+    photoUrl(place) ??
     curatedPhoto(citySlug, slugOf(place)) ??
     sectionListImage(place.route.path);
   return (
@@ -42,12 +41,12 @@ export default function AttractionCard({
           compact ? "aspect-[16/7]" : "aspect-[2/1]"
         }`}
       >
-        <PhotoFit
+        <Image
           src={photo}
           alt={place.name}
-          width={own?.width}
-          height={own?.height}
-          box={compact ? 16 / 7 : 2}
+          fill
+          unoptimized={photo.endsWith(".svg")}
+          className="object-cover"
           sizes={
             compact
               ? "(min-width: 1280px) 33vw, (min-width: 640px) 50vw, 100vw"

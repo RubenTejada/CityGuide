@@ -1,11 +1,11 @@
-import PhotoFit from "@/components/PhotoFit";
+import Image from "next/image";
 import Link from "next/link";
 
 import { contentSegments, t, type Locale } from "@/lib/i18n";
 import { curatedPhoto } from "@/lib/photos";
 import { sectionListImage } from "@/lib/sections";
 import { priceLabel, tourMeta } from "@/lib/tour";
-import { photoOf, slugOf, text, type UmbracoItem } from "@/lib/umbraco";
+import { photoUrl, slugOf, text, type UmbracoItem } from "@/lib/umbraco";
 
 /**
  * Una excursión en el listado: la foto del sitio adonde va, cuánto dura, si te
@@ -22,9 +22,8 @@ export default function TourCard({
 }) {
   const words = t(locale).tours;
   const citySlug = contentSegments(tour.route.path)[0] ?? "";
-  const own = photoOf(tour);
   const photo =
-    own?.url ??
+    photoUrl(tour) ??
     curatedPhoto(citySlug, slugOf(tour)) ??
     sectionListImage(tour.route.path);
   const meta = tourMeta(tour, locale, words);
@@ -36,12 +35,12 @@ export default function TourCard({
       className="group flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm transition hover:shadow-md"
     >
       <div className="relative aspect-[16/9] bg-neutral-200">
-        <PhotoFit
+        <Image
           src={photo}
           alt={tour.name}
-          width={own?.width}
-          height={own?.height}
-          box={16 / 9}
+          fill
+          unoptimized={photo.endsWith(".svg")}
+          className="object-cover"
           sizes="(min-width: 1280px) 33vw, (min-width: 640px) 50vw, 100vw"
         />
       </div>

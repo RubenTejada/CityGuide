@@ -1,10 +1,9 @@
 "use client";
 
+import Image from "next/image";
 import { type CSSProperties, useEffect, useState } from "react";
 
 import ImageViewer from "@/components/ImageViewer";
-import PhotoFit, { photoBoxAspect } from "@/components/PhotoFit";
-import { type Photo } from "@/lib/umbraco";
 import { useWords } from "@/components/LocaleProvider";
 
 /** Cada cuánto sube a la foto principal la siguiente de la tira. Tiene que dejar la
@@ -35,16 +34,12 @@ export default function PhotoGallery({
   name,
   label,
 }: {
-  photos: Photo[];
+  photos: string[];
   name: string;
   label: string;
 }) {
   const words = useWords();
   const tiles = photos.length >= WIDE_FROM ? 6 : 3;
-  // La principal no puede cambiar de forma en cada vuelta —la página daría un salto
-  // cada siete segundos—, así que toma la forma de la foto que mejor representa a la
-  // tanda: la mediana de todas. Las que se salgan de ahí las resuelve `PhotoFit`.
-  const mainBox = medianBox(photos);
   // Cuenta de vueltas, no posición: el primer render no tiene foto saliente y así se
   // distingue de la vuelta completa, sin guardar el valor anterior en un ref.
   const [turn, setTurn] = useState(0);
@@ -78,8 +73,9 @@ export default function PhotoGallery({
           previous={turn === 0 ? null : photos[(turn - 1) % tiles]}
           photos={photos}
           name={name}
-          box={mainBox}
           sizes="(min-width: 1024px) 26rem, 100vw"
+          // Un 16/9 subido un 30%: la principal manda sobre la tira que lleva debajo.
+          className="aspect-11/8"
           fade={FADE_MS}
           onOpen={setViewing}
         />
@@ -91,14 +87,10 @@ export default function PhotoGallery({
               previous={null}
               photos={photos}
               name={name}
-              // La tira lleva la misma forma que la principal: son las mismas fotos,
-              // y una tira cuadrada sobre una tanda de verticales las enseñaba a
-              // todas con banda.
-              box={mainBox}
               sizes="(min-width: 1024px) 9rem, 33vw"
               // La marca de la tira se apaga y se enciende con el mismo fundido que
               // la principal, o el salto de la tira delata el cambio antes de tiempo.
-              className={`transition-opacity ${
+              className={`aspect-square transition-opacity ${
                 tile === active ? "" : "opacity-70"
               }`}
               style={{ transitionDuration: `${FADE_MS}ms` }}
@@ -110,7 +102,7 @@ export default function PhotoGallery({
 
       {viewing !== null && (
         <ImageViewer
-          images={photos.map((photo) => photo.url)}
+          images={photos}
           name={name}
           start={viewing}
           labels={{
@@ -129,20 +121,6 @@ export default function PhotoGallery({
 }
 
 /**
- * La forma que mejor representa a una tanda de fotos: la mediana de sus
- * proporciones, acotada a lo que el portal dibuja. Una tanda sin ningún tamaño
- * conocido se queda con el 11/8 de siempre — un 16/9 subido un 30%, que es lo que
- * deja a la principal mandar sobre la tira que lleva debajo.
- */
-function medianBox(photos: Photo[]): number {
-  const boxes = photos
-    .map((photo) => photoBoxAspect(photo))
-    .filter((box): box is number => box !== null)
-    .sort((a, b) => a - b);
-  return boxes.length === 0 ? 11 / 8 : boxes[Math.floor(boxes.length / 2)];
-}
-
-/**
  * Una celda de la galería. La principal cambia de foto: la nueva se funde sobre la
  * anterior, que se queda debajo hasta que el fundido termina — de ahí que la clave por
  * URL rearranque la animación en cada cambio. Es un botón porque cualquier foto abre el
@@ -153,7 +131,6 @@ function Cell({
   previous,
   photos,
   name,
-  box,
   sizes,
   className,
   style,
@@ -161,53 +138,47 @@ function Cell({
   onOpen,
 }: {
   index: number;
-  previous: Photo | null;
-  photos: Photo[];
+  previous: string | null;
+  photos: string[];
   name: string;
-  /** La proporción de la celda: la tira es cuadrada, la principal la de la tanda. */
-  box: number;
   sizes: string;
-  className?: string;
+  className: string;
   style?: CSSProperties;
   fade?: number;
   onOpen: (index: number) => void;
 }) {
   const words = useWords();
-  const photo = photos[index];
-  const fading = previous !== null && previous.url !== photo.url;
+  const url = photos[index];
+  const fading = previous !== null && previous !== url;
   return (
     <button
       type="button"
       onClick={() => onOpen(index)}
       aria-label={words.place.galleryOpen(index + 1, photos.length)}
-      className={`group relative block w-full cursor-zoom-in overflow-hidden bg-neutral-200 ${className ?? ""}`}
+      className={`group relative block w-full cursor-zoom-in overflow-hidden bg-neutral-200 ${className}`}
       style={
-        {
-          aspectRatio: box,
-          ...style,
-          ...(fade ? { "--gallery-fade": `${fade}ms` } : {}),
-        } as CSSProperties
+        fade
+          ? ({ ...style, "--gallery-fade": `${fade}ms` } as CSSProperties)
+          : style
       }
     >
       {fading && (
-        <PhotoFit
-          src={previous.url}
+        <Image
+          src={previous}
           alt=""
-          width={previous.width}
-          height={previous.height}
-          box={box}
+          fill
           sizes={sizes}
+          className="object-cover"
+          aria-hidden
         />
       )}
-      <PhotoFit
-        key={photo.url}
-        src={photo.url}
+      <Image
+        key={url}
+        src={url}
         alt={name}
-        width={photo.width}
-        height={photo.height}
-        box={box}
+        fill
         sizes={sizes}
-        className={`transition-transform duration-300 group-hover:scale-105 ${
+        className={`object-cover transition-transform duration-300 group-hover:scale-105 ${
           fading ? "gallery-enter" : ""
         }`}
       />

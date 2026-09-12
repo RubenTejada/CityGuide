@@ -1,10 +1,9 @@
 import Image from "next/image";
 import Link from "next/link";
-import { facilities, photoOf, text, type UmbracoItem } from "@/lib/umbraco";
+import { facilities, photoUrl, text, type UmbracoItem } from "@/lib/umbraco";
 import { type Locale } from "@/lib/i18n";
 import { branchDisplayName } from "@/lib/branches";
 import { sectionListImage } from "@/lib/sections";
-import PhotoFit from "./PhotoFit";
 import FacilityBadges from "./FacilityBadges";
 import Rating from "./Rating";
 
@@ -24,8 +23,8 @@ export default function PlaceCard({
   compact?: boolean;
 }) {
   const name = branchDisplayName(place.name, company?.name);
-  const ownPhoto = photoOf(place);
-  const inherited = ownPhoto?.url ?? fallbackPhoto ?? null;
+  const ownPhoto = photoUrl(place);
+  const inherited = ownPhoto ?? fallbackPhoto ?? null;
   // No photo and no inheritable logo: fall back to the section's image.
   const photo = inherited ?? sectionListImage(place.route.path);
   // Company logos (company cards, or branches inheriting the parent logo) are
@@ -49,25 +48,14 @@ export default function PlaceCard({
             : "bg-neutral-200"
         }`}
       >
-        {isLogo ? (
-          <Image
-            src={photo}
-            alt={name}
-            fill
-            unoptimized={photo.endsWith(".svg")}
-            className="object-contain p-2"
-            sizes={compact ? "80px" : "(min-width: 640px) 144px, 112px"}
-          />
-        ) : (
-          <PhotoFit
-            src={photo}
-            alt={name}
-            width={ownPhoto?.width}
-            height={ownPhoto?.height}
-            box={1}
-            sizes={compact ? "80px" : "(min-width: 640px) 144px, 112px"}
-          />
-        )}
+        <Image
+          src={photo}
+          alt={name}
+          fill
+          unoptimized={photo.endsWith(".svg")}
+          className={isLogo ? "object-contain p-2" : "object-cover"}
+          sizes={compact ? "80px" : "(min-width: 640px) 144px, 112px"}
+        />
       </div>
       <div className="min-w-0">
         <h3
