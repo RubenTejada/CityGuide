@@ -131,7 +131,8 @@ export interface Showtime {
   id: string;
   /** "6:10 PM" — already in local (AST) time. */
   time: string;
-  /** Sort key within the day (minutes since midnight). */
+  /** Sort key within the night: minutes since midnight, past 24 h
+   *  for a show that starts after local midnight. */
   minutes: number;
   badges: string[];
 }
@@ -303,19 +304,39 @@ function badgesFrom(displayMetaData: string | null): string[] {
   }
 }
 
+const DR_CLOCK = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/Santo_Domingo",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
 /**
- * The API reports showtimes as e.g. "2026-08-31T19:30:00Z" where the clock
- * value is actually local (AST) time — so read it with the UTC accessors.
+ * The API reports a showtime as a real UTC instant ("2026-09-13T01:40:00Z" is
+ * 9:40 PM on the 12th in Santo Domingo), so it is converted to the Dominican
+ * clock instead of being read with the UTC accessors. `day` is the date the
+ * query asked for, and a show whose local date falls after it — one past local
+ * midnight — counts as minutes beyond 24 h, so it sorts at the end of its
+ * night and is never mistaken for an early show already gone by.
  */
-function parseTime(iso: string): { label: string; minutes: number } {
-  const d = new Date(iso);
-  const h = d.getUTCHours();
-  const m = d.getUTCMinutes();
+function parseTime(
+  iso: string,
+  day: string,
+): { label: string; minutes: number } {
+  const parts = DR_CLOCK.formatToParts(new Date(iso));
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === type)?.value ?? "";
+  const date = `${part("year")}-${part("month")}-${part("day")}`;
+  const h = Number(part("hour"));
+  const m = Number(part("minute"));
   const period = h >= 12 ? "PM" : "AM";
   const h12 = h % 12 === 0 ? 12 : h % 12;
   return {
     label: `${h12}:${String(m).padStart(2, "0")} ${period}`,
-    minutes: h * 60 + m,
+    minutes: h * 60 + m + (date > day ? 24 * 60 : 0),
   };
 }
 
@@ -348,7 +369,7 @@ async function getCinemaShowings(
   const byMovie = new Map<string, MovieShowings>();
   for (const row of rows) {
     if (!row.movie) continue;
-    const { label, minutes } = parseTime(row.time);
+    const { label, minutes } = parseTime(row.time, date);
     if (minutes <= cutoff) continue;
     let entry = byMovie.get(row.movie.id);
     if (!entry) {
