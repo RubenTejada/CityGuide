@@ -3,7 +3,7 @@ import Link from "next/link";
 import { contentSegments, type Locale } from "@/lib/i18n";
 import {
   facilities,
-  photoUrl,
+  photoOf,
   slugOf,
   text,
   type UmbracoItem,
@@ -27,8 +27,9 @@ export default function AttractionCard({
   compact?: boolean;
 }) {
   const citySlug = contentSegments(place.route.path)[0] ?? "";
+  const own = photoOf(place);
   const photo =
-    photoUrl(place) ??
+    own?.url ??
     curatedPhoto(citySlug, slugOf(place)) ??
     sectionListImage(place.route.path);
   return (
@@ -44,6 +45,9 @@ export default function AttractionCard({
         <PhotoFit
           src={photo}
           alt={place.name}
+          width={own?.width}
+          height={own?.height}
+          box={compact ? 16 / 7 : 2}
           sizes={
             compact
               ? "(min-width: 1280px) 33vw, (min-width: 640px) 50vw, 100vw"

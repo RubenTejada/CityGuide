@@ -1,6 +1,7 @@
 "use client";
 
 import PhotoFit from "@/components/PhotoFit";
+import { type Photo } from "@/lib/umbraco";
 import { useState } from "react";
 
 import ImageViewer from "@/components/ImageViewer";
@@ -23,7 +24,7 @@ export default function MenuViewer({
   source,
   captured,
 }: {
-  pages: string[];
+  pages: Photo[];
   name: string;
   source: string | null;
   captured: string | null;
@@ -39,7 +40,14 @@ export default function MenuViewer({
         className="group flex w-full items-center gap-3 rounded-xl border border-neutral-200 bg-white p-3 text-left transition hover:border-brand-300 hover:bg-brand-50"
       >
         <span className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-neutral-100">
-          <PhotoFit src={pages[0]} alt="" sizes="3.5rem" />
+          <PhotoFit
+            src={pages[0].url}
+            alt=""
+            width={pages[0].width}
+            height={pages[0].height}
+            box={1}
+            sizes="3.5rem"
+          />
         </span>
         <span className="min-w-0">
           <span className="block text-sm font-semibold text-brand-700 group-hover:underline">
@@ -53,7 +61,7 @@ export default function MenuViewer({
 
       {viewing !== null && (
         <ImageViewer
-          images={pages}
+          images={pages.map((page) => page.url)}
           name={name}
           start={viewing}
           labels={{

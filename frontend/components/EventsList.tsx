@@ -1,7 +1,13 @@
 import PhotoFit from "@/components/PhotoFit";
 import Link from "next/link";
 import { INTL_LOCALE, t, type Locale } from "@/lib/i18n";
-import { num, photoUrl, text, type UmbracoItem } from "@/lib/umbraco";
+import {
+  num,
+  photoOf,
+  text,
+  type Photo,
+  type UmbracoItem,
+} from "@/lib/umbraco";
 import { type MapMarker } from "./MarkersMap";
 
 export interface EventEntry {
@@ -15,7 +21,7 @@ export interface EventEntry {
   /** The weekly rule the CMS stores ("semanal:miércoles"), empty for a one-off. */
   recurrence: string;
   description: string;
-  photo: string | null;
+  photo: Photo | null;
   latitude: number;
   longitude: number;
 }
@@ -38,7 +44,7 @@ export function eventEntry(event: UmbracoItem): EventEntry {
     venueName: text(event, "venueName"),
     recurrence: text(event, "recurrence"),
     description: text(event, "description"),
-    photo: photoUrl(event),
+    photo: photoOf(event),
     latitude: num(event, "latitude"),
     longitude: num(event, "longitude"),
   };
@@ -58,7 +64,7 @@ export function eventMarkers(events: EventEntry[]): MapMarker[] {
       // An event has no company logo: the pin shows the section glyph and the
       // poster stays in the popup card.
       logo: null,
-      photo: event.photo,
+      photo: event.photo?.url ?? null,
     }));
 }
 
@@ -152,8 +158,11 @@ export function EventCard({
           }`}
         >
           <PhotoFit
-            src={event.photo}
+            src={event.photo.url}
             alt={event.name}
+            width={event.photo.width}
+            height={event.photo.height}
+            box={compact ? 16 / 7 : 2}
             // A compact card is never wider than a third of the 6xl grid, and
             // the home page's column is narrower still: asking for viewport
             // fractions there downloaded a 1080px poster for a 320px card.

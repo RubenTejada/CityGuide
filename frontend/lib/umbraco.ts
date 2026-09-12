@@ -8,6 +8,21 @@
 export interface MediaItem {
   url: string;
   name?: string;
+  /** El Delivery API da el tamaño real de cada imagen; una foto sin él es una
+   *  URL suelta (la foto curada de Commons, la portada de un artículo). */
+  width?: number;
+  height?: number;
+}
+
+/**
+ * Una imagen con lo que el CMS sabe de su forma. El tamaño es lo que deja
+ * encajarla en su caja sin cortarle lo que importa (`components/PhotoFit`), y
+ * falta justo en las que no vienen de la biblioteca de medios.
+ */
+export interface Photo {
+  url: string;
+  width: number | null;
+  height: number | null;
 }
 
 export interface UmbracoItem {
@@ -68,11 +83,25 @@ export function photoUrl(item: UmbracoItem, alias = "photo"): string | null {
  * both come back from the Delivery API as a list of media items.
  */
 export function photoUrls(item: UmbracoItem, alias = "gallery"): string[] {
+  return photosOf(item, alias).map((photo) => photo.url);
+}
+
+/** Lo mismo, con el tamaño que el CMS guarda de cada imagen. */
+export function photosOf(item: UmbracoItem, alias = "gallery"): Photo[] {
   const value = item.properties[alias];
   if (!Array.isArray(value)) return [];
   return (value as MediaItem[])
-    .map((media) => media?.url)
-    .filter((url): url is string => Boolean(url));
+    .filter((media): media is MediaItem => Boolean(media?.url))
+    .map((media) => ({
+      url: media.url,
+      width: media.width ?? null,
+      height: media.height ?? null,
+    }));
+}
+
+/** La primera imagen de la propiedad, con su tamaño. */
+export function photoOf(item: UmbracoItem, alias = "photo"): Photo | null {
+  return photosOf(item, alias)[0] ?? null;
 }
 
 /**

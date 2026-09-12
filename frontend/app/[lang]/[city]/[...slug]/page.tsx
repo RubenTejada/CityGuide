@@ -19,7 +19,7 @@ import ListingPagination from "@/components/ListingPagination";
 import SubcategoryLinks from "@/components/SubcategoryLinks";
 import { type MapMarker } from "@/components/MarkersMap";
 import { type ListingView } from "@/components/ViewToggle";
-import PhotoFit from "@/components/PhotoFit";
+import PhotoFit, { photoBoxAspect } from "@/components/PhotoFit";
 import PlaceCard from "@/components/PlaceCard";
 import MenuDialog from "@/components/MenuDialog";
 import MenuViewer from "@/components/MenuViewer";
@@ -132,8 +132,9 @@ import {
   facilities,
   isUnder,
   num,
+  photoOf,
+  photosOf,
   photoUrl,
-  photoUrls,
   picked,
   slugOf,
   text,
@@ -1129,9 +1130,12 @@ async function TourView({ item }: { item: UmbracoItem }) {
   // this the list of who runs the excursion comes back empty.
   const expanded = await getItem(item.route.path, "properties[operators]");
   const citySlug = contentSegments(item.route.path)[0] ?? "";
-  const own = photoUrl(item);
+  const own = photoOf(item);
   const photo =
-    own ?? curatedPhoto(citySlug, slugOf(item)) ?? sectionListImage(item.route.path);
+    own?.url ??
+    curatedPhoto(citySlug, slugOf(item)) ??
+    sectionListImage(item.route.path);
+  const photoBox = photoBoxAspect(own) ?? 16 / 9;
   // Las fotos curadas son de Commons y sus licencias piden crédito; una foto puesta
   // en el backoffice es del portal y no lleva ninguno.
   const credit = own ? null : curatedPhotoCredit(citySlug, slugOf(item));
@@ -1159,10 +1163,16 @@ async function TourView({ item }: { item: UmbracoItem }) {
 
       <div className="mt-6 grid gap-8 lg:grid-cols-[1fr_20rem] lg:items-start">
         <div>
-          <div className="relative aspect-[16/9] overflow-hidden rounded-xl bg-neutral-200">
+          <div
+            className="relative overflow-hidden rounded-xl bg-neutral-200"
+            style={{ aspectRatio: photoBox }}
+          >
             <PhotoFit
               src={photo}
               alt={item.name}
+              width={own?.width}
+              height={own?.height}
+              box={photoBox}
               sizes="(min-width: 1024px) 60vw, 100vw"
               priority
             />
@@ -1545,7 +1555,8 @@ async function MallView({ item }: { item: UmbracoItem }) {
     referenced,
     cityItem,
   );
-  const photo = photoUrl(item);
+  const own = photoOf(item);
+  const photo = own?.url ?? null;
   const website = text(item, "website");
   const directions = itemDirectionsUrl(item);
   const latitude = num(item, "latitude");
@@ -1567,6 +1578,9 @@ async function MallView({ item }: { item: UmbracoItem }) {
           <PhotoFit
             src={photo ?? sectionListImage(item.route.path)}
             alt={item.name}
+            width={own?.width}
+            height={own?.height}
+            box={1}
             sizes="128px"
           />
         </div>
@@ -1830,24 +1844,26 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
   const displayName = branchDisplayName(item.name, company?.name);
   // La galería es el extra de los lugares que encabezan su sección: va al lado de la
   // foto principal, y con menos de cuatro fotos no hay rejilla que rote.
-  const gallery = photoUrls(item, "gallery");
+  const gallery = photosOf(item, "gallery");
   const hasGallery = gallery.length >= 4;
   // La carta va junto al horario: es lo mismo que el horario, algo que se consulta
   // antes de ir. Una sola página ya es un menú — hay restaurantes cuya carta cabe en
   // una hoja — así que basta con tener alguna.
-  const menu = photoUrls(item, "menu");
+  const menu = photosOf(item, "menu");
   const menuSections = placeMenu(item, locale);
   // El día que el portal leyó la carta, no el día del menú: con la fecha delante, y la
   // advertencia al lado, un precio viejo se lee por lo que es.
   const menuCaptured =
     formatDate(item.properties["menuUpdated"], locale) || null;
-  const ownPhoto = photoUrl(item);
+  const own = photoOf(item);
+  const ownPhoto = own?.url ?? null;
   const inheritedPhoto = ownPhoto ?? (company ? photoUrl(company) : null);
   // No photo and no company logo: fall back to the section's image.
   const photo = inheritedPhoto ?? sectionListImage(item.route.path);
   // An inherited company logo is letterboxed with a soft border instead of
   // being cropped to the square like a real photo.
   const isLogo = inheritedPhoto !== null && ownPhoto === null;
+  const photoBox = isLogo ? 1 : photoBoxAspect(own);
   const website = inherited("website");
   const directions = itemDirectionsUrl(item, displayName);
   const cityItem = await cityOf(item);
@@ -1883,9 +1899,13 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
       <div className="mt-6 grid gap-8 lg:grid-cols-[14rem_1fr]">
         <div>
           <div
-            className={`relative aspect-square overflow-hidden rounded-xl ${
+            className={`relative overflow-hidden rounded-xl ${
               isLogo ? "border border-neutral-200 bg-white" : "bg-neutral-200"
             }`}
+            // La foto manda sobre su propio alto: la columna de la ficha no tiene
+            // que cuadrar con nada al lado, así que la caja toma la forma de la
+            // foto y no le corta nada.
+            style={{ aspectRatio: photoBox ?? 1 }}
           >
             {isLogo ? (
               <Image
@@ -1901,6 +1921,9 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
               <PhotoFit
                 src={photo}
                 alt={displayName}
+                width={own?.width}
+                height={own?.height}
+                box={photoBox ?? 1}
                 sizes="(min-width: 1024px) 14rem, 100vw"
                 priority
               />
@@ -2226,7 +2249,9 @@ async function EventView({ item }: { item: UmbracoItem }) {
   const locale = await activeLocale();
   const latitude = num(item, "latitude");
   const longitude = num(item, "longitude");
-  const photo = photoUrl(item);
+  const own = photoOf(item);
+  const photo = own?.url ?? null;
+  const photoBox = photoBoxAspect(own) ?? 1;
   const website = text(item, "website");
   const phone = text(item, "phone");
   // The route is to the venue, which is what the event's address describes.
@@ -2271,11 +2296,17 @@ async function EventView({ item }: { item: UmbracoItem }) {
 
       <div className="mt-6 grid gap-8 lg:grid-cols-[20rem_1fr]">
         <div>
-          <div className="relative aspect-square overflow-hidden rounded-xl bg-neutral-200">
+          <div
+            className="relative overflow-hidden rounded-xl bg-neutral-200"
+            style={{ aspectRatio: photoBox }}
+          >
             {photo ? (
               <PhotoFit
                 src={photo}
                 alt={item.name}
+                width={own?.width}
+                height={own?.height}
+                box={photoBox}
                 sizes="(min-width: 1024px) 20rem, 100vw"
                 priority
               />
@@ -2472,8 +2503,12 @@ async function ArticleView({ item }: { item: UmbracoItem }) {
             {text(item, "summary")}
           </p>
         )}
+        {/* La portada de un artículo es una URL suelta y no una imagen de la
+            biblioteca: no se sabe cuánto mide, así que lo único que se puede hacer por
+            ella es no meterla en una caja de 2,9:1, que le cortaba casi la mitad. Un
+            16:9 es la forma de una foto de paisaje. */}
         {hero && (
-          <div className="relative mt-6 h-64 overflow-hidden rounded-2xl bg-neutral-200 sm:h-96">
+          <div className="relative mt-6 aspect-[16/9] overflow-hidden rounded-2xl bg-neutral-200">
             <PhotoFit
               src={hero}
               alt={item.name}
