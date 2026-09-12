@@ -2,26 +2,7 @@
 
 import { useLayoutEffect } from "react";
 import { useWords } from "@/components/LocaleProvider";
-
-const STORAGE_KEY = "theme";
-
-/**
- * The theme this browser should show: the stored choice, else the system
- * preference. The inline script in the root layout reads exactly the same
- * sources before the first paint.
- */
-function preferredTheme(): "dark" | "light" {
-  let stored: string | null = null;
-  try {
-    stored = localStorage.getItem(STORAGE_KEY);
-  } catch {
-    // localStorage bloqueado: manda la preferencia del sistema.
-  }
-  if (stored === "dark" || stored === "light") return stored;
-  return window.matchMedia("(prefers-color-scheme: dark)").matches
-    ? "dark"
-    : "light";
-}
+import { applyTheme, preferredTheme } from "@/lib/theme";
 
 /**
  * Switches the site between light and dark. The choice is remembered per
@@ -41,20 +22,11 @@ export default function ThemeToggle({
     // En desarrollo, el remontaje de Strict Mode devuelve <html> a los
     // atributos que React maneja y borra la clase que puso el script inline.
     // En producción esto no cambia nada.
-    document.documentElement.classList.toggle(
-      "dark",
-      preferredTheme() === "dark",
-    );
+    applyTheme(preferredTheme());
   }, []);
 
   function toggle() {
-    const next = preferredTheme() === "dark" ? "light" : "dark";
-    document.documentElement.classList.toggle("dark", next === "dark");
-    try {
-      localStorage.setItem(STORAGE_KEY, next);
-    } catch {
-      // Sin almacenamiento el tema se aplica igual, solo no se recuerda.
-    }
+    applyTheme(preferredTheme() === "dark" ? "light" : "dark", true);
   }
 
   return (

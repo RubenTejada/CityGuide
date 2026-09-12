@@ -19,6 +19,7 @@ import MapBlock, {
   MapPanelRow,
 } from "./MapBlock";
 import MapPopupCard from "./MapPopupCard";
+import { KeepCamera, useMapColorScheme } from "./mapTheme";
 import { useClusteredPins, useMarkerElements } from "./mapPins";
 import { mapPinIcon, sectionIconByName, sectionMapIcon } from "@/lib/sections";
 
@@ -64,6 +65,7 @@ export default function PlaceMap({
   showNearby = true,
 }: PlaceMapProps) {
   const words = useWords();
+  const colorScheme = useMapColorScheme();
   const [nearby, setNearby] = useState<NearbyPlace[]>([]);
   const [selected, setSelected] = useState<NearbyPlace | null>(null);
   // Row the pointer is on in the nearby list: its pin is highlighted on the map.
@@ -175,8 +177,10 @@ export default function PlaceMap({
           defaultCenter={{ lat: latitude, lng: longitude }}
           defaultZoom={15}
           mapId="cityguide"
+          colorScheme={colorScheme}
           gestureHandling="cooperative"
         >
+          <KeepCamera />
           {/* The place the page is about: dark pin, drawn over the rest. */}
           <AdvancedMarker
             position={{ lat: latitude, lng: longitude }}

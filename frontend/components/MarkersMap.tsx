@@ -17,6 +17,7 @@ import MapBlock, {
   MapPanelRow,
 } from "./MapBlock";
 import MapPopupCard from "./MapPopupCard";
+import { KeepCamera, useMapColorScheme } from "./mapTheme";
 import { useClusteredPins, useMarkerElements } from "./mapPins";
 import { mapPinIcon } from "@/lib/sections";
 
@@ -113,6 +114,7 @@ export default function MarkersMap({
   heightClass?: string;
 }) {
   const words = useWords();
+  const colorScheme = useMapColorScheme();
   const [position, setPosition] = useState<google.maps.LatLngLiteral | null>(
     null,
   );
@@ -201,8 +203,10 @@ export default function MarkersMap({
           }
           defaultZoom={13}
           mapId="cityguide"
+          colorScheme={colorScheme}
           gestureHandling="cooperative"
         >
+          <KeepCamera />
           <FitViewport markers={markers} position={position} />
           <ClusteredMarkers markers={markers} highlighted={highlighted} />
           {position && (
