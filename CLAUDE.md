@@ -721,6 +721,16 @@ narrowing this page, and leaving it for another — and a link is followed where
 
 Frontend routing is a single catch-all (`frontend/app/[lang]/[city]/[...slug]/page.tsx`) that switches on the item's `contentType` — new document types need a new case there.
 
+**"/cms" on any URL opens that page's node in the backoffice.** An editor who spots a
+typo on the portal should not have to find the node down the content tree, so
+`proxy.ts` catches the suffix and rewrites it to `app/api/cms/[[...page]]/route.ts`,
+which resolves the path through the Delivery API and redirects to
+`{UMBRACO_BASE_URL}/umbraco/section/content/workspace/document/edit/{id}`. The page
+is carried as path segments and not as a query string, because a rewrite does not
+hand a Route Handler its injected query. The node id is shared by both cultures, so
+the Spanish and English URLs of a page open the same node; a path the CMS does not
+own (contact, search, a typo) has no node and lands on the content section root.
+
 **What is prerendered, and what is not.** A route with no `generateStaticParams` at
 all is rendered from scratch on every request — cache or no cache, and whatever
 `revalidate` says, since that option caches the `fetch` calls and not the HTML. That

@@ -15,6 +15,16 @@ import { NextResponse, type NextRequest } from "next/server";
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // An editor's shortcut, not a page: "<cualquier URL>/cms" opens that page's node
+  // in the Umbraco backoffice, so a typo spotted on the portal is edited without
+  // hunting the node down the content tree. It is settled before the language
+  // rewrite because the route handler resolves the path in either language itself.
+  if (pathname.endsWith("/cms")) {
+    const url = request.nextUrl.clone();
+    url.pathname = `/api/cms${pathname.slice(0, -"/cms".length)}`;
+    return NextResponse.rewrite(url);
+  }
+
   if (pathname === "/en" || pathname.startsWith("/en/")) {
     return NextResponse.next();
   }
