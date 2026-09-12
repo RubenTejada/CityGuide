@@ -1,4 +1,4 @@
-import Image from "next/image";
+import PhotoFit from "@/components/PhotoFit";
 import Link from "next/link";
 
 // Minimal markdown renderer for article bodies: paragraphs, "## " headings,
@@ -64,11 +64,9 @@ export default function ArticleBody({ markdown }: { markdown: string }) {
           return (
             <figure key={key} className="py-2">
               <div className="relative aspect-video overflow-hidden rounded-xl bg-neutral-200">
-                <Image
+                <PhotoFit
                   src={image[2]}
                   alt={image[1]}
-                  fill
-                  className="object-cover"
                   sizes="(min-width: 768px) 48rem, 100vw"
                 />
               </div>

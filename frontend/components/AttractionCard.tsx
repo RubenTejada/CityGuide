@@ -1,4 +1,4 @@
-import Image from "next/image";
+import PhotoFit from "@/components/PhotoFit";
 import Link from "next/link";
 import { contentSegments, type Locale } from "@/lib/i18n";
 import {
@@ -41,12 +41,9 @@ export default function AttractionCard({
           compact ? "aspect-[16/7]" : "aspect-[2/1]"
         }`}
       >
-        <Image
+        <PhotoFit
           src={photo}
           alt={place.name}
-          fill
-          unoptimized={photo.endsWith(".svg")}
-          className="object-cover"
           sizes={
             compact
               ? "(min-width: 1280px) 33vw, (min-width: 640px) 50vw, 100vw"

@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import PhotoFit from "@/components/PhotoFit";
 import { useState } from "react";
 
 import ImageViewer from "@/components/ImageViewer";
@@ -39,13 +39,7 @@ export default function MenuViewer({
         className="group flex w-full items-center gap-3 rounded-xl border border-neutral-200 bg-white p-3 text-left transition hover:border-brand-300 hover:bg-brand-50"
       >
         <span className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-neutral-100">
-          <Image
-            src={pages[0]}
-            alt=""
-            fill
-            sizes="3.5rem"
-            className="object-cover"
-          />
+          <PhotoFit src={pages[0]} alt="" sizes="3.5rem" />
         </span>
         <span className="min-w-0">
           <span className="block text-sm font-semibold text-brand-700 group-hover:underline">

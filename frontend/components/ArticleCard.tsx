@@ -1,4 +1,4 @@
-import Image from "next/image";
+import PhotoFit from "@/components/PhotoFit";
 import Link from "next/link";
 import { text, type UmbracoItem } from "@/lib/umbraco";
 import { INTL_LOCALE, t, type Locale } from "@/lib/i18n";
@@ -41,12 +41,10 @@ export default function ArticleCard({
           compact ? "h-24 sm:w-24 md:w-32" : "h-40 sm:w-48 md:w-56"
         }`}
       >
-        <Image
+        <PhotoFit
           src={photo}
           alt={article.name}
-          fill
-          unoptimized={photo.endsWith(".svg")}
-          className="object-cover transition duration-300 group-hover:scale-105"
+          className="transition duration-300 group-hover:scale-105"
           sizes={
             compact
               ? "(min-width: 640px) 128px, 100vw"

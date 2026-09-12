@@ -1,4 +1,4 @@
-import Image from "next/image";
+import PhotoFit from "@/components/PhotoFit";
 import Link from "next/link";
 
 import { contentSegments, t, type Locale } from "@/lib/i18n";
@@ -35,12 +35,9 @@ export default function TourCard({
       className="group flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm transition hover:shadow-md"
     >
       <div className="relative aspect-[16/9] bg-neutral-200">
-        <Image
+        <PhotoFit
           src={photo}
           alt={tour.name}
-          fill
-          unoptimized={photo.endsWith(".svg")}
-          className="object-cover"
           sizes="(min-width: 1280px) 33vw, (min-width: 640px) 50vw, 100vw"
         />
       </div>

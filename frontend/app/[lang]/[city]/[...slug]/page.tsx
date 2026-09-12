@@ -19,6 +19,7 @@ import ListingPagination from "@/components/ListingPagination";
 import SubcategoryLinks from "@/components/SubcategoryLinks";
 import { type MapMarker } from "@/components/MarkersMap";
 import { type ListingView } from "@/components/ViewToggle";
+import PhotoFit from "@/components/PhotoFit";
 import PlaceCard from "@/components/PlaceCard";
 import MenuDialog from "@/components/MenuDialog";
 import MenuViewer from "@/components/MenuViewer";
@@ -1159,12 +1160,9 @@ async function TourView({ item }: { item: UmbracoItem }) {
       <div className="mt-6 grid gap-8 lg:grid-cols-[1fr_20rem] lg:items-start">
         <div>
           <div className="relative aspect-[16/9] overflow-hidden rounded-xl bg-neutral-200">
-            <Image
+            <PhotoFit
               src={photo}
               alt={item.name}
-              fill
-              unoptimized={photo.endsWith(".svg")}
-              className="object-cover"
               sizes="(min-width: 1024px) 60vw, 100vw"
               priority
             />
@@ -1566,11 +1564,9 @@ async function MallView({ item }: { item: UmbracoItem }) {
       />
       <div className="mt-6 flex flex-col gap-6 sm:flex-row sm:items-start">
         <div className="relative h-32 w-32 flex-none overflow-hidden rounded-xl border border-neutral-200 bg-white">
-          <Image
+          <PhotoFit
             src={photo ?? sectionListImage(item.route.path)}
             alt={item.name}
-            fill
-            className="object-cover"
             sizes="128px"
           />
         </div>
@@ -1891,15 +1887,24 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
               isLogo ? "border border-neutral-200 bg-white" : "bg-neutral-200"
             }`}
           >
-            <Image
-              src={photo}
-              alt={displayName}
-              fill
-              unoptimized={photo.endsWith(".svg")}
-              className={isLogo ? "object-contain p-6" : "object-cover"}
-              sizes="(min-width: 1024px) 14rem, 100vw"
-              priority
-            />
+            {isLogo ? (
+              <Image
+                src={photo}
+                alt={displayName}
+                fill
+                unoptimized={photo.endsWith(".svg")}
+                className="object-contain p-6"
+                sizes="(min-width: 1024px) 14rem, 100vw"
+                priority
+              />
+            ) : (
+              <PhotoFit
+                src={photo}
+                alt={displayName}
+                sizes="(min-width: 1024px) 14rem, 100vw"
+                priority
+              />
+            )}
           </div>
           {/* Reservar encabeza la columna: es lo que alguien viene a hacer, y el horario
               y la carta son lo que consulta antes. Solo el valor propio del nodo — leer
@@ -2268,11 +2273,9 @@ async function EventView({ item }: { item: UmbracoItem }) {
         <div>
           <div className="relative aspect-square overflow-hidden rounded-xl bg-neutral-200">
             {photo ? (
-              <Image
+              <PhotoFit
                 src={photo}
                 alt={item.name}
-                fill
-                className="object-cover"
                 sizes="(min-width: 1024px) 20rem, 100vw"
                 priority
               />
@@ -2471,11 +2474,9 @@ async function ArticleView({ item }: { item: UmbracoItem }) {
         )}
         {hero && (
           <div className="relative mt-6 h-64 overflow-hidden rounded-2xl bg-neutral-200 sm:h-96">
-            <Image
+            <PhotoFit
               src={hero}
               alt={item.name}
-              fill
-              className="object-cover"
               sizes="(min-width: 1152px) 1104px, 100vw"
               priority
             />

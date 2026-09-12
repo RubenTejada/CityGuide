@@ -1,4 +1,4 @@
-import Image from "next/image";
+import PhotoFit from "@/components/PhotoFit";
 import Link from "next/link";
 import { INTL_LOCALE, t, type Locale } from "@/lib/i18n";
 import { num, photoUrl, text, type UmbracoItem } from "@/lib/umbraco";
@@ -151,11 +151,9 @@ export function EventCard({
             compact ? "aspect-[16/7]" : "aspect-[2/1]"
           }`}
         >
-          <Image
+          <PhotoFit
             src={event.photo}
             alt={event.name}
-            fill
-            className="object-cover"
             // A compact card is never wider than a third of the 6xl grid, and
             // the home page's column is narrower still: asking for viewport
             // fractions there downloaded a 1080px poster for a 320px card.

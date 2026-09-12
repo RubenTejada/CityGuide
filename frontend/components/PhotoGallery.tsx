@@ -1,9 +1,9 @@
 "use client";
 
-import Image from "next/image";
 import { type CSSProperties, useEffect, useState } from "react";
 
 import ImageViewer from "@/components/ImageViewer";
+import PhotoFit from "@/components/PhotoFit";
 import { useWords } from "@/components/LocaleProvider";
 
 /** Cada cuánto sube a la foto principal la siguiente de la tira. Tiene que dejar la
@@ -162,23 +162,13 @@ function Cell({
           : style
       }
     >
-      {fading && (
-        <Image
-          src={previous}
-          alt=""
-          fill
-          sizes={sizes}
-          className="object-cover"
-          aria-hidden
-        />
-      )}
-      <Image
+      {fading && <PhotoFit src={previous} alt="" sizes={sizes} />}
+      <PhotoFit
         key={url}
         src={url}
         alt={name}
-        fill
         sizes={sizes}
-        className={`object-cover transition-transform duration-300 group-hover:scale-105 ${
+        className={`transition-transform duration-300 group-hover:scale-105 ${
           fading ? "gallery-enter" : ""
         }`}
       />

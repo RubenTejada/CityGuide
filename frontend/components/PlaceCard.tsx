@@ -4,6 +4,7 @@ import { facilities, photoUrl, text, type UmbracoItem } from "@/lib/umbraco";
 import { type Locale } from "@/lib/i18n";
 import { branchDisplayName } from "@/lib/branches";
 import { sectionListImage } from "@/lib/sections";
+import PhotoFit from "./PhotoFit";
 import FacilityBadges from "./FacilityBadges";
 import Rating from "./Rating";
 
@@ -48,14 +49,22 @@ export default function PlaceCard({
             : "bg-neutral-200"
         }`}
       >
-        <Image
-          src={photo}
-          alt={name}
-          fill
-          unoptimized={photo.endsWith(".svg")}
-          className={isLogo ? "object-contain p-2" : "object-cover"}
-          sizes={compact ? "80px" : "(min-width: 640px) 144px, 112px"}
-        />
+        {isLogo ? (
+          <Image
+            src={photo}
+            alt={name}
+            fill
+            unoptimized={photo.endsWith(".svg")}
+            className="object-contain p-2"
+            sizes={compact ? "80px" : "(min-width: 640px) 144px, 112px"}
+          />
+        ) : (
+          <PhotoFit
+            src={photo}
+            alt={name}
+            sizes={compact ? "80px" : "(min-width: 640px) 144px, 112px"}
+          />
+        )}
       </div>
       <div className="min-w-0">
         <h3
