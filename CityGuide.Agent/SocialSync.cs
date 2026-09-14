@@ -107,19 +107,32 @@ public class SocialSync(
     /// </summary>
     private async Task PublishAsync(Post post)
     {
+        var postedToFacebook = false;
         if (meta.CanPostToFacebook)
         {
             string id = post.ImageUrl is null
                 ? await meta.PostFacebookLinkAsync(post.Caption, post.Url)
                 : await meta.PostFacebookPhotoAsync(post.Caption, post.ImageUrl);
             Console.WriteLine($"  → Facebook {id}");
+            postedToFacebook = true;
         }
 
         if (post.Instagram && post.ImageUrl is not null && meta.CanPostToInstagram)
         {
-            string id = await meta.PostInstagramAsync(
-                $"{post.Caption}\n\n🔗 Enlace en la bio", post.ImageUrl);
-            Console.WriteLine($"  → Instagram {id}");
+            try
+            {
+                string id = await meta.PostInstagramAsync(
+                    $"{post.Caption}\n\n🔗 Enlace en la bio", post.ImageUrl);
+                Console.WriteLine($"  → Instagram {id}");
+            }
+            catch (Exception ex) when (postedToFacebook)
+            {
+                // Facebook already carries the post, so it counts as announced: letting
+                // the failure through would keep it out of the log and post it on
+                // Facebook a second time on the next pass. A portrait photo is the usual
+                // cause, and Instagram would refuse it again anyway.
+                Console.Error.WriteLine($"  ! Instagram no la aceptó (queda solo en Facebook): {ex.Message}");
+            }
         }
     }
 
