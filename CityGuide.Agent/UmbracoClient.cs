@@ -921,6 +921,16 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
             v => v.Value is JsonElement { ValueKind: JsonValueKind.String } e ? e.GetString() : null);
     }
 
+    /// <summary>The latitude and longitude a node stores (a city's is its map centre), or null.</summary>
+    public async Task<(double Latitude, double Longitude)?> GetCoordinatesAsync(Guid id)
+    {
+        (_, _, Dictionary<string, object?> values) = await ReadDocumentAsync(id);
+        return Number(values, "latitude") is double lat and not 0
+            && Number(values, "longitude") is double lng and not 0
+                ? (lat, lng)
+                : null;
+    }
+
     /// <summary>
     /// Writes a document's name and values back. Republishes only documents that were
     /// already published, so the agent's drafts stay drafts until someone reviews them.

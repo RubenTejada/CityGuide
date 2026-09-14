@@ -521,6 +521,54 @@ if (args.Contains("--social"))
     return 0;
 }
 
+// Pays Meta to show one of the portal's own Instagram posts to the people of one city
+// ("--promote <id> --budget 1500 --days 5 --section santo-domingo [--radius 15]").
+// Without an id it lists the recent posts to pick from. It is the one pass that spends
+// money on ads, so it needs --paid as well as --apply, and it never runs on its own.
+if (args.Contains("--promote"))
+{
+    string? PromoteOption(string flag) =>
+        args.SkipWhile(a => a != flag).Skip(1).FirstOrDefault() is { } value
+            && !value.StartsWith("--", StringComparison.Ordinal)
+                ? value
+                : null;
+
+    var metaClient = new MetaClient(http, config.Social);
+    if (!metaClient.CanAdvertise)
+    {
+        Console.Error.WriteLine(
+            "Faltan credenciales de Meta. Configura Social:PageId, Social:InstagramUserId, "
+            + "Social:AccessToken (con ads_management) y Social:AdAccountId.");
+        return 1;
+    }
+
+    var promotions = new SocialPromotion(umbraco, metaClient, config.Social);
+    if (PromoteOption("--promote") is not { } mediaId)
+    {
+        await promotions.ListAsync();
+        return 0;
+    }
+
+    List<SocialCityConfig> promotedCities = [.. config.Social.Cities.Where(c => SectionSelected(c.CityPath))];
+    if (sections.Count == 0 || promotedCities.Count != 1)
+    {
+        Console.Error.WriteLine("Una promoción es para una ciudad: indica una sola con --section <ciudad>.");
+        return 1;
+    }
+
+    if (!decimal.TryParse(PromoteOption("--budget"), System.Globalization.NumberStyles.Number,
+            System.Globalization.CultureInfo.InvariantCulture, out decimal budget)
+        || !int.TryParse(PromoteOption("--days"), out int days))
+    {
+        Console.Error.WriteLine("Indica --budget <monto en la moneda de la cuenta> y --days <días>.");
+        return 1;
+    }
+
+    int radius = int.TryParse(PromoteOption("--radius"), out int askedRadius) ? askedRadius : 15;
+    return await promotions.RunAsync(
+        mediaId, promotedCities[0], budget, days, radius, args.Contains("--apply") && paid);
+}
+
 // Maintenance pass: the events the agent imported before it asked where they happen.
 // Every ticket portal lists the whole country, so the section filled up with Santiago,
 // Higüey and Punta Cana; each venue is looked up inside the city rectangle and the ones
