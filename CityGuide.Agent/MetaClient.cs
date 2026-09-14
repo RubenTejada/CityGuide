@@ -78,7 +78,7 @@ public partial class MetaClient(HttpClient http, SocialConfig config)
         {
             ["url"] = imageUrl,
             ["caption"] = caption,
-        });
+        }, await PageTokenAsync());
         return Id(answer);
     }
 
@@ -93,7 +93,7 @@ public partial class MetaClient(HttpClient http, SocialConfig config)
         {
             ["message"] = message,
             ["link"] = link,
-        });
+        }, await PageTokenAsync());
         return Id(answer);
     }
 
@@ -118,6 +118,135 @@ public partial class MetaClient(HttpClient http, SocialConfig config)
             ["creation_id"] = creationId,
         });
         return Id(published);
+    }
+
+    // ---- paid promotion (Marketing API) ----
+
+    public bool CanAdvertise =>
+        CanPostToFacebook && CanPostToInstagram && !string.IsNullOrEmpty(config.AdAccountId);
+
+    private string AdAccount => config.AdAccountId.StartsWith("act_", StringComparison.Ordinal)
+        ? config.AdAccountId
+        : $"act_{config.AdAccountId}";
+
+    /// <summary>The portal's own recent Instagram posts: what a promotion can boost.</summary>
+    public async Task<List<OwnInstagramPost>> OwnInstagramPostsAsync(int limit)
+    {
+        using JsonDocument answer = await GetAsync(
+            $"{Root}/{config.InstagramUserId}/media?limit={limit}"
+            + "&fields=id,caption,media_type,permalink,timestamp,like_count,comments_count");
+
+        return [.. (answer.RootElement.TryGetProperty("data", out JsonElement data)
+                && data.ValueKind == JsonValueKind.Array ? data.EnumerateArray() : [])
+            .Where(item => Text(item, "id") is not null)
+            .Select(item => new OwnInstagramPost(
+                Text(item, "id")!, Taken(Text(item, "timestamp")), Text(item, "media_type") ?? "",
+                Text(item, "caption"), Text(item, "permalink"),
+                Number(item, "like_count"), Number(item, "comments_count")))];
+    }
+
+    /// <summary>
+    /// The account the promotion is billed to. Its currency is what <c>--budget</c> is
+    /// read in, and a status other than 1 (active) means Meta will not deliver anything.
+    /// </summary>
+    public async Task<AdAccountInfo> AdAccountAsync()
+    {
+        using JsonDocument answer = await GetAsync($"{Root}/{AdAccount}?fields=name,currency,account_status");
+        return new AdAccountInfo(
+            Text(answer.RootElement, "name") ?? AdAccount,
+            Text(answer.RootElement, "currency") ?? "",
+            Number(answer.RootElement, "account_status"));
+    }
+
+    /// <summary>
+    /// Boosts one of the portal's own Instagram posts as an ad shown on Instagram to the
+    /// people around a point, with a lifetime budget that cannot be overspent.
+    ///
+    /// Four objects, created in the order Meta needs them: campaign, ad set, creative,
+    /// ad. The campaign is created paused and switched on last, so a request that fails
+    /// half way leaves a paused campaign in Ads Manager and has spent nothing.
+    /// </summary>
+    public async Task<string> PromoteInstagramPostAsync(Promotion promotion)
+    {
+        string name = $"QueHacerRD — {promotion.Name}";
+
+        using JsonDocument campaign = await PostAsync($"{Root}/{AdAccount}/campaigns", new()
+        {
+            ["name"] = name,
+            ["objective"] = "OUTCOME_ENGAGEMENT",
+            ["status"] = "PAUSED",
+            ["special_ad_categories"] = "[]",
+            // The budget lives on the ad set, and Meta now asks to be told so explicitly.
+            ["is_adset_budget_sharing_enabled"] = "false",
+        });
+        string campaignId = Id(campaign);
+
+        try
+        {
+            var targeting = new
+            {
+                geo_locations = new
+                {
+                    custom_locations = new[]
+                    {
+                        new
+                        {
+                            latitude = promotion.Latitude,
+                            longitude = promotion.Longitude,
+                            radius = promotion.RadiusKm,
+                            distance_unit = "kilometer",
+                        },
+                    },
+                    location_types = new[] { "home", "recent" },
+                },
+                age_min = 18,
+                publisher_platforms = new[] { "instagram" },
+                instagram_positions = new[] { "stream", "explore" },
+                targeting_automation = new { advantage_audience = 0 },
+            };
+
+            using JsonDocument adSet = await PostAsync($"{Root}/{AdAccount}/adsets", new()
+            {
+                ["name"] = name,
+                ["campaign_id"] = campaignId,
+                // Minor units of the account currency: every currency the portal can be
+                // billed in (DOP, USD) has an offset of 100.
+                ["lifetime_budget"] = ((long)Math.Round(promotion.Budget * 100)).ToString(CultureInfo.InvariantCulture),
+                ["start_time"] = promotion.Start.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture),
+                ["end_time"] = promotion.End.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture),
+                ["billing_event"] = "IMPRESSIONS",
+                ["optimization_goal"] = "POST_ENGAGEMENT",
+                ["destination_type"] = "ON_POST",
+                ["bid_strategy"] = "LOWEST_COST_WITHOUT_CAP",
+                ["targeting"] = JsonSerializer.Serialize(targeting),
+                ["status"] = "ACTIVE",
+            });
+
+            using JsonDocument creative = await PostAsync($"{Root}/{AdAccount}/adcreatives", new()
+            {
+                ["name"] = name,
+                ["object_id"] = config.PageId,
+                ["instagram_user_id"] = config.InstagramUserId,
+                ["source_instagram_media_id"] = promotion.MediaId,
+            });
+
+            using JsonDocument ad = await PostAsync($"{Root}/{AdAccount}/ads", new()
+            {
+                ["name"] = name,
+                ["adset_id"] = Id(adSet),
+                ["creative"] = JsonSerializer.Serialize(new { creative_id = Id(creative) }),
+                ["status"] = "ACTIVE",
+            });
+
+            using JsonDocument _ = await PostAsync($"{Root}/{campaignId}", new() { ["status"] = "ACTIVE" });
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                $"{ex.Message} (la campaña {campaignId} quedó en pausa y no gasta nada; bórrala en Ads Manager)", ex);
+        }
+
+        return campaignId;
     }
 
     /// <summary>
@@ -157,11 +286,41 @@ public partial class MetaClient(HttpClient http, SocialConfig config)
             "Instagram no terminó de descargar la imagen; el contenedor sigue en proceso.");
     }
 
-    private async Task<JsonDocument> PostAsync(string url, Dictionary<string, string> fields)
+    private string? pageToken;
+
+    /// <summary>
+    /// Publishing on a Page takes the Page's own token, while Instagram and the ad account
+    /// take the token of the user behind it. The configured token is normally a system
+    /// user's — it never expires and speaks for all three — so the Page token is asked of
+    /// it once; a configured token that already is a Page token has none to give and is
+    /// used as it is.
+    /// </summary>
+    private async Task<string> PageTokenAsync()
+    {
+        if (pageToken is null)
+        {
+            try
+            {
+                using JsonDocument answer = await GetAsync($"{Root}/{config.PageId}?fields=access_token");
+                pageToken = Text(answer.RootElement, "access_token");
+            }
+            catch (InvalidOperationException)
+            {
+                // A Page token asking for its own token: the answer is itself.
+            }
+
+            pageToken ??= config.AccessToken;
+        }
+
+        return pageToken;
+    }
+
+    private async Task<JsonDocument> PostAsync(
+        string url, Dictionary<string, string> fields, string? token = null)
     {
         // The token travels in the body, not in the query string: a URL is what ends up
-        // in a log line, and this one is good for sixty days.
-        fields["access_token"] = config.AccessToken;
+        // in a log line, and this one does not expire.
+        fields["access_token"] = token ?? config.AccessToken;
         HttpResponseMessage response = await http.PostAsync(url, new FormUrlEncodedContent(fields));
         string body = await response.Content.ReadAsStringAsync();
         if (!response.IsSuccessStatusCode)

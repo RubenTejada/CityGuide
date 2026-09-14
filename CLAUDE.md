@@ -197,6 +197,18 @@ cd CityGuide.Agent && dotnet run -- --paid --translate --section restaurantes --
 cd CityGuide.Agent && dotnet run -- --social --section santo-domingo
 cd CityGuide.Agent && dotnet run -- --social 3 --section santo-domingo --apply
 
+# Pay Meta to show one of the portal's own Instagram posts to the people of one city
+# (SocialPromotion over MetaClient's Marketing API calls): an engagement campaign on
+# Instagram's feed and explore, 18+, within --radius km (default 15) of the city node's
+# map centre, with a lifetime budget in the ad account's currency that Meta never
+# exceeds and Social:MaxAdBudget caps before it reaches Meta. Without an id it lists the
+# account's recent posts to pick from. It spends money, so it needs --paid and --apply,
+# never runs on its own and is not a workflow input; it needs Social:AdAccountId and a
+# token with ads_management besides the three social secrets. The campaign is created
+# paused and switched on last, so a failure half way spends nothing.
+cd CityGuide.Agent && dotnet run -- --promote
+cd CityGuide.Agent && dotnet run -- --paid --promote 17912345678901234 --budget 1500 --days 5 --section santo-domingo --apply
+
 # Build everything
 dotnet build CityGuide.slnx
 ```

@@ -68,6 +68,19 @@ public class SocialConfig
     public string ApiVersion { get; set; } = "v21.0";
 
     /// <summary>
+    /// The ad account a promotion is billed to ("act_…" or the bare number), for
+    /// <c>--promote</c>. Its token needs <c>ads_management</c> on top of what posting
+    /// needs. Empty leaves the portal unable to spend anything, which is the default.
+    /// </summary>
+    public string AdAccountId { get; set; } = "";
+
+    /// <summary>
+    /// The most one promotion may cost, in the ad account's currency. A guard against a
+    /// typed zero too many, not a budget: <c>--budget</c> above it is refused.
+    /// </summary>
+    public decimal MaxAdBudget { get; set; } = 3000;
+
+    /// <summary>
     /// Public origin of the portal. Every post links to it, and every picture is
     /// handed to Meta through it: the site proxies /media from the CMS, so this is the
     /// one address that is public, branded and already serving those images.
