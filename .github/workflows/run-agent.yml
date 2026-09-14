@@ -450,3 +450,20 @@ jobs:
           else
             dotnet run -c Release -- $paid_flag
           fi
+
+      # The one post a day per city. Only the 20:23 cron posts — it lands in the
+      # Dominican afternoon or evening, and the morning one fires before dawn there —
+      # and it posts after the free pass has refreshed the events and the cartelera,
+      # whether or not that pass succeeded. "Publicaciones ya hechas" on each city node
+      # is what keeps a post from going out twice, so a missed day only means one post
+      # fewer, never a repeat.
+      - name: Announce on social media
+        if: ${{ !cancelled() && github.event_name == 'schedule' && github.event.schedule == '23 20 * * *' }}
+        working-directory: CityGuide.Agent
+        env:
+          Umbraco__BaseUrl: https://quehacerrd-cms.azurewebsites.net
+          Umbraco__ClientSecret: ${{ secrets.UMBRACO_AGENT_CLIENT_SECRET }}
+          Social__PageId: ${{ secrets.META_PAGE_ID }}
+          Social__InstagramUserId: ${{ secrets.META_INSTAGRAM_USER_ID }}
+          Social__AccessToken: ${{ secrets.META_ACCESS_TOKEN }}
+        run: dotnet run -c Release -- --social 1 --apply
