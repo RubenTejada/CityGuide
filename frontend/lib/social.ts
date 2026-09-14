@@ -22,12 +22,12 @@ export const SOCIAL_ACCOUNTS: SocialAccount[] = [
   {
     network: "facebook",
     label: "Facebook",
-    url: "https://www.facebook.com/quehacerrd",
+    url: "https://www.facebook.com/quehacerrdoficial",
   },
   {
     network: "instagram",
     label: "Instagram",
-    url: "https://www.instagram.com/quehacerrd",
+    url: "https://www.instagram.com/quehacerrdoficial",
   },
 ];
 
