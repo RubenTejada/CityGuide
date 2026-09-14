@@ -43,6 +43,9 @@ export function proxy(request: NextRequest) {
 export const config = {
   // Everything but the framework's own paths, the API routes, the media proxied
   // from the CMS, the generated Open Graph images and anything with an extension
-  // (robots.txt, sitemap.xml, the files in /public).
-  matcher: ["/((?!_next/|api/|media/|opengraph-image|.*\\.).*)"],
+  // (robots.txt, sitemap.xml, the files in /public). The image lives under the
+  // language segment ("/es/opengraph-image" is the URL the metadata declares), so
+  // that is the path to leave alone: redirecting it to "/opengraph-image" lands on
+  // no route and every share without a photo goes out without a preview.
+  matcher: ["/((?!_next/|api/|media/|(?:es|en)/opengraph-image|.*\\.).*)"],
 };

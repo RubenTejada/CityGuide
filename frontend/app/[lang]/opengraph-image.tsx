@@ -42,7 +42,7 @@ export default async function OpenGraphImage({
         </span>
       </div>
       <div style={{ marginTop: 24, fontSize: 38, color: "#d4d4d4" }}>
-        {words.description.split(".")[0]}.
+        {`${words.description.split(".")[0]}.`}
       </div>
       <div
         style={{ marginTop: 48, height: 8, width: 220, background: "#f5b301" }}
