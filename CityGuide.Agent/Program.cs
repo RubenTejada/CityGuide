@@ -487,8 +487,8 @@ if (args.Contains("--menus"))
 // the films that just reached the cartelera and the best-rated places a discovery run has
 // added. It is free — a caption is the content the CMS already holds, arranged in a
 // sentence, with no Google request and no model token — so it needs no --paid. It is also
-// the one pass that publishes outside the portal, which is why it never runs on its own:
-// the nightly job does not post, and nothing goes out without --apply.
+// the one pass that publishes outside the portal, so nothing goes out without --apply;
+// the scheduled "Run agent" passes it, one post per city a day after its 20:23 UTC run.
 if (args.Contains("--social"))
 {
     int socialPosts =

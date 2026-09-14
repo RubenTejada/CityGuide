@@ -191,9 +191,10 @@ cd CityGuide.Agent && dotnet run -- --paid --translate --section restaurantes --
 # week, the films that just reached the cartelera and the best-rated places of the
 # city. A caption is the content the CMS already holds arranged in a sentence — no
 # Google request, no model token — so it needs no --paid. It is the one pass that
-# publishes outside the portal: it never runs on its own (the nightly job does not
-# post), it prints every caption and posts nothing until --apply, and it needs three
-# secrets: Social:PageId, Social:InstagramUserId and Social:AccessToken.
+# publishes outside the portal: by hand it prints every caption and posts nothing
+# until --apply, and the scheduled "Run agent" posts one per city a day ("--social 1
+# --apply" after the 20:23 UTC free pass). It needs three secrets: Social:PageId,
+# Social:InstagramUserId and Social:AccessToken.
 cd CityGuide.Agent && dotnet run -- --social --section santo-domingo
 cd CityGuide.Agent && dotnet run -- --social 3 --section santo-domingo --apply
 
@@ -847,8 +848,10 @@ that is a branch reading its company's prose). One of each kind before a second 
 capped by `Social:MaxPostsPerPass`, so a feed is never three restaurants in a row. It
 costs nothing: a caption is the name, the rating and the first sentence of a description
 an enrichment call paid for long ago, which is why the pass needs no `--paid`; and it is
-the one pass that writes outside the portal, so it never runs on its own — the nightly
-job does not post — and prints every caption until `--apply`. Both networks are reached
+the one pass that writes outside the portal, so by hand it prints every caption until
+`--apply`; on its own it posts one item per city a day, as a step after the 20:23 UTC
+scheduled free pass (`--social 1 --apply`, never after the 08:23 one, which lands before
+dawn in the Dominican Republic). Both networks are reached
 through one Graph API token (Instagram is published to through its Page), but not the
 same way: Facebook takes the picture and the caption in one request, Instagram takes a
 container it downloads the image into and then a publish, and it refuses anything outside
