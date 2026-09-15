@@ -136,10 +136,13 @@ public partial class FreePhotos(WebFiles web)
     /// <summary>
     /// Whether the file says it was taken in this city. A name alone does not: half the
     /// country has a Parque Duarte and a Playa Bonita. In order of how much it proves —
-    /// the file's own coordinates inside the city rectangle, the city named in its title
-    /// or in one of its categories, or, for a name distinctive enough to stand on its own
-    /// (two significant words or more), the country. A file that says none of it is left
-    /// to the next source rather than guessed at.
+    /// the file's own coordinates inside the city rectangle, the city named in full in
+    /// its title or in one of its categories ("Santiago de los Caballeros"), one word of
+    /// the city beside the country, or, for a name distinctive enough to stand on its own
+    /// (two significant words or more), the country alone. One word of the city is not
+    /// enough by itself: "Santiago" is also Chile, Cuba and Compostela, and the Parque
+    /// Central of Santiago de los Caballeros was given a picture of the Santiago metro.
+    /// A file that says none of it is left to the next source rather than guessed at.
     /// </summary>
     private static bool IsHere(
         JsonElement page, string title, string name, string city, GeoArea? cityArea)
@@ -159,13 +162,14 @@ public partial class FreePhotos(WebFiles web)
                     .Select(c => c.TryGetProperty("title", out JsonElement t) ? t.GetString() ?? "" : "")
                 : []));
 
-        if (TextMatch.Tokens(city).Any(haystack.Contains))
+        if (haystack.Contains(TextMatch.Normalize(city)))
         {
             return true;
         }
 
-        return TextMatch.Tokens(name).Length > 1
-            && (haystack.Contains("dominican") || haystack.Contains("dominicana"));
+        bool country = haystack.Contains("dominican") || haystack.Contains("dominicana");
+        return country
+            && (TextMatch.Tokens(city).Any(haystack.Contains) || TextMatch.Tokens(name).Length > 1);
     }
 
     /// <summary>0 for a card-shaped landscape, 1 for a portrait, 2 for a panorama.</summary>

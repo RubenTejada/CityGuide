@@ -88,6 +88,12 @@ cd CityGuide.Agent && dotnet run -- --exclude-place ChIJ...,ChIJ... --note "tien
 # Send one agent-made node to the recycle bin, for the copy no rule can see (the same
 # Google listing filed under a second section). Plan until --apply.
 cd CityGuide.Agent && dotnet run -- --recycle-place /santo-domingo/empresas-y-servicios/remesas-y-envios/plaza-lama
+# Replace the main photo of one agent-made node, for the picture a free source got
+# wrong (Commons answered "Parque Central de Santiago" with the Santiago de Chile metro):
+# the photo is looked for again through the usual chain — Commons for a landmark, the
+# site's preview image, then Google, which is billed and so needs --paid — and the old
+# media item goes to the media recycle bin. Plan until --apply.
+cd CityGuide.Agent && dotnet run -- --paid --reset-photo /santiago/atracciones/parque-central-de-santiago --apply
 # Send to the recycle bin the events the agent imported that do not happen in the
 # city: every ticket portal lists the whole country, and the section filled up with
 # Santiago, Higüey and Punta Cana. Plan until --apply.
@@ -442,9 +448,13 @@ and its name is asked for lazily, so a picture found free costs no Google reques
 A Commons hit has to earn it: every significant word of the place name must appear in the
 file's title as a word of its own (`TextMatch.MatchesWords`, so "Scape Park" is not
 "RiverScape MetroPark") *and* the file has to say it was taken in this city — coordinates
-inside the city rectangle, the city named in its title or categories, or the country for a
-name distinctive enough to stand alone. Without that rule Commons answers "Parque Duarte"
-in Santiago with the one in the Zona Colonial. Among what survives, a card-shaped
+inside the city rectangle, the city named in full in its title or categories ("Santiago
+de los Caballeros"), one word of it beside the country, or the country alone for a name
+distinctive enough to stand by itself. Without that rule Commons answers "Parque Duarte"
+in Santiago with the one in the Zona Colonial, and one word of the city is not enough
+either: "Santiago" is also Chile, which is the photo the Parque Central got.
+`--reset-photo <ruta> [--apply]` redoes such a picture through the same chain (Google
+only with `--paid`) and recycles the old media item. Among what survives, a card-shaped
 landscape beats a portrait and a portrait beats a panorama. The media item is named after
 the place *and* its source, so provenance survives in the backoffice.
 

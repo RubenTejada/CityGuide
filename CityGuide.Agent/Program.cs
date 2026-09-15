@@ -995,6 +995,71 @@ if (args.Contains("--recycle-place"))
     return 0;
 }
 
+// Maintenance: replace the main photo of one node ("--reset-photo <ruta>"), for the
+// picture a free source got wrong — Commons answered "Parque Central de Santiago" with
+// the Santiago de Chile metro. The photo is looked for again through the same chain
+// every pass uses (Commons for a landmark, the site's own preview image, then Google),
+// the old media item goes to the media recycle bin once the new one is written, and
+// nothing is asked of Google without --paid: the download is billed. Only what the
+// agent created; an editor's photo is changed in the backoffice. Plan until --apply.
+if (args.Contains("--reset-photo"))
+{
+    string? resetPath = args.SkipWhile(a => a != "--reset-photo").Skip(1).FirstOrDefault();
+    if (string.IsNullOrWhiteSpace(resetPath) || resetPath.StartsWith("--", StringComparison.Ordinal))
+    {
+        Console.Error.WriteLine("--reset-photo necesita la ruta del nodo. Ejemplo: dotnet run -- --paid --reset-photo "
+            + "/santiago/atracciones/parque-central-de-santiago --apply");
+        return 1;
+    }
+
+    if (await umbraco.GetContentByPathAsync(resetPath) is not { } resetTarget)
+    {
+        Console.Error.WriteLine($"No encontré '{resetPath}'.");
+        return 1;
+    }
+
+    UmbracoClient.PublishedPlace? resetNode = (await umbraco.GetPublishedPlacesAsync())
+        .Concat(await umbraco.GetPublishedPlacesAsync("mall"))
+        .FirstOrDefault(n => n.Id == resetTarget.Id);
+    if (resetNode is null)
+    {
+        Console.Error.WriteLine($"'{resetTarget.Name}' no es un lugar ni una plaza publicados.");
+        return 1;
+    }
+
+    if (resetNode.Source?.StartsWith("agent", StringComparison.OrdinalIgnoreCase) != true)
+    {
+        Console.Error.WriteLine($"'{resetNode.Name}' está hecho a mano — cámbiale la foto desde el backoffice.");
+        return 1;
+    }
+
+    string resetCity = resetNode.Path.Trim('/').Split('/').First();
+    UmbracoClient.CityAgentConfig? resetCityConfig = await CityConfigAsync(resetCity);
+    Console.WriteLine($"{resetNode.Name}: foto actual {resetNode.PhotoUrl ?? "(ninguna)"}");
+    Console.WriteLine("  fuentes: " + (FreePhotos.IsLandmark(resetNode.Path) ? "Commons, " : "")
+        + (resetNode.Website is not null ? "imagen del sitio, " : "")
+        + (paid && resetNode.GooglePlaceId is not null ? "Google" : "Google no (sin --paid o sin id de Google)"));
+    if (!args.Contains("--apply"))
+    {
+        Console.WriteLine("  Simulación; agrega --apply para reemplazarla.");
+        return 0;
+    }
+
+    UmbracoClient.Completion reset = await umbraco.CompletePlaceAsync(
+        resetNode.Id, rating: null, ratingCount: null,
+        photoFactory: () => photos.UploadAsync(
+            resetNode.Name,
+            paid && resetNode.GooglePlaceId is { } resetPlaceId ? () => google.GetPhotoByIdAsync(resetPlaceId) : null,
+            resetNode.Path, website: resetNode.Website,
+            cityName: resetCityConfig?.CityName ?? resetCity.Replace('-', ' '),
+            cityArea: resetCityConfig?.Area),
+        replacePhoto: true);
+    Console.WriteLine(reset.Photo
+        ? $"  * {resetNode.Name} +foto (la anterior, a la papelera de medios)"
+        : $"  ? {resetNode.Name}: sin foto en ninguna fuente; se queda la que tenía");
+    return 0;
+}
+
 // Maintenance: keep the city's "Lugares excluidos" and the content in step
 // ("--exclude-place <id>[,<id>...] [--note "texto"]"). The list is what stops a Google
 // listing from becoming content again — a copy of a branch Google keeps twice, a shop

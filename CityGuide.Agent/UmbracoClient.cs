@@ -975,11 +975,14 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
     /// address, phone, website and hours ride along on the request the rating paid for,
     /// so a node seeded by hand is completed for nothing. A blank stays blank — Google
     /// saying nothing about a field never erases what an editor wrote. Returns what was
-    /// written.
+    /// written. With <paramref name="replacePhoto"/> the picture is asked for even when
+    /// the node has one, and the one it had goes to the media recycle bin once the new
+    /// one is written — for the photo a free source got wrong.
     /// </summary>
     public async Task<Completion> CompletePlaceAsync(
         Guid id, double? rating, int? ratingCount, string? googlePlaceId = null,
-        Func<Task<Guid?>>? photoFactory = null, DiscoveredPlace? details = null)
+        Func<Task<Guid?>>? photoFactory = null, DiscoveredPlace? details = null,
+        bool replacePhoto = false)
     {
         (string name, string state, Dictionary<string, object?> values) = await ReadDocumentAsync(id);
 
@@ -1000,8 +1003,11 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         }
 
         var photoWritten = false;
-        if (photoFactory is not null && !HasPhoto(values) && await photoFactory() is Guid mediaKey)
+        Guid? replacedPhoto = null;
+        if (photoFactory is not null && (replacePhoto || !HasPhoto(values))
+            && await photoFactory() is Guid mediaKey)
         {
+            replacedPhoto = PhotoMediaKey(values);
             values["photo"] = $"[{{\"key\":\"{Guid.NewGuid()}\",\"mediaKey\":\"{mediaKey}\"}}]";
             photoWritten = true;
         }
@@ -1038,6 +1044,10 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         if (ratingWritten || idWritten || photoWritten || filled.Count > 0)
         {
             await WriteDocumentAsync(id, name, values, state);
+            if (replacedPhoto is Guid old && old != PhotoMediaKey(values))
+            {
+                await RecycleMediaAsync(old);
+            }
         }
 
         return new Completion(ratingWritten, photoWritten, filled);
@@ -1045,6 +1055,14 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
 
     /// <summary>True when the node already carries a main image. An empty picker comes
     /// back as an empty array or an empty string depending on how it was written.</summary>
+    /// <summary>The media key of the node's main image as the document stores it, or null.</summary>
+    private static Guid? PhotoMediaKey(Dictionary<string, object?> values) =>
+        values.TryGetValue("photo", out object? v) && v is JsonElement e
+            && e.ValueKind == JsonValueKind.Array && e.GetArrayLength() > 0
+            && e[0].TryGetProperty("mediaKey", out JsonElement key) && key.TryGetGuid(out Guid guid)
+            ? guid
+            : null;
+
     private static bool HasPhoto(Dictionary<string, object?> values) =>
         values.TryGetValue("photo", out object? v) && v is JsonElement e && e.ValueKind switch
         {
@@ -1443,10 +1461,15 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
     /// Sends a document to the recycle bin. What the agent files away on its own is
     /// recoverable from the backoffice; a plain delete would not be.
     /// </summary>
-    public async Task RecycleDocumentAsync(Guid id)
+    public Task RecycleDocumentAsync(Guid id) => RecycleAsync("document", id);
+
+    /// <summary>Sends a media item to the media recycle bin, same terms.</summary>
+    public Task RecycleMediaAsync(Guid id) => RecycleAsync("media", id);
+
+    private async Task RecycleAsync(string kind, Guid id)
     {
         HttpRequestMessage request = await AuthorizedRequestAsync(
-            HttpMethod.Put, $"/umbraco/management/api/v1/document/{id}/move-to-recycle-bin");
+            HttpMethod.Put, $"/umbraco/management/api/v1/{kind}/{id}/move-to-recycle-bin");
         HttpResponseMessage response = await http.SendAsync(request);
         if (!response.IsSuccessStatusCode)
         {
