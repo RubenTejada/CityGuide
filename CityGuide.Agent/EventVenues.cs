@@ -52,10 +52,11 @@ public class EventVenues(
     /// says the caller has no use for it — its venue as a Google place. When only the
     /// venue can answer the question, this throws whatever the lookup throws: a failed
     /// request must never be read as "not in the city", or an outage would drop (or
-    /// delete) everything. Coordinates having already answered it, a venue that cannot
-    /// be looked up costs nothing but the venue.
+    /// delete) everything. Once the question is answered — by the coordinates, or by
+    /// <paramref name="inCity"/>, the source itself vouching that it lists this city and
+    /// nothing else — a venue that cannot be looked up costs nothing but the venue.
     /// </summary>
-    public async Task<EventLocation> LocateAsync(ScrapedEvent ev, bool withVenue = true)
+    public async Task<EventLocation> LocateAsync(ScrapedEvent ev, bool withVenue = true, bool inCity = false)
     {
         if (Area is not { } area)
         {
@@ -69,19 +70,24 @@ public class EventVenues(
                 return new EventLocation(false, null);
             }
 
-            try
-            {
-                return new EventLocation(true, withVenue ? await ResolveAsync(ev.Venue, area) : null);
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine($"  ! lugar de {ev.Name}: {ex.Message}");
-                return new EventLocation(true, null);
-            }
+            inCity = true;
         }
 
-        DiscoveredPlace? venue = await ResolveAsync(ev.Venue, area);
-        return new EventLocation(venue is not null, venue);
+        if (!inCity)
+        {
+            DiscoveredPlace? venue = await ResolveAsync(ev.Venue, area);
+            return new EventLocation(venue is not null, venue);
+        }
+
+        try
+        {
+            return new EventLocation(true, withVenue ? await ResolveAsync(ev.Venue, area) : null);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"  ! lugar de {ev.Name}: {ex.Message}");
+            return new EventLocation(true, null);
+        }
     }
 
     /// <summary>

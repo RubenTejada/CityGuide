@@ -6,8 +6,9 @@ namespace CityGuide.Agent;
 /// It is the same gap <see cref="VenueEvents"/> answers, one step further down: no
 /// ticket portal lists a town without a box office, and most of its bars have no site
 /// of their own either — what they have is a feed. The handle is already in the CMS,
-/// stored as the place's "website", so nothing has to be captured by hand (see
-/// <see cref="InstagramFeeds"/>).
+/// stored as the place's "website" — or in its "instagram" field, for a place whose
+/// website is a real site and whose programme is still announced on the feed alone,
+/// like the Gran Teatro del Cibao (see <see cref="InstagramFeeds"/>).
 ///
 /// It has two halves. <see cref="ReportAsync"/> is the diagnostic: it reads the feeds
 /// and prints what they carry, writing nothing and spending nothing, which is what
@@ -54,7 +55,7 @@ public class InstagramEvents(MetaClient meta, UmbracoClient umbraco, EventsCityC
         List<(UmbracoClient.PublishedPlace Place, string Handle)> feeds = await FeedsAsync(accounts);
         if (feeds.Count == 0)
         {
-            Console.WriteLine("  Ningún lugar de la ciudad guarda una cuenta de Instagram como sitio web.");
+            Console.WriteLine("  Ningún lugar de la ciudad guarda una cuenta de Instagram (campo Instagram o sitio web).");
             return;
         }
 
@@ -175,7 +176,7 @@ public class InstagramEvents(MetaClient meta, UmbracoClient umbraco, EventsCityC
         List<(UmbracoClient.PublishedPlace Place, string Handle)> feeds = await FeedsAsync(accounts);
         if (feeds.Count == 0)
         {
-            Console.WriteLine("  Ningún lugar de la ciudad guarda una cuenta de Instagram como sitio web.");
+            Console.WriteLine("  Ningún lugar de la ciudad guarda una cuenta de Instagram (campo Instagram o sitio web).");
             return;
         }
 
@@ -238,9 +239,10 @@ public class InstagramEvents(MetaClient meta, UmbracoClient umbraco, EventsCityC
     }
 
     /// <summary>
-    /// The places of the city that store an Instagram account as their website, best
-    /// rated first and one entry per account: a chain's two locations point at the same
-    /// feed, and reading it twice would publish its Thursday under both.
+    /// The places of the city that store an Instagram account — in their "instagram"
+    /// field, else as their website — best rated first and one entry per account: a
+    /// chain's two locations point at the same feed, and reading it twice would publish
+    /// its Thursday under both.
     /// </summary>
     private async Task<List<(UmbracoClient.PublishedPlace Place, string Handle)>> FeedsAsync(int accounts)
     {
@@ -249,7 +251,7 @@ public class InstagramEvents(MetaClient meta, UmbracoClient umbraco, EventsCityC
         return
             [.. (await umbraco.GetPublishedPlacesAsync())
                 .Where(p => p.Path.StartsWith(cityPrefix, StringComparison.OrdinalIgnoreCase))
-                .Select(p => (Place: p, Handle: InstagramFeeds.HandleOf(p.Website)))
+                .Select(p => (Place: p, Handle: InstagramFeeds.HandleOf(p.Instagram, p.Website)))
                 .Where(f => f.Handle is not null)
                 .OrderByDescending(f => f.Place.Rating)
                 .ThenByDescending(f => f.Place.RatingCount)

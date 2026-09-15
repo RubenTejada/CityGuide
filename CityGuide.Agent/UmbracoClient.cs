@@ -673,7 +673,7 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         string? Source, DateTime CreateDate,
         string? Phone = null, string? Website = null, string? Hours = null,
         int RatingCount = 0, int GalleryCount = 0, int MenuCount = 0,
-        string? PhotoUrl = null, bool HasMenuData = false)
+        string? PhotoUrl = null, bool HasMenuData = false, string? Instagram = null)
     {
         public bool HasPhoto => PhotoMediaKey is not null;
 
@@ -741,7 +741,7 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
                 item.GetProperty("createDate").GetDateTime(),
                 Text("phone"), Text("website"), Text("hours"),
                 (int)Coord("googleRatingCount"), Images("gallery"), Images("menu"),
-                photoAddress, Text("menuData") is not null));
+                photoAddress, Text("menuData") is not null, Text("instagram")));
         }
 
         return places;

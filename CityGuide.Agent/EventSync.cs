@@ -165,7 +165,7 @@ public partial class EventSync(
                 EventLocation location;
                 try
                 {
-                    location = await venues.LocateAsync(ev);
+                    location = await venues.LocateAsync(ev, inCity: source.InCity);
                 }
                 catch (Exception ex)
                 {
@@ -597,7 +597,7 @@ public partial class EventSync(
                 string verdict;
                 try
                 {
-                    EventLocation location = await venues.LocateAsync(ev);
+                    EventLocation location = await venues.LocateAsync(ev, inCity: source.InCity);
                     verdict = location.InCity
                         ? location.Venue is { } place ? $"sí ({place.Name})" : "sí"
                         : "no";
@@ -646,7 +646,7 @@ public partial class EventSync(
             {
                 string html = await FetchAsync(link);
                 string? ogImage = OgContent(html, "og:image");
-                events.AddRange(ExtractJsonLdEvents(html)
+                events.AddRange(ExtractJsonLdEvents(html, pageUrl: link)
                     .Select(ev => ev.ImageUrl is null ? ev with { ImageUrl = ogImage } : ev));
             }
             catch (Exception ex)
@@ -733,8 +733,12 @@ public partial class EventSync(
     }
 
     /// <summary>All schema.org objects whose @type ends in "Event", from any ld+json
-    /// block: single object, array, ItemList or @graph. Past events are dropped.</summary>
-    private static IEnumerable<ScrapedEvent> ExtractJsonLdEvents(string html)
+    /// block: single object, array, ItemList or @graph. Past events are dropped. An
+    /// event that states no "url" of its own is the page it was read from when
+    /// <paramref name="pageUrl"/> says which — a Wix events page puts the address on
+    /// the location and the offer and none on the event — and is dropped from a
+    /// listing, where the page is not the event.</summary>
+    private static IEnumerable<ScrapedEvent> ExtractJsonLdEvents(string html, string? pageUrl = null)
     {
         var events = new List<ScrapedEvent>();
         foreach (Match match in JsonLdBlocks().Matches(html))
@@ -751,21 +755,21 @@ public partial class EventSync(
 
             using (doc)
             {
-                CollectEvents(doc.RootElement, events);
+                CollectEvents(doc.RootElement, events, pageUrl);
             }
         }
 
         return events.Where(e => e.Start.Date >= DateTime.Today);
     }
 
-    private static void CollectEvents(JsonElement element, List<ScrapedEvent> events)
+    private static void CollectEvents(JsonElement element, List<ScrapedEvent> events, string? pageUrl)
     {
         switch (element.ValueKind)
         {
             case JsonValueKind.Array:
                 foreach (JsonElement item in element.EnumerateArray())
                 {
-                    CollectEvents(item, events);
+                    CollectEvents(item, events, pageUrl);
                 }
 
                 return;
@@ -780,7 +784,7 @@ public partial class EventSync(
             : null;
         if (type is not null && type.EndsWith("Event", StringComparison.Ordinal))
         {
-            if (ToEvent(element) is { } ev)
+            if (ToEvent(element, pageUrl) is { } ev)
             {
                 events.Add(ev);
             }
@@ -792,17 +796,17 @@ public partial class EventSync(
         {
             if (element.TryGetProperty(key, out JsonElement nested))
             {
-                CollectEvents(nested, events);
+                CollectEvents(nested, events, pageUrl);
             }
         }
     }
 
-    private static ScrapedEvent? ToEvent(JsonElement e)
+    private static ScrapedEvent? ToEvent(JsonElement e, string? pageUrl)
     {
         string? Text(JsonElement el, string prop) =>
             el.TryGetProperty(prop, out JsonElement v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
 
-        string? url = Text(e, "url");
+        string? url = Text(e, "url") ?? pageUrl;
         string? name = Text(e, "name") ?? Text(e, "description");
         if (url is null || name is null || !DateTime.TryParse(Text(e, "startDate"), out DateTime start))
         {
@@ -828,16 +832,26 @@ public partial class EventSync(
                 longitude = Coordinate(geo, "longitude");
             }
 
-            if (loc.TryGetProperty("address", out JsonElement addr) && addr.ValueKind == JsonValueKind.Object)
+            // The ticket portals write a PostalAddress; a Wix events page (the Cámara de
+            // Santiago's) writes the address as one line of text.
+            if (loc.TryGetProperty("address", out JsonElement addr))
             {
-                address = string.Join(", ",
-                    new[] { Text(addr, "streetAddress"), Text(addr, "addressLocality") }
-                        .Where(s => !string.IsNullOrWhiteSpace(s) && s!.Trim(',', ' ').Length > 0)
-                        .Select(s => s!.Trim()));
+                address = addr.ValueKind switch
+                {
+                    JsonValueKind.String => addr.GetString()?.Trim(),
+                    JsonValueKind.Object => string.Join(", ",
+                        new[] { Text(addr, "streetAddress"), Text(addr, "addressLocality") }
+                            .Where(s => !string.IsNullOrWhiteSpace(s) && s!.Trim(',', ' ').Length > 0)
+                            .Select(s => s!.Trim())),
+                    _ => null,
+                };
             }
         }
 
-        string? description = Text(e, "description");
+        // Decoded like the name: Wix writes a line break as "&#010;".
+        string? description = Text(e, "description") is { } raw
+            ? System.Net.WebUtility.HtmlDecode(raw).Trim()
+            : null;
         if (description is not null && description.Length > 500)
         {
             description = description[..500];

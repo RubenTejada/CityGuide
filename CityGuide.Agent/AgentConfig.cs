@@ -212,6 +212,17 @@ public class EventSourceConfig
     /// <summary>Regex whose group 1 captures detail-page links in the listing
     /// (kind "jsonld-detail").</summary>
     public string LinkPattern { get; set; } = "";
+
+    /// <summary>
+    /// True when everything the source lists happens in this city — the site of the
+    /// city's own chamber of commerce, against a national ticket portal — so the city
+    /// rectangle is not asked. The rectangle answers for free only when the portal
+    /// states coordinates; a Wix events page states an address and no coordinates, and
+    /// on the free pass, with Google off, nothing could place such an event, so a
+    /// national source drops it. The venue is still looked up when Google is on, for
+    /// the coordinates that put the event on the map.
+    /// </summary>
+    public bool InCity { get; set; }
 }
 
 public class UmbracoConfig

@@ -12,14 +12,17 @@ public record InstagramPost(
     DateTimeOffset Taken, string MediaType, string? Caption, string Permalink, string? MediaUrl);
 
 /// <summary>
-/// The Instagram handle a place stores as its website.
+/// The Instagram handle a place stores — in its "instagram" field, or as its website.
 ///
 /// It is where the events of a beach town are announced. A bar in Juan Dolio has no
 /// site of its own — <see cref="EventSources"/> finds nothing to read for it, because
 /// <see cref="MenuSources.CanRead"/> refuses instagram.com like every other social
 /// profile — and yet the same node already carries the address of the feed where its
 /// live music is written down every week. Nothing has to be captured by hand: the
-/// handle is the "website" the CMS holds.
+/// handle is the "website" the CMS holds. A place with a real site and a feed of its
+/// own says so in "instagram" instead (the Gran Teatro del Cibao: the Ministry's page
+/// as its website, and a programme announced nowhere but on its feed), and that field
+/// is read first.
 ///
 /// Only Meta's own business discovery reads that feed (see
 /// <see cref="MetaClient.DiscoverAsync"/>). Scraping instagram.com is a login wall from
@@ -35,6 +38,23 @@ public static partial class InstagramFeeds
     {
         "p", "reel", "reels", "stories", "explore", "tv", "s", "accounts", "direct", "about",
     };
+
+    /// <summary>
+    /// The account a place announces on: what its "instagram" field names — a bare
+    /// handle, "@cuenta" or the address of the profile, whichever the editor typed —
+    /// and, when that is blank, the account its website points at, if it is one.
+    /// </summary>
+    public static string? HandleOf(string? instagram, string? website)
+    {
+        if (!string.IsNullOrWhiteSpace(instagram))
+        {
+            string value = instagram.Trim();
+            bool address = value.Contains('/') || value.Contains("://", StringComparison.Ordinal);
+            return address ? HandleOf(value) : Handle(value);
+        }
+
+        return HandleOf(website);
+    }
 
     /// <summary>
     /// The account <paramref name="website"/> points at, or null when it points at

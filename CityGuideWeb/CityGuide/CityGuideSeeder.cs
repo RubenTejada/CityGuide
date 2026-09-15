@@ -148,6 +148,8 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
 
         await EnsurePlaceReservationSchemaAsync();
 
+        await EnsurePlaceInstagramSchemaAsync();
+
         await EnsureImageFocalPointAsync();
 
         await EnsureAgentSchemaAsync();
@@ -478,7 +480,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
     private IContent CreatePlace(
         int parentId, string name, string description, string address, string phone,
         string hours, decimal latitude, decimal longitude, string[] facilities,
-        string? website = null, string? photoValue = null)
+        string? website = null, string? photoValue = null, string? instagram = null)
     {
         IContent place = CreateContent(name, parentId, "place");
         SetSeedValue(place, "description", description);
@@ -492,6 +494,11 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         if (website is not null)
         {
             SetSeedValue(place, "website", website);
+        }
+
+        if (instagram is not null)
+        {
+            SetSeedValue(place, "instagram", instagram);
         }
 
         if (photoValue is not null)
@@ -1466,12 +1473,17 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
                     19.4633m, -70.6707m,
                     ["Aire Acondicionado", "Parqueo", "Apto para Niños"],
                     Website: "https://centroleon.org.do"),
+                // Sin sitio propio: la página del Ministerio de Cultura describe el edificio
+                // y su archivo de eventos está vacío, y ningún portal de entradas lo lista
+                // (Fever solo tiene listas de espera). La programación se anuncia en su
+                // Instagram, que es lo que lee "--instagram-events".
                 new("Gran Teatro del Cibao",
                     "La sala mayor del Cibao: ópera, ballet, conciertos y teatro en un edificio de mármol frente al Monumento. Su programación cambia cada mes.",
                     "Av. Las Carreras, Santiago de los Caballeros", "809-583-1150",
                     "",
                     19.4512m, -70.6924m,
-                    ["Aire Acondicionado", "Parqueo"]),
+                    ["Aire Acondicionado", "Parqueo"],
+                    Instagram: "granteatrodelcibaoficial"),
                 new("Fortaleza San Luis",
                     "La fortaleza colonial de Santiago, hoy museo y sede de la Fortaleza Cultural: cañones, patios y salas de historia militar de la ciudad.",
                     "Calle San Luis, Reparto Universitario", "",
@@ -1745,14 +1757,15 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
             {
                 foreach (Atraccion a in definition.Attractions)
                 {
-                    if (Descendant(atracciones, "place", a.Name) is not null)
+                    if (Descendant(atracciones, "place", a.Name) is IContent existing)
                     {
+                        changed |= EnsureSeededInstagram(existing, a);
                         continue;
                     }
 
                     _logger.LogInformation("CityGuide: seeding attraction '{Name}' in '{City}'", a.Name, definition.Name);
                     created.Add(CreatePlace(atracciones.Id, a.Name, a.Description, a.Address, a.Phone,
-                        a.Hours, a.Latitude, a.Longitude, a.Facilities, website: a.Website));
+                        a.Hours, a.Latitude, a.Longitude, a.Facilities, website: a.Website, instagram: a.Instagram));
                 }
             }
 
@@ -3288,7 +3301,8 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
 
     private sealed record Atraccion(
         string Name, string Description, string Address, string Phone, string Hours,
-        decimal Latitude, decimal Longitude, string[] Facilities, string? Website = null);
+        decimal Latitude, decimal Longitude, string[] Facilities, string? Website = null,
+        string? Instagram = null);
 
     private static readonly Atraccion[] Atracciones =
     [
@@ -3394,20 +3408,21 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
             created.Add(atracciones);
         }
 
+        var repaired = false;
         foreach (Atraccion a in Atracciones)
         {
-            if (Descendant(atracciones, "place", a.Name) is not null)
+            if (Descendant(atracciones, "place", a.Name) is IContent existing)
             {
+                repaired |= EnsureSeededInstagram(existing, a);
                 continue;
             }
 
             _logger.LogInformation("CityGuide: seeding attraction '{Name}'", a.Name);
             created.Add(CreatePlace(atracciones.Id, a.Name, a.Description, a.Address, a.Phone,
-                a.Hours, a.Latitude, a.Longitude, a.Facilities, website: a.Website));
+                a.Hours, a.Latitude, a.Longitude, a.Facilities, website: a.Website, instagram: a.Instagram));
         }
 
         PublishSeeded(created);
-        var repaired = false;
         foreach ((string name, decimal staleLatitude, decimal staleLongitude,
             decimal latitude, decimal longitude) in AtraccionPinFixes)
         {
@@ -4287,6 +4302,63 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
                     $"Failed to add the reservation properties to '{alias}': {attempt.Result}");
             }
         }
+    }
+
+    /// <summary>
+    /// Idempotent, runs every startup: gives "place" an "instagram" field beside "website".
+    /// The Instagram pass of the agent reads a place's feed from the handle stored as its
+    /// website, which is what a beach bar without a site stores there — but a place with a
+    /// real site and a feed of its own had nowhere to say so, and for the Gran Teatro del
+    /// Cibao the feed is the only place its programme is announced. A handle says the same
+    /// thing in both languages, so the field is invariant like the website.
+    /// </summary>
+    private async Task EnsurePlaceInstagramSchemaAsync()
+    {
+        IContentType? place = _contentTypeService.Get("place");
+        if (place is null || place.PropertyTypeExists("instagram"))
+        {
+            return;
+        }
+
+        IDataType textstring = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.TextstringGuid))!;
+        _logger.LogInformation("CityGuide: adding 'instagram' property to 'place'");
+        var propertyType = new PropertyType(_shortStringHelper, textstring, "instagram")
+        {
+            Name = "Instagram",
+            Description = "La cuenta donde el lugar anuncia lo que hace (@cuenta o enlace). El agente "
+                + "lee de ahí sus eventos cuando el sitio web no es un perfil de Instagram.",
+            SortOrder = 4,
+        };
+        place.AddPropertyType(propertyType, "content", "Content");
+
+        Attempt<ContentTypeOperationStatus> attempt =
+            await _contentTypeService.UpdateAsync(place, Constants.Security.SuperUserKey);
+        if (!attempt.Success)
+        {
+            throw new InvalidOperationException(
+                $"Failed to add 'instagram' to 'place': {attempt.Result}");
+        }
+    }
+
+    /// <summary>
+    /// Writes the Instagram handle the table names on an attraction seeded before the field
+    /// existed. Only a blank field is filled — a handle an editor typed stays — and an
+    /// attraction the table names no handle for is left alone. Returns whether it wrote.
+    /// </summary>
+    private bool EnsureSeededInstagram(IContent place, Atraccion seed)
+    {
+        if (seed.Instagram is null
+            || !place.HasProperty("instagram")
+            || !string.IsNullOrWhiteSpace(place.GetValue<string>("instagram")))
+        {
+            return false;
+        }
+
+        _logger.LogInformation("CityGuide: setting the Instagram of '{Name}'", seed.Name);
+        SetSeedValue(place, "instagram", seed.Instagram);
+        _contentService.Save(place);
+        _contentService.Publish(place, SeededCultures(place));
+        return true;
     }
 
     /// <summary>
