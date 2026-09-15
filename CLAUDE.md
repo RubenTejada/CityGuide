@@ -878,7 +878,16 @@ observado (medido contra METAR: Santo Domingo 30,2° frente a 32°, Punta Cana 2
 frente a 31°, Santiago clavado). Así que WeatherAPI manda en el "ahora" y en los días
 que alcanza, Open-Meteo completa del cuarto al séptimo, y sin clave o ante una caída
 Open-Meteo responde sola: el portal nunca se queda sin clima, y en desarrollo funciona
-sin configurar nada. La clave es de servidor, no `NEXT_PUBLIC_`, así que se lee en
+sin configurar nada. El resumen diario de ninguna de las dos se usa: el código de
+Open-Meteo es el más severo de las veinticuatro horas, y en temporada de lluvias una
+hora de tormenta a media tarde hacía decir "Tormenta" los siete días; el de WeatherAPI
+es "lluvia" por un milímetro repartido en la tarde. La condición del día se saca de sus
+horas de luz con una sola regla para las dos (`dominantCondition`): de lluvia cuando
+llueve de verdad —medio milímetro por hora, no la décima con que el modelo marca
+"llovizna" media semana— un tercio de esas horas, y si no, el cielo que más horas
+ocupa; la probabilidad de lluvia va aparte y ya lo dice. El 1063 de WeatherAPI ("patchy
+rain nearby", sol tras la nube con chubasco posible) se lee como parcialmente nublado y
+no como lluvia, que es lo que decía la insignia a las tres de la tarde con el sol fuera. La clave es de servidor, no `NEXT_PUBLIC_`, así que se lee en
 tiempo de ejecución (ajuste de aplicación en App Service, no secreto de compilación).
 Las coordenadas son las que el nodo `city` ya lleva (`latitude`/`longitude`, el centro
 del mapa), de modo que una ciudad nueva trae su clima sin tocar código — y por eso ese

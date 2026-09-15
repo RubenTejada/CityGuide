@@ -8,7 +8,9 @@
 //     aeropuerto. Necesita una clave (gratis, `WEATHER_API_KEY`), y su plan
 //     gratuito solo pronostica tres días.
 //   * Open-Meteo es un modelo puro: sin clave, sin cuenta y con siete días, pero
-//     en la costa se queda uno o dos grados corto de lo observado.
+//     en la costa se queda uno o dos grados corto de lo observado, y su código
+//     diario es el peor de las 24 horas, así que el del día se saca aquí de las
+//     horas de luz (`dominantCondition`).
 //
 // Así que WeatherAPI manda en el "ahora" y en los días que alcanza, y Open-Meteo
 // completa el resto de la semana — y responde solo cuando no hay clave o la
@@ -93,13 +95,15 @@ export function conditionOf(code: number): WeatherCondition {
  */
 const WEATHER_API_CODES: Record<WeatherCondition, number[]> = {
   clear: [1000],
-  partlyCloudy: [1003],
+  // 1063, "patchy rain nearby", es sol entre nubes con una posibilidad de
+  // chubasco (su propio icono es un sol tras la nube), y es lo que WeatherAPI
+  // pone en el trópico la mitad de las horas: leído como lluvia, el portal
+  // decía "Lluvia" a las tres de la tarde con el sol fuera.
+  partlyCloudy: [1003, 1063],
   cloudy: [1006, 1009],
   fog: [1030, 1135, 1147],
   drizzle: [1150, 1153, 1168, 1171],
-  rain: [
-    1063, 1180, 1183, 1186, 1189, 1192, 1195, 1198, 1201, 1240, 1243, 1246,
-  ],
+  rain: [1180, 1183, 1186, 1189, 1192, 1195, 1198, 1201, 1240, 1243, 1246],
   thunderstorm: [1087, 1273, 1276, 1279, 1282],
   snow: [
     1066, 1069, 1072, 1114, 1117, 1204, 1207, 1210, 1213, 1216, 1219, 1222,
@@ -120,6 +124,92 @@ export function weatherApiConditionOf(code: number): WeatherCondition {
   return BY_WEATHER_API_CODE.get(code) ?? "cloudy";
 }
 
+/**
+ * De más a menos severa: es el orden en que se desempata cuando dos
+ * condiciones ocupan las mismas horas de un día.
+ */
+const SEVERITY: WeatherCondition[] = [
+  "thunderstorm",
+  "snow",
+  "rain",
+  "drizzle",
+  "fog",
+  "cloudy",
+  "partlyCloudy",
+  "clear",
+];
+
+const WET: ReadonlySet<WeatherCondition> = new Set([
+  "drizzle",
+  "rain",
+  "thunderstorm",
+  "snow",
+]);
+
+/**
+ * Lo que tiene que caer en una hora para contarla como hora de lluvia. Por
+ * debajo el modelo marca "llovizna" o "tormenta" con una décima de milímetro
+ * —ruido de modelo en el trópico, donde media semana lleva ese código— y no
+ * es nada que cambie un plan.
+ */
+const WET_MM_PER_HOUR = 0.5;
+
+/** La parte de las horas de luz que tiene que llover para que el día sea de lluvia. */
+const WET_SHARE = 1 / 3;
+
+/** Una hora de luz de un día, ya leída en la condición del portal. */
+interface DaylightHour {
+  condition: WeatherCondition;
+  /** Milímetros caídos en la hora. */
+  precipitation: number;
+}
+
+/** La condición que más horas ocupa entre las dadas, y a igual horas la más severa. */
+function mostHours(conditions: WeatherCondition[]): WeatherCondition | null {
+  const hours = new Map<WeatherCondition, number>();
+  for (const condition of conditions) {
+    hours.set(condition, (hours.get(condition) ?? 0) + 1);
+  }
+  return (
+    [...hours.entries()].sort(
+      ([a, ha], [b, hb]) =>
+        hb - ha || SEVERITY.indexOf(a) - SEVERITY.indexOf(b),
+    )[0]?.[0] ?? null
+  );
+}
+
+/**
+ * La condición de un día a partir de sus horas de luz, la misma regla para las
+ * dos fuentes, o los días de una no se leerían como los de la otra.
+ *
+ * Ninguna de las dos trae un resumen que sirva: el `weather_code` diario de
+ * Open-Meteo es el código más severo de las veinticuatro horas — y en el
+ * Caribe, en temporada de lluvias, casi todos los días tienen una hora de
+ * tormenta a media tarde: el portal decía "Tormenta" siete días seguidos
+ * sobre días de sol con un chubasco — y el de WeatherAPI es "lluvia" por un
+ * milímetro repartido en toda la tarde. Lo que decide un plan es cómo va a
+ * estar la mayor parte del día: es de lluvia
+ * cuando llueve de verdad un tercio de las horas de luz (y entonces la
+ * lluvia que más horas ocupa), y si no, el cielo que más horas ocupa entre
+ * las que no llueven. La lluvia que pueda caer ya la dice `rainChance` al
+ * lado. Un día de llovizna de una décima de milímetro hora tras hora, sin
+ * una hora de cielo, es un día nublado.
+ */
+function dominantCondition(hours: DaylightHour[]): WeatherCondition | null {
+  if (hours.length === 0) return null;
+  const wet = hours
+    .filter(
+      ({ condition, precipitation }) =>
+        WET.has(condition) && precipitation >= WET_MM_PER_HOUR,
+    )
+    .map(({ condition }) => condition);
+  if (wet.length >= hours.length * WET_SHARE) return mostHours(wet);
+  const dry = hours
+    .filter(({ condition }) => !WET.has(condition))
+    .map(({ condition }) => condition);
+  return mostHours(dry) ?? "cloudy";
+}
+
 // ---- WeatherAPI.com ----
 
 interface WeatherApiResponse {
@@ -138,6 +228,11 @@ interface WeatherApiResponse {
         daily_chance_of_rain?: number;
         condition?: { code?: number };
       };
+      hour?: {
+        is_day?: number;
+        precip_mm?: number;
+        condition?: { code?: number };
+      }[];
     }[];
   };
 }
@@ -164,11 +259,26 @@ async function fromWeatherApi(
   const days = (json?.forecast?.forecastday ?? []).flatMap(
     (entry): WeatherDay[] => {
       const day = entry.day;
+      const hours = (entry.hour ?? []).flatMap((hour): DaylightHour[] =>
+        hour.is_day === 1 && typeof hour.condition?.code === "number"
+          ? [
+              {
+                condition: weatherApiConditionOf(hour.condition.code),
+                precipitation: hour.precip_mm ?? 0,
+              },
+            ]
+          : [],
+      );
+      const condition =
+        dominantCondition(hours) ??
+        (typeof day?.condition?.code === "number"
+          ? weatherApiConditionOf(day.condition.code)
+          : null);
       if (
         typeof entry.date !== "string" ||
         typeof day?.maxtemp_c !== "number" ||
         typeof day?.mintemp_c !== "number" ||
-        typeof day?.condition?.code !== "number"
+        !condition
       ) {
         return [];
       }
@@ -177,7 +287,7 @@ async function fromWeatherApi(
           date: entry.date,
           max: day.maxtemp_c,
           min: day.mintemp_c,
-          condition: weatherApiConditionOf(day.condition.code),
+          condition,
           rainChance:
             typeof day.daily_chance_of_rain === "number"
               ? day.daily_chance_of_rain
@@ -210,10 +320,15 @@ interface OpenMeteoResponse {
   };
   daily?: {
     time?: string[];
-    weather_code?: number[];
     temperature_2m_max?: number[];
     temperature_2m_min?: number[];
     precipitation_probability_max?: (number | null)[];
+  };
+  hourly?: {
+    time?: string[];
+    weather_code?: number[];
+    is_day?: number[];
+    precipitation?: number[];
   };
 }
 
@@ -224,7 +339,8 @@ async function fromOpenMeteo(
   const url =
     `${OPEN_METEO}?latitude=${latitude.toFixed(3)}&longitude=${longitude.toFixed(3)}` +
     "&current=temperature_2m,apparent_temperature,weather_code,is_day" +
-    "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max" +
+    "&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max" +
+    "&hourly=weather_code,is_day,precipitation" +
     `&timezone=${encodeURIComponent(TIME_ZONE)}&forecast_days=${FORECAST_DAYS}`;
 
   const json = await readJson<OpenMeteoResponse>(url);
@@ -236,16 +352,26 @@ async function fromOpenMeteo(
     return null;
   }
 
+  // Las horas de luz de cada día, agrupadas por su fecha ("2026-09-15T14:00").
+  const hourly = json?.hourly;
+  const daylight = new Map<string, DaylightHour[]>();
+  (hourly?.time ?? []).forEach((time, i) => {
+    const code = hourly?.weather_code?.[i];
+    const precipitation = hourly?.precipitation?.[i] ?? 0;
+    if (typeof code !== "number" || hourly?.is_day?.[i] !== 1) return;
+    const date = time.slice(0, 10);
+    daylight.set(date, [
+      ...(daylight.get(date) ?? []),
+      { condition: conditionOf(code), precipitation },
+    ]);
+  });
+
   const daily = json?.daily;
   const days = (daily?.time ?? []).flatMap((date, i): WeatherDay[] => {
     const max = daily?.temperature_2m_max?.[i];
     const min = daily?.temperature_2m_min?.[i];
-    const code = daily?.weather_code?.[i];
-    if (
-      typeof max !== "number" ||
-      typeof min !== "number" ||
-      typeof code !== "number"
-    ) {
+    const condition = dominantCondition(daylight.get(date) ?? []);
+    if (typeof max !== "number" || typeof min !== "number" || !condition) {
       return [];
     }
     const rain = daily?.precipitation_probability_max?.[i];
@@ -254,7 +380,7 @@ async function fromOpenMeteo(
         date,
         max,
         min,
-        condition: conditionOf(code),
+        condition,
         rainChance: typeof rain === "number" ? rain : null,
       },
     ];
