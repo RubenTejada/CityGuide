@@ -860,6 +860,16 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         return content;
     }
 
+    /// <summary>
+    /// Reads a seeded value back the way <see cref="SetSeedValue"/> wrote it: a
+    /// culture-variant property read without a culture answers null, so a comparison
+    /// made that way never matches and the seed is rewritten on every startup.
+    /// </summary>
+    private static string? GetSeedValue(IContent content, string alias) =>
+        content.Properties[alias]?.PropertyType.VariesByCulture() == true
+            ? content.GetValue<string>(alias, SpanishCulture)
+            : content.GetValue<string>(alias);
+
     /// <summary>Writes a seeded value, in Spanish for the properties that vary by culture.</summary>
     private static void SetSeedValue(IContent content, string alias, object? value)
     {
@@ -1757,7 +1767,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
             // same reason, and by that sentence alone: anything an editor wrote instead
             // stays where it is.
             bool opening = city.GetValue<bool>("comingSoon");
-            bool announcing = city.GetValue<string>("intro")?.TrimEnd()
+            bool announcing = GetSeedValue(city, "intro")?.TrimEnd()
                 .EndsWith(ComingSoonNotice, StringComparison.Ordinal) == true;
             if (opening || announcing)
             {
@@ -3150,9 +3160,9 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
             // changes, so content fixes reach installations already seeded.
             if (Descendant(articulos, "article", seed.Name) is { } existing)
             {
-                if (existing.GetValue<string>("body") == seed.Body
-                    && existing.GetValue<string>("summary") == seed.Summary
-                    && existing.GetValue<string>("heroImageUrl") == seed.HeroImageUrl)
+                if (GetSeedValue(existing, "body") == seed.Body
+                    && GetSeedValue(existing, "summary") == seed.Summary
+                    && GetSeedValue(existing, "heroImageUrl") == seed.HeroImageUrl)
                 {
                     continue;
                 }
