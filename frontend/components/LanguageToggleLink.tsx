@@ -15,6 +15,11 @@ export const LANGUAGE_TOGGLE_CLASS =
  * page rendered for the request (a listing, the search) the server writes the
  * real href, query and all, and on a prerendered one this renders in the
  * browser, under the boundary its wrapper puts around it.
+ *
+ * `nofollow` because the href is /api/language, which robots.txt disallows: every
+ * page carried a URL of its own there, and Search Console reported them as
+ * "Blocked by robots.txt". A crawler loses nothing by skipping it — the page it
+ * leads to is already declared by each page's hreflang alternates.
  */
 export default function LanguageToggleLink({ locale }: { locale: Locale }) {
   const pathname = usePathname();
@@ -26,6 +31,7 @@ export default function LanguageToggleLink({ locale }: { locale: Locale }) {
     <a
       href={`/api/language?to=${other}&path=${encodeURIComponent(target)}`}
       hrefLang={other}
+      rel="nofollow"
       title={t(locale).nav.language}
       className={LANGUAGE_TOGGLE_CLASS}
     >
