@@ -34,6 +34,8 @@ Steps from the Monument, Noah blends Dominican flavors with international cookin
 
 ## Casa Musa
 
+![Casa Musa](/media/ovzgjdli/casa-musa-google-1.jpg)
+
 Another neighbor of the Monument, with a carefully put together kitchen and cocktail program. It is the kind of place where you start with a drink looking at the tower and end up staying for dinner. On weekends, book ahead: the room is not huge and the view fills it up.
 
 [See hours, map and photos](/en/santiago/restaurants/other/casa-musa/)

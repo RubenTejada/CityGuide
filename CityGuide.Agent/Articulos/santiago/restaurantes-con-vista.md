@@ -37,6 +37,8 @@ A pasos del Monumento, Noah combina sabores dominicanos con cocina internacional
 
 ## Casa Musa
 
+![Casa Musa](/media/ovzgjdli/casa-musa-google-1.jpg)
+
 Otro vecino del Monumento, con una propuesta cuidada de cocina y coctelería. Es de esos sitios donde se empieza con un trago mirando la torre y se termina cenando sin haberlo planeado. Si vas en fin de semana, reserva: el espacio no es enorme y la vista hace que se llene.
 
 [Ver horario, mapa y fotos](/santiago/restaurantes/otros/casa-musa/)
