@@ -1,0 +1,117 @@
+name: Agent — artículos y facilidades
+
+# The passes behind a themed article ("Los restaurantes con las mejores vistas de
+# Santiago"): what Google states about the facilities of the places a city already has,
+# a facility put by hand on the places of one theme, and the article itself, written
+# outside the agent and committed under CityGuide.Agent/Articulos. They live here and
+# not in "Run agent" because that workflow already carries the 25 inputs GitHub allows.
+# The gallery and the menu of the chosen places are "Run agent" with gallery/menus and
+# the places' own paths as the section.
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: What to run.
+        type: choice
+        required: true
+        options:
+          - facilities
+          - add-facility
+          - add-article
+      apply:
+        description: Write the changes. Left off, the run only prints the plan.
+        type: boolean
+        required: false
+        default: false
+      section:
+        description: >-
+          facilities: the part of the site to cover, as in "Run agent"
+          ("santiago", "santiago/restaurantes").
+        type: string
+        required: false
+      count:
+        description: >-
+          facilities: how many places to ask Google about, best known first. Each
+          one is billed ($25 per 1.000). Empty is the agent's default.
+        type: string
+        required: false
+      force:
+        description: "facilities: ask again about places already asked."
+        type: boolean
+        required: false
+        default: false
+      facility:
+        description: >-
+          add-facility: the facility to add ("Vistas Panorámicas", "Fotogénico"…).
+        type: string
+        required: false
+      places:
+        description: "add-facility: the paths of the places, comma-separated."
+        type: string
+        required: false
+      article:
+        description: >-
+          add-article: the article under CityGuide.Agent/Articulos, without the
+          extension — "santiago/restaurantes-con-vista". The first segment is the
+          city, and a ".en.md" beside the ".md" is its English version.
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+# The same group as "Run agent": two passes writing the same places at once would
+# each send back the document the other had not finished changing.
+concurrency:
+  group: run-agent
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Run the pass
+        working-directory: CityGuide.Agent
+        env:
+          Umbraco__BaseUrl: https://quehacerrd-cms.azurewebsites.net
+          Umbraco__ClientSecret: ${{ secrets.UMBRACO_AGENT_CLIENT_SECRET }}
+          Google__ApiKey: ${{ secrets.GOOGLE_API_KEY }}
+          TASK: ${{ inputs.task }}
+          APPLY: ${{ inputs.apply }}
+          SECTION: ${{ inputs.section }}
+          COUNT: ${{ inputs.count }}
+          FORCE: ${{ inputs.force }}
+          FACILITY: ${{ inputs.facility }}
+          PLACES: ${{ inputs.places }}
+          ARTICLE: ${{ inputs.article }}
+        run: |
+          apply_flag=""
+          if [ "$APPLY" = "true" ]; then apply_flag="--apply"; fi
+          case "$TASK" in
+            facilities)
+              section_flag=""
+              if [ -n "$SECTION" ]; then section_flag="--section $SECTION"; fi
+              force_flag=""
+              if [ "$FORCE" = "true" ]; then force_flag="--force"; fi
+              dotnet run -c Release -- --paid --facilities $COUNT $section_flag $force_flag $apply_flag
+              ;;
+            add-facility)
+              dotnet run -c Release -- --add-facility "$FACILITY" "$PLACES" $apply_flag
+              ;;
+            add-article)
+              city="/${ARTICLE%%/*}"
+              if [ -f "Articulos/$ARTICLE.en.md" ]; then
+                dotnet run -c Release -- --add-article "$city" "Articulos/$ARTICLE.md" --en "Articulos/$ARTICLE.en.md" $apply_flag
+              else
+                dotnet run -c Release -- --add-article "$city" "Articulos/$ARTICLE.md" $apply_flag
+              fi
+              ;;
+          esac

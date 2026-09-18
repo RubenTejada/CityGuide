@@ -284,6 +284,11 @@ public class GoogleConfig
     /// makes "best rated" mean "best known and best rated". A section whose places are
     /// all below it gets no gallery rather than an arbitrary one.</summary>
     public int GalleryMinReviews { get; set; } = 100;
+
+    /// <summary>How many places one "--facilities" pass asks Google about when the
+    /// command line does not say ("--facilities 300"). Each one is a Place Details
+    /// request at the Atmosphere tier, $25 per 1.000, and the best known come first.</summary>
+    public int MaxFacilityPlaces { get; set; } = 100;
 }
 
 public class AzureOpenAiConfig

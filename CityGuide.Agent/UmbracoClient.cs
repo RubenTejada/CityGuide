@@ -673,7 +673,8 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         string? Source, DateTime CreateDate,
         string? Phone = null, string? Website = null, string? Hours = null,
         int RatingCount = 0, int GalleryCount = 0, int MenuCount = 0,
-        string? PhotoUrl = null, bool HasMenuData = false, string? Instagram = null)
+        string? PhotoUrl = null, bool HasMenuData = false, string? Instagram = null,
+        bool FacilitiesRead = false)
     {
         public bool HasPhoto => PhotoMediaKey is not null;
 
@@ -741,7 +742,8 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
                 item.GetProperty("createDate").GetDateTime(),
                 Text("phone"), Text("website"), Text("hours"),
                 (int)Coord("googleRatingCount"), Images("gallery"), Images("menu"),
-                photoAddress, Text("menuData") is not null, Text("instagram")));
+                photoAddress, Text("menuData") is not null, Text("instagram"),
+                Text("facilitiesUpdated") is not null));
         }
 
         return places;
@@ -1126,6 +1128,38 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         values["gallery"] = JsonSerializer.SerializeToElement(
             mediaKeys.Select(mediaKey => new { key = Guid.NewGuid(), mediaKey }));
         await WriteDocumentAsync(id, name, values, state);
+    }
+
+    /// <summary>
+    /// Adds facilities to the ones a place already carries and returns the ones that
+    /// were new. Nothing is ever taken away: what an editor ticked stays ticked.
+    /// <paramref name="stamp"/> records that Google was asked about the place today,
+    /// whatever it answered, which is what keeps the pass that pays for the question
+    /// from asking it twice; a facility added by hand leaves that date alone.
+    /// </summary>
+    public async Task<string[]> AddFacilitiesAsync(Guid id, IReadOnlyCollection<string> facilities, bool stamp)
+    {
+        (string name, string state, Dictionary<string, object?> values) = await ReadDocumentAsync(id);
+        string[] stored = values.TryGetValue("facilities", out object? current)
+            && current is JsonElement { ValueKind: JsonValueKind.Array } list
+                ? [.. list.EnumerateArray()
+                    .Where(f => f.ValueKind == JsonValueKind.String)
+                    .Select(f => f.GetString()!)]
+                : [];
+        string[] added = [.. facilities.Except(stored)];
+        if (added.Length == 0 && !stamp)
+        {
+            return added;
+        }
+
+        values["facilities"] = JsonSerializer.SerializeToElement(stored.Concat(added));
+        if (stamp)
+        {
+            values["facilitiesUpdated"] = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss");
+        }
+
+        await WriteDocumentAsync(id, name, values, state);
+        return added;
     }
 
     /// <summary>

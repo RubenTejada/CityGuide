@@ -11,6 +11,12 @@ export const FACILITY_ICONS: Record<string, string> = {
   Terraza: "🌴",
   "Música en Vivo": "🎵",
   "Apto para Niños": "👶",
+  "Vistas Panorámicas": "🌄",
+  "Deportes en Pantalla": "📺",
+  "Grupos y Celebraciones": "🎉",
+  Fotogénico: "📸",
+  "Pet Friendly": "🐾",
+  Brunch: "🥞",
 };
 
 /**

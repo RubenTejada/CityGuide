@@ -30,6 +30,11 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
     [
         "Romántico", "Aire Acondicionado", "Horario Extendido", "Restaurante en el Lugar",
         "Parqueo", "WiFi", "Delivery", "Terraza", "Música en Vivo", "Apto para Niños",
+        // Las que nadie adivina: las afirma Google de un lugar o las pone una persona
+        // que ha estado (Facilities en el agente), y son las que agrupan los lugares de
+        // un artículo temático.
+        "Vistas Panorámicas", "Deportes en Pantalla", "Grupos y Celebraciones",
+        "Fotogénico", "Pet Friendly", "Brunch",
     ];
 
     private readonly IRuntimeState _runtimeState;
@@ -145,6 +150,8 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         await EnsurePlaceGallerySchemaAsync();
 
         await EnsurePlaceMenuSchemaAsync();
+
+        await EnsurePlaceFacilitiesSchemaAsync();
 
         await EnsurePlaceReservationSchemaAsync();
 
@@ -4242,6 +4249,51 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
             await _dataTypeService.UpdateAsync(picker, Constants.Security.SuperUserKey);
             _logger.LogInformation(
                 "CityGuide: enabled the local focal point on data type '{DataType}'", picker.Name);
+        }
+    }
+
+    /// <summary>
+    /// Idempotent, runs every startup: brings the facilities checkbox list of an
+    /// installation already seeded up to <see cref="FacilityOptions"/> — the data type is
+    /// only created once, so an option added later would never reach the backoffice, and
+    /// an editor saving a place would drop the values the list does not offer — and gives
+    /// "place" the date Google was last asked about its facilities ("facilitiesUpdated"),
+    /// which is what keeps the agent's billed pass from asking about the same place twice.
+    /// </summary>
+    private async Task EnsurePlaceFacilitiesSchemaAsync()
+    {
+        if (await _dataTypeService.GetAsync("CityGuide Facilities") is { } facilities)
+        {
+            string[] offered = facilities.ConfigurationData.TryGetValue("items", out object? items)
+                ? JsonSerializer.Deserialize<string[]>(JsonSerializer.Serialize(items)) ?? []
+                : [];
+            if (FacilityOptions.Except(offered).Any())
+            {
+                facilities.ConfigurationData = new Dictionary<string, object>(facilities.ConfigurationData)
+                {
+                    ["items"] = offered.Union(FacilityOptions).ToArray(),
+                };
+                await _dataTypeService.UpdateAsync(facilities, Constants.Security.SuperUserKey);
+                _logger.LogInformation("CityGuide: added the new options to 'CityGuide Facilities'");
+            }
+        }
+
+        IContentType? place = _contentTypeService.Get("place");
+        if (place is null || place.PropertyTypeExists("facilitiesUpdated"))
+        {
+            return;
+        }
+
+        IDataType datePicker =
+            (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.DatePickerWithTimeGuid))!;
+        _logger.LogInformation("CityGuide: adding 'facilitiesUpdated' property to 'place'");
+        AddProperty(place, "facilitiesUpdated", "Facilidades consultadas a Google", datePicker, 18);
+        Attempt<ContentTypeOperationStatus> attempt =
+            await _contentTypeService.UpdateAsync(place, Constants.Security.SuperUserKey);
+        if (!attempt.Success)
+        {
+            throw new InvalidOperationException(
+                $"Failed to add 'facilitiesUpdated' to 'place': {attempt.Result}");
         }
     }
 

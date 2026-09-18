@@ -438,6 +438,189 @@ if (args.Contains("--translate"))
     return 0;
 }
 
+// Las facilidades de los lugares que ya existen, leídas de lo que Google afirma de ellos
+// (terraza, música en vivo, deportes en pantalla, grupos, mascotas, brunch…). El modelo
+// solo las adivina al crear el lugar y casi siempre se queda corto. Cada lugar es una
+// consulta del nivel más caro de Google ($25 por 1.000), así que el pase pide --paid, va
+// de los más conocidos a los menos, se limita con "--facilities <n>" y no vuelve a
+// preguntar por un lugar ya preguntado salvo con --force. Plan hasta --apply.
+if (args.Contains("--facilities"))
+{
+    if (string.IsNullOrEmpty(config.Google.ApiKey))
+    {
+        Console.Error.WriteLine(
+            "--facilities consulta Google Places, que se factura por lugar. "
+            + "Añade --paid para ejecutarlo.");
+        return 1;
+    }
+
+    int facilityPlaces =
+        int.TryParse(args.SkipWhile(a => a != "--facilities").Skip(1).FirstOrDefault(), out int askedPlaces)
+            ? askedPlaces
+            : config.Google.MaxFacilityPlaces;
+    await new PlaceFacilities(google, umbraco)
+        .RunAsync(args.Contains("--apply"), SectionSelected, facilityPlaces, args.Contains("--force"));
+    return 0;
+}
+
+// Una facilidad puesta a mano en varios lugares a la vez, para lo que Google no afirma
+// en ningún campo y solo sabe quien ha estado: la vista, lo fotogénico. Es la etiqueta
+// que agrupa los lugares de un artículo temático. No cuesta nada y solo añade. Plan
+// hasta --apply.
+if (args.Contains("--add-facility"))
+{
+    string[] tagged = [.. args.SkipWhile(a => a != "--add-facility").Skip(1).Take(2)];
+    if (tagged.Length < 2 || tagged.Any(a => a.StartsWith("--", StringComparison.Ordinal)))
+    {
+        Console.Error.WriteLine(
+            "--add-facility necesita la facilidad y las rutas de los lugares separadas por "
+            + "comas. Ejemplo: dotnet run -- --add-facility \"Vistas Panorámicas\" "
+            + "/santiago/restaurantes/criolla/camp-david-ranch,/santiago/bares-y-clubes/otro");
+        return 1;
+    }
+
+    if (!Facilities.All.Contains(tagged[0]))
+    {
+        Console.Error.WriteLine(
+            $"Facilidad desconocida: {tagged[0]}. Las que existen: {string.Join(", ", Facilities.All)}.");
+        return 1;
+    }
+
+    List<UmbracoClient.PublishedPlace> published = await umbraco.GetPublishedPlacesAsync();
+    var targets = new List<UmbracoClient.PublishedPlace>();
+    foreach (string asked in tagged[1].Split(',', StringSplitOptions.RemoveEmptyEntries))
+    {
+        string path = $"/{asked.Trim().Trim('/')}/";
+        if (published.FirstOrDefault(p => p.Path.Equals(path, StringComparison.OrdinalIgnoreCase))
+            is not { } target)
+        {
+            Console.Error.WriteLine($"No hay ningún lugar publicado en {path}.");
+            return 1;
+        }
+
+        targets.Add(target);
+    }
+
+    bool applyFacility = args.Contains("--apply");
+    Console.WriteLine(applyFacility
+        ? $"\n== {tagged[0]}"
+        : $"\n== {tagged[0]} (simulación; agrega --apply para aplicarla)");
+    foreach (UmbracoClient.PublishedPlace target in targets)
+    {
+        if (!applyFacility)
+        {
+            Console.WriteLine($"  {target.Name} — {target.Path}");
+            continue;
+        }
+
+        string[] added = await umbraco.AddFacilitiesAsync(target.Id, [tagged[0]], stamp: false);
+        Console.WriteLine($"  {target.Name}: {(added.Length == 0 ? "ya la tenía" : "añadida")}");
+    }
+
+    return 0;
+}
+
+// Un artículo escrito fuera del agente, publicado bajo los artículos de una ciudad.
+// Redactar una guía ("Los restaurantes con las mejores vistas de Santiago") pide saber
+// cosas que no están en el CMS ni en Google, así que el texto llega hecho, en un archivo
+// Markdown con encabezado (ArticleFile), y el agente solo lo escribe por el mismo camino
+// que todo lo demás. "--en" trae la versión inglesa; sin ella el artículo queda en
+// español hasta el pase --translate. Un artículo con el mismo título se actualiza en vez
+// de duplicarse. No cuesta nada. Plan hasta --apply.
+if (args.Contains("--add-article"))
+{
+    string[] given = [.. args.SkipWhile(a => a != "--add-article").Skip(1).Take(2)];
+    string? englishPath = args.SkipWhile(a => a != "--en").Skip(1).FirstOrDefault();
+    if (given.Length < 2 || given.Any(a => a.StartsWith("--", StringComparison.Ordinal))
+        || (args.Contains("--en") && englishPath is null))
+    {
+        Console.Error.WriteLine(
+            "--add-article necesita la ciudad y el archivo del artículo. Ejemplo: "
+            + "dotnet run -- --add-article /santiago articulo.md --en articulo.en.md");
+        return 1;
+    }
+
+    ArticleFile spanish;
+    ArticleFile? english;
+    try
+    {
+        spanish = ArticleFile.Parse(await File.ReadAllTextAsync(given[1]));
+        english = englishPath is null ? null : ArticleFile.Parse(await File.ReadAllTextAsync(englishPath));
+    }
+    catch (Exception ex) when (ex is FormatException or IOException)
+    {
+        Console.Error.WriteLine(ex.Message);
+        return 1;
+    }
+
+    // La categoría es vocabulario y no texto libre: la página inglesa la traduce por
+    // tabla, y una que la tabla no conoce saldría en español.
+    if (spanish.Category is not null)
+    {
+        if (TranslatedVocabulary.Category(spanish.Category) is not { } englishCategory)
+        {
+            Console.Error.WriteLine($"Categoría desconocida: {spanish.Category}.");
+            return 1;
+        }
+
+        english = english is null ? null : english with { Category = englishCategory };
+    }
+
+    string articlesPath = $"/{given[0].Trim('/')}/articulos";
+    if (await umbraco.GetContentByPathAsync(articlesPath) is not { } articlesPage)
+    {
+        Console.Error.WriteLine($"No hay sección de artículos publicada en {articlesPath}.");
+        return 1;
+    }
+
+    UmbracoClient.ChildDocument? existingArticle = (await umbraco.GetChildrenAsync(articlesPage.Id))
+        .FirstOrDefault(c => c.Name.Equals(spanish.Title, StringComparison.OrdinalIgnoreCase));
+    bool applyArticle = args.Contains("--apply");
+    Console.WriteLine(applyArticle
+        ? $"\n== Artículo en {articlesPath}"
+        : $"\n== Artículo en {articlesPath} (simulación; agrega --apply para aplicarla)");
+    Console.WriteLine($"  {(existingArticle is null ? "nuevo" : "se actualiza")}: {spanish.Title}");
+    Console.WriteLine($"  {spanish.Summary}");
+    Console.WriteLine($"  {spanish.Body.Length} caracteres, categoría {spanish.Category ?? "ninguna"}, "
+        + $"portada {spanish.HeroImage ?? "ninguna"}");
+    Console.WriteLine(english is null
+        ? "  sin versión en inglés: queda para --translate"
+        : $"  en inglés: {english.Title} ({english.Body.Length} caracteres)");
+    if (!applyArticle)
+    {
+        return 0;
+    }
+
+    Guid articleId;
+    if (existingArticle is null)
+    {
+        // La fecha de publicación es la del primer día y no se toca al actualizar: es
+        // lo que ordena la sección y lo que el artículo declara a los buscadores.
+        articleId = await umbraco.CreateDocumentAsync(
+            articlesPage.Id, await umbraco.GetDocumentTypeIdAsync("Article"), spanish.Title,
+            spanish.Values(shared: true).Append(new
+            {
+                alias = "publishDate",
+                value = (object?)DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss"),
+            }));
+    }
+    else
+    {
+        articleId = existingArticle.Id;
+        await umbraco.WriteCultureAsync(
+            articleId, spanish.Title, spanish.Values(shared: true), ContentCultures.Spanish);
+    }
+
+    if (english is not null)
+    {
+        await umbraco.WriteCultureAsync(
+            articleId, english.Title, english.Values(shared: false), ContentCultures.English);
+    }
+
+    Console.WriteLine("  publicado");
+    return 0;
+}
+
 // Maintenance pass: the photo gallery of the places a section leads with. Google names
 // a place's photos for free and bills only the download, so this is the one pass whose
 // cost is exactly the pictures it brings home — it covers the best-rated places of the

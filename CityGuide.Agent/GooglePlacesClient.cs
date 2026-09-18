@@ -57,6 +57,16 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
     /// display name would make the request Pro, a rating Enterprise.</summary>
     private static readonly string[] PhotoFields = ["id", "photos"];
 
+    /// <summary>What Google's visitors say a place is like. One of these fields makes a
+    /// details request "Enterprise + Atmosphere" ($25 per 1.000), the dearest tier there
+    /// is, so they are asked for together, by the one pass that reads them, and never
+    /// ride on a discovery query.</summary>
+    private static readonly string[] AtmosphereFields =
+    [
+        "id", "outdoorSeating", "liveMusic", "goodForChildren", "goodForGroups",
+        "goodForWatchingSports", "allowsDogs", "servesBrunch", "delivery", "parkingOptions",
+    ];
+
     private static string Mask(string[] fields, bool search) => string.Join(",",
         search ? fields.Select(f => $"places.{f}") : fields);
 
@@ -250,6 +260,45 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
     }
 
     /// <summary>
+    /// What Google states about the atmosphere of a place, or null when the place is
+    /// gone or the request fails. A field Google leaves out reads as false: the caller
+    /// only acts on what is stated to be true.
+    /// </summary>
+    public async Task<PlaceAtmosphere?> GetAtmosphereAsync(string placeId)
+    {
+        if (!Enabled)
+        {
+            return null;
+        }
+
+        HttpResponseMessage response = await SendAsync(() =>
+        {
+            var request = new HttpRequestMessage(
+                HttpMethod.Get, $"https://places.googleapis.com/v1/places/{placeId}");
+            request.Headers.Add("X-Goog-Api-Key", apiKey);
+            request.Headers.Add("X-Goog-FieldMask", Mask(AtmosphereFields, search: false));
+
+            return request;
+        });
+        if (!response.IsSuccessStatusCode
+            || await response.Content.ReadFromJsonAsync<AtmosphereModel>() is not { } place)
+        {
+            return null;
+        }
+
+        ParkingModel? parking = place.ParkingOptions;
+        return new PlaceAtmosphere(
+            place.OutdoorSeating == true, place.LiveMusic == true, place.GoodForChildren == true,
+            place.GoodForGroups == true, place.GoodForWatchingSports == true,
+            place.AllowsDogs == true, place.ServesBrunch == true, place.Delivery == true,
+            // Parking a visitor can count on: a lot, a garage or a valet. Street parking
+            // is what every address has and says nothing about the place.
+            parking is not null && (parking.FreeParkingLot == true || parking.PaidParkingLot == true
+                || parking.FreeGarageParking == true || parking.PaidGarageParking == true
+                || parking.ValetParking == true));
+    }
+
+    /// <summary>
     /// Everything Google knows about a place the CMS identifies by id — Place Details
     /// on the Enterprise tier, which is what a rating costs. The mask therefore asks
     /// for the address, the phone, the website and the opening hours too: they ride
@@ -426,6 +475,24 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
         [property: JsonPropertyName("rating")] double? Rating,
         [property: JsonPropertyName("userRatingCount")] int? UserRatingCount,
         [property: JsonPropertyName("photos")] List<PhotoModel>? Photos);
+
+    private record AtmosphereModel(
+        [property: JsonPropertyName("outdoorSeating")] bool? OutdoorSeating,
+        [property: JsonPropertyName("liveMusic")] bool? LiveMusic,
+        [property: JsonPropertyName("goodForChildren")] bool? GoodForChildren,
+        [property: JsonPropertyName("goodForGroups")] bool? GoodForGroups,
+        [property: JsonPropertyName("goodForWatchingSports")] bool? GoodForWatchingSports,
+        [property: JsonPropertyName("allowsDogs")] bool? AllowsDogs,
+        [property: JsonPropertyName("servesBrunch")] bool? ServesBrunch,
+        [property: JsonPropertyName("delivery")] bool? Delivery,
+        [property: JsonPropertyName("parkingOptions")] ParkingModel? ParkingOptions);
+
+    private record ParkingModel(
+        [property: JsonPropertyName("freeParkingLot")] bool? FreeParkingLot,
+        [property: JsonPropertyName("paidParkingLot")] bool? PaidParkingLot,
+        [property: JsonPropertyName("freeGarageParking")] bool? FreeGarageParking,
+        [property: JsonPropertyName("paidGarageParking")] bool? PaidGarageParking,
+        [property: JsonPropertyName("valetParking")] bool? ValetParking);
 
     private record PhotoModel([property: JsonPropertyName("name")] string? Name);
 

@@ -1195,6 +1195,12 @@ const en: typeof es = {
     Terraza: "Terrace",
     "Música en Vivo": "Live Music",
     "Apto para Niños": "Kid Friendly",
+    "Vistas Panorámicas": "Scenic Views",
+    "Deportes en Pantalla": "Sports on Screen",
+    "Grupos y Celebraciones": "Groups & Celebrations",
+    Fotogénico: "Photogenic",
+    "Pet Friendly": "Pet Friendly",
+    Brunch: "Brunch",
   },
 };
 

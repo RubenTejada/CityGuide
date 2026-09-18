@@ -153,6 +153,39 @@ cd CityGuide.Agent && dotnet run -- --paid --recategorize-places --section santi
 cd CityGuide.Agent && dotnet run -- --paid --gallery 2 --section restaurantes
 cd CityGuide.Agent && dotnet run -- --paid --gallery 2 --section restaurantes --apply
 
+# The gallery and the menu of chosen places rather than of the best rated: a --section
+# selector may be a place's own path, so the two passes cover exactly the places named
+# (the review floor still applies).
+cd CityGuide.Agent && dotnet run -- --paid --gallery 5 --section santiago/restaurantes/criolla/camp-david-ranch,santiago/bares-y-clubes/otro --apply
+
+# The facilities of the places a city already has, from what Google states about them
+# (terrace, live music, sports on screen, groups, dogs, brunch, delivery, parking). The
+# model only guesses facilities when it creates a place, and mostly guesses none. One
+# Place Details request per place at the dearest tier ($25 per 1.000), so it needs
+# --paid, goes best known first, is capped by the number, and stamps every place it
+# asked about ("facilitiesUpdated") so a later pass moves on instead of paying twice;
+# --force asks again. It only ever adds. Plan until --apply.
+cd CityGuide.Agent && dotnet run -- --paid --facilities 300 --section santiago
+cd CityGuide.Agent && dotnet run -- --paid --facilities 300 --section santiago --apply
+# A facility put by hand on several places at once, for what Google states nowhere and
+# only someone who has been there knows — the view, the photogenic room. Free. The
+# vocabulary is closed (Facilities.All): the ten the model may guess plus the six it may
+# not ("Vistas Panorámicas", "Deportes en Pantalla", "Grupos y Celebraciones",
+# "Fotogénico", "Pet Friendly", "Brunch"), which are what a themed article groups by.
+cd CityGuide.Agent && dotnet run -- --add-facility "Vistas Panorámicas" \
+  /santiago/restaurantes/criolla/camp-david-ranch,/santiago/bares-y-clubes/otro --apply
+
+# An article written outside the agent, published under a city's articles: a Markdown
+# file with a header (title, summary, category, heroImage, author, metaTitle,
+# metaDescription — see ArticleFile) and the body ArticleBody renders. --en is its
+# English version (links spelled "/en/..."); without it the article waits for
+# --translate. Same title = update, and the publish date is only set the first time.
+# Free. The files live in CityGuide.Agent/Articulos/<city>/, which is where the
+# "Agent — artículos y facilidades" workflow reads them from to write to production
+# ("Run agent" is at GitHub's 25-input ceiling, so these three passes have their own).
+cd CityGuide.Agent && dotnet run -- --add-article /santiago Articulos/santiago/restaurantes-con-vista.md \
+  --en Articulos/santiago/restaurantes-con-vista.en.md --apply
+
 # The menu of the best-rated restaurants, read from their own site: Google's Places
 # API states no menu, only the address of the site, so that is the one source there
 # is. A PDF becomes one image per page and a "carta" page gives up the pictures on
