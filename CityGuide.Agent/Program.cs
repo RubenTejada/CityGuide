@@ -566,19 +566,31 @@ if (args.Contains("--add-article"))
         english = english is null ? null : english with { Category = englishCategory };
     }
 
-    string articlesPath = $"/{given[0].Trim('/')}/articulos";
-    if (await umbraco.GetContentByPathAsync(articlesPath) is not { } articlesPage)
+    // La sección solo existe en las ciudades que el CMS sembró con artículos de muestra;
+    // en las demás la crea el primer artículo, con su nombre en los dos idiomas, porque
+    // una cultura solo enruta cuando todos sus ancestros están publicados en ella.
+    string cityPath = $"/{given[0].Trim('/')}";
+    string articlesPath = $"{cityPath}/articulos";
+    (Guid Id, string Name)? articlesPage = await umbraco.GetContentByPathAsync(articlesPath);
+    if (articlesPage is null && await umbraco.GetContentByPathAsync(cityPath) is null)
     {
-        Console.Error.WriteLine($"No hay sección de artículos publicada en {articlesPath}.");
+        Console.Error.WriteLine($"No hay ninguna ciudad publicada en {cityPath}.");
         return 1;
     }
 
-    UmbracoClient.ChildDocument? existingArticle = (await umbraco.GetChildrenAsync(articlesPage.Id))
-        .FirstOrDefault(c => c.Name.Equals(spanish.Title, StringComparison.OrdinalIgnoreCase));
+    UmbracoClient.ChildDocument? existingArticle = articlesPage is null
+        ? null
+        : (await umbraco.GetChildrenAsync(articlesPage.Value.Id))
+            .FirstOrDefault(c => c.Name.Equals(spanish.Title, StringComparison.OrdinalIgnoreCase));
     bool applyArticle = args.Contains("--apply");
     Console.WriteLine(applyArticle
         ? $"\n== Artículo en {articlesPath}"
         : $"\n== Artículo en {articlesPath} (simulación; agrega --apply para aplicarla)");
+    if (articlesPage is null)
+    {
+        Console.WriteLine($"  la sección {articlesPath} no existe: se crea");
+    }
+
     Console.WriteLine($"  {(existingArticle is null ? "nuevo" : "se actualiza")}: {spanish.Title}");
     Console.WriteLine($"  {spanish.Summary}");
     Console.WriteLine($"  {spanish.Body.Length} caracteres, categoría {spanish.Category ?? "ninguna"}, "
@@ -591,13 +603,32 @@ if (args.Contains("--add-article"))
         return 0;
     }
 
+    if (articlesPage is null)
+    {
+        (Guid cityId, _) = (await umbraco.GetContentByPathAsync(cityPath))!.Value;
+        articlesPage = (await umbraco.CreateDocumentAsync(
+            cityId, await umbraco.GetDocumentTypeIdAsync("Articles Page"), "Artículos",
+            [new
+            {
+                alias = "intro",
+                value = (object?)"Guías, rutas e ideas escritas para disfrutar la ciudad: "
+                    + "planes por barrio, por presupuesto y para cada tipo de plan.",
+            }],
+            englishValues: [new
+            {
+                alias = "intro",
+                value = (object?)"Guides, routes and ideas for enjoying the city: plans by "
+                    + "neighborhood, by budget and for every kind of outing.",
+            }]), "Artículos");
+    }
+
     Guid articleId;
     if (existingArticle is null)
     {
         // La fecha de publicación es la del primer día y no se toca al actualizar: es
         // lo que ordena la sección y lo que el artículo declara a los buscadores.
         articleId = await umbraco.CreateDocumentAsync(
-            articlesPage.Id, await umbraco.GetDocumentTypeIdAsync("Article"), spanish.Title,
+            articlesPage.Value.Id, await umbraco.GetDocumentTypeIdAsync("Article"), spanish.Title,
             spanish.Values(shared: true).Append(new
             {
                 alias = "publishDate",
