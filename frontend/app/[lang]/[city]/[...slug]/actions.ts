@@ -1,8 +1,22 @@
 "use server";
 
+import { updateTag } from "next/cache";
 import { headers } from "next/headers";
 import { DEFAULT_LOCALE, isLocale, t } from "@/lib/i18n";
 import { todayInDR } from "@/lib/cinema";
+import {
+  REVIEWS_TAG,
+  deleteReview as deleteReviewInCms,
+  saveReview as saveReviewInCms,
+  setFavorite,
+} from "@/lib/portalApi";
+import {
+  MAX_COMMENT,
+  MAX_RATING,
+  MIN_RATING,
+  type ReviewState,
+} from "@/lib/reviews";
+import { getSession } from "@/lib/session";
 import {
   MAX_NOTES,
   MAX_PARTY,
@@ -105,4 +119,67 @@ export async function requestReservation(
   }
 
   return { status: "sent", summary: { date, time, partySize } };
+}
+
+/**
+ * Publica o reemplaza la opinión del visitante sobre un lugar. La sesión dice quién
+ * es — nunca el formulario —, y el CMS vuelve a comprobar que el miembro no esté
+ * bloqueado y que el lugar admita opiniones. `updateTag` descarta al momento las
+ * opiniones y valoraciones en caché, así que la ficha que se recarga ya la muestra.
+ */
+export async function saveReview(
+  _prev: ReviewState,
+  data: FormData,
+): Promise<ReviewState> {
+  const submitted = field(data, "locale");
+  const locale = isLocale(submitted) ? submitted : DEFAULT_LOCALE;
+  const words = t(locale).reviews.errors;
+  const session = await getSession();
+  if (!session) return { status: "error", error: words.signIn };
+
+  const rating = Number.parseInt(field(data, "rating"), 10);
+  if (!Number.isInteger(rating) || rating < MIN_RATING || rating > MAX_RATING) {
+    return { status: "error", error: words.rating };
+  }
+
+  const result = await saveReviewInCms(
+    field(data, "placeId"),
+    session.memberKey,
+    rating,
+    field(data, "comment").slice(0, MAX_COMMENT),
+    locale,
+  );
+  if (!result.ok) {
+    return {
+      status: "error",
+      error: result.status === 403 ? words.signIn : result.error || words.failed,
+    };
+  }
+
+  updateTag(REVIEWS_TAG);
+  return { status: "saved", mine: result.data };
+}
+
+export async function deleteReview(
+  placeId: string,
+  locale: string,
+): Promise<ReviewState> {
+  const words = t(isLocale(locale) ? locale : DEFAULT_LOCALE).reviews.errors;
+  const session = await getSession();
+  if (!session) return { status: "error", error: words.signIn };
+  const result = await deleteReviewInCms(placeId, session.memberKey);
+  if (!result.ok) return { status: "error", error: words.failed };
+  updateTag(REVIEWS_TAG);
+  return { status: "deleted", mine: null };
+}
+
+/** Guarda o quita un lugar de los favoritos del visitante. Devuelve cómo quedó. */
+export async function toggleFavorite(
+  placeId: string,
+  favorite: boolean,
+): Promise<{ favorite: boolean } | null> {
+  const session = await getSession();
+  if (!session) return null;
+  const result = await setFavorite(session.memberKey, placeId, favorite);
+  return result.ok ? result.data : null;
 }

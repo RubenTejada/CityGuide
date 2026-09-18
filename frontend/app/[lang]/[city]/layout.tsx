@@ -11,6 +11,7 @@ import SectionTabs from "@/components/SectionTabs";
 import SiteLogo from "@/components/SiteLogo";
 import SocialLinks from "@/components/SocialLinks";
 import LanguageToggle from "@/components/LanguageToggle";
+import AccountMenu from "@/components/account/AccountMenu";
 import { getChildren, getCities, getItem, type UmbracoItem } from "@/lib/cms";
 import { contentSegments, localeHref, t, type Locale } from "@/lib/i18n";
 import { isComingSoon, num, slugOf } from "@/lib/umbraco";
@@ -83,8 +84,9 @@ export default async function CityLayout({
         <header className="relative bg-neutral-900 bg-[linear-gradient(to_right,rgba(23,23,23,0),#171717_60%),url(/header-map.svg)] text-white">
           {/* Esquina de la cabecera: no cabe en la fila del logo sin empujar
               el emblema de ciudad a otra línea. */}
-          {/* La esquina lleva los dos ajustes que no son contenido: idioma y tema. */}
+          {/* La esquina lleva la cuenta y los dos ajustes que no son contenido: idioma y tema. */}
           <div className="absolute top-3 right-3 flex items-center gap-1">
+            {!comingSoon && <AccountMenu citySlug={citySlug} />}
             <LanguageToggle locale={locale} />
             <ThemeToggle />
           </div>

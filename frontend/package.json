@@ -11,6 +11,8 @@
   "dependencies": {
     "@googlemaps/markerclusterer": "^2.6.2",
     "@vis.gl/react-google-maps": "^1.9.0",
+    "arctic": "^3.7.0",
+    "jose": "^6.2.12",
     "next": "16.3.3",
     "react": "19.2.8",
     "react-dom": "19.2.8"

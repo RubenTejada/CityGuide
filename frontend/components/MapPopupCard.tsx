@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useLocale } from "@/components/LocaleProvider";
 import Link from "next/link";
 import DirectionsLink from "./DirectionsLink";
-import { RatingBadge } from "./Rating";
+import { RatingPair } from "./RatingBadge";
 import { directionsUrl } from "@/lib/directions";
 
 /**
@@ -23,6 +23,8 @@ export default function MapPopupCard({
   address,
   rating,
   ratingCount,
+  siteRating,
+  siteRatingCount,
   latitude,
   longitude,
 }: {
@@ -32,6 +34,8 @@ export default function MapPopupCard({
   address: string | null;
   rating?: number | null;
   ratingCount?: number | null;
+  siteRating?: number | null;
+  siteRatingCount?: number | null;
   latitude?: number | null;
   longitude?: number | null;
 }) {
@@ -57,10 +61,12 @@ export default function MapPopupCard({
           </div>
         )}
         <div className="min-w-0">
-          <RatingBadge
-            value={rating}
-            count={ratingCount}
-            className="!text-xs"
+          <RatingPair
+            google={rating}
+            googleCount={ratingCount}
+            site={siteRating}
+            siteCount={siteRatingCount}
+            badgeClassName="!text-xs"
             locale={locale}
           />
           {address && (

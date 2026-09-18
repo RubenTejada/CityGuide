@@ -191,3 +191,22 @@ export async function alternateOf(
     ? { locale: other, path: translated.route.path }
     : null;
 }
+
+/**
+ * Several items by id, in the order asked for; ids the Delivery API does not serve in
+ * this language (unpublished, deleted, untranslated) are simply missing from the answer.
+ */
+export async function getItemsById(
+  ids: string[],
+  locale?: Locale,
+): Promise<UmbracoItem[]> {
+  if (ids.length === 0) return [];
+  const res = await api(
+    `/content/items?${ids.map((id) => `id=${encodeURIComponent(id)}`).join("&")}`,
+    locale,
+  );
+  if (!res.ok) return [];
+  const items: UmbracoItem[] = await res.json();
+  const byId = new Map(items.map((item) => [item.id, item]));
+  return ids.flatMap((id) => byId.get(id) ?? []);
+}

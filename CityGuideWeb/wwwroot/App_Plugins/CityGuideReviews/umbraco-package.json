@@ -1,0 +1,24 @@
+{
+  "$schema": "../../../umbraco-package-schema.json",
+  "name": "CityGuide Reviews",
+  "version": "1.0.0",
+  "extensions": [
+    {
+      "type": "dashboard",
+      "alias": "CityGuide.Dashboard.Reviews",
+      "name": "Reseñas de visitantes",
+      "element": "/App_Plugins/CityGuideReviews/reviews-dashboard.js",
+      "weight": -10,
+      "meta": {
+        "label": "Reseñas",
+        "pathname": "resenas"
+      },
+      "conditions": [
+        {
+          "alias": "Umb.Condition.SectionAlias",
+          "match": "Umb.Section.Content"
+        }
+      ]
+    }
+  ]
+}

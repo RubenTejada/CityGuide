@@ -11,7 +11,13 @@ public class CityGuideComposer : IComposer
         // El limitador del formulario de contacto cuenta en memoria.
         builder.Services.AddMemoryCache();
         builder.Services.AddSingleton<NearbyIndex>();
+        builder.Services.AddSingleton<ReviewStore>();
+        builder.Services.AddSingleton<FrontendRevalidator>();
+        builder.AddNotificationAsyncHandler<UmbracoApplicationStartingNotification, UserContentMigration>();
         builder.AddNotificationAsyncHandler<UmbracoApplicationStartedNotification, CityGuideSeeder>();
+        builder
+            .AddNotificationAsyncHandler<MemberSavedNotification, MemberReviewSync>()
+            .AddNotificationAsyncHandler<MemberDeletedNotification, MemberReviewSync>();
         builder
             .AddNotificationAsyncHandler<ContentPublishedNotification, FrontendCacheInvalidator>()
             .AddNotificationAsyncHandler<ContentUnpublishedNotification, FrontendCacheInvalidator>()

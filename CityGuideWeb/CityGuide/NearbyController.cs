@@ -18,14 +18,17 @@ public class NearbyController : ControllerBase
     private readonly IPublishedContentCache _contentCache;
     private readonly IDocumentNavigationQueryService _navigation;
     private readonly IPublishedValueFallback _fallback;
+    private readonly ReviewStore _reviews;
 
     public NearbyController(
         NearbyIndex index,
+        ReviewStore reviews,
         IPublishedContentCache contentCache,
         IDocumentNavigationQueryService navigation,
         IPublishedValueFallback fallback)
     {
         _index = index;
+        _reviews = reviews;
         _contentCache = contentCache;
         _navigation = navigation;
         _fallback = fallback;
@@ -34,11 +37,12 @@ public class NearbyController : ControllerBase
     /// <summary><paramref name="Photo"/> illustrates the popup card; <paramref name="Icon"/>
     /// is what the map pin draws — the company logo for a branch, null otherwise, so the
     /// frontend falls back to the section glyph instead of cropping a storefront photo
-    /// into a 40px pin.</summary>
+    /// into a 40px pin. <paramref name="Rating"/> is Google's; <paramref name="SiteRating"/>
+    /// is the portal's own visitors', shown beside it.</summary>
     public record NearbyPlace(
         Guid Id, string Name, string Url, string Category, string? Address,
         double Latitude, double Longitude, double DistanceMeters, string? Photo,
-        string? Icon, double? Rating, int? RatingCount);
+        string? Icon, double? Rating, int? RatingCount, double? SiteRating, int? SiteRatingCount);
 
     [HttpGet]
     public async Task<IActionResult> Get(
@@ -50,6 +54,7 @@ public class NearbyController : ControllerBase
         IReadOnlyList<NearbyEntry> entries =
             await _index.GetAsync(_contentCache, _navigation, _fallback, cancellationToken);
 
+        IReadOnlyDictionary<Guid, ReviewSummary> site = _reviews.Summaries();
         var results = new List<NearbyPlace>();
         foreach (NearbyEntry entry in entries)
         {
@@ -69,10 +74,11 @@ public class NearbyController : ControllerBase
                 continue;
             }
 
+            ReviewSummary? own = site.GetValueOrDefault(entry.Id);
             results.Add(new NearbyPlace(
                 entry.Id, entry.Name, entry.Url, entry.Category, entry.Address,
                 entry.Latitude, entry.Longitude, Math.Round(distance), entry.Photo,
-                entry.Icon, entry.Rating, entry.RatingCount));
+                entry.Icon, entry.Rating, entry.RatingCount, own?.Average, own?.Count));
         }
 
         return Ok(results.OrderBy(r => r.DistanceMeters).Take(Math.Clamp(limit, 1, 100)));
