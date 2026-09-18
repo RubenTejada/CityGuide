@@ -1713,8 +1713,6 @@ async function MallView({ item }: { item: UmbracoItem }) {
         </p>
       )}
 
-      <PlaceReviews place={item} locale={locale} />
-
       {latitude !== 0 && longitude !== 0 && (
         <section className="mt-10">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1740,6 +1738,8 @@ async function MallView({ item }: { item: UmbracoItem }) {
           </div>
         </section>
       )}
+
+      <PlaceReviews place={item} locale={locale} />
     </PageShell>
   );
 }
@@ -2094,8 +2094,6 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
         </div>
       </div>
 
-      <PlaceReviews place={item} locale={locale} />
-
       {latitude !== 0 && longitude !== 0 && (
         <section className="mt-10">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -2122,6 +2120,8 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
           </div>
         </section>
       )}
+
+      <PlaceReviews place={item} locale={locale} />
     </PageShell>
   );
 }
