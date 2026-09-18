@@ -26,6 +26,8 @@ import ReservationDialog from "@/components/ReservationDialog";
 import PhotoGallery from "@/components/PhotoGallery";
 import PlaceMap from "@/components/PlaceMap";
 import Rating from "@/components/Rating";
+import FavoriteButton from "@/components/FavoriteButton";
+import PlaceReviews from "@/components/reviews/PlaceReviews";
 import ShareButtons from "@/components/ShareButtons";
 import Cartelera from "@/components/cine/Cartelera";
 import DateTabs from "@/components/cine/DateTabs";
@@ -78,6 +80,8 @@ import {
   tourOperators,
 } from "@/lib/tour";
 import { acceptsReservations } from "@/lib/reservation";
+import { getSiteRatings } from "@/lib/portalApi";
+import type { SiteRating } from "@/lib/reviews";
 import { getTopMovies } from "@/lib/movieCatalog";
 import { canonicalSlug, localizedSectionPath } from "@/lib/sectionSlugs";
 import {
@@ -842,11 +846,15 @@ function subcategoryFilter(
   };
 }
 
-/** A located node as a map pin. `logo` is the company logo for a branch. */
+/**
+ * A located node as a map pin. `logo` is the company logo for a branch; `site` is the
+ * portal's own rating of every rated place, shown in the popup beside Google's.
+ */
 function markerOf(
   item: UmbracoItem,
   name: string,
   logo: string | null,
+  site: Record<string, SiteRating>,
 ): MapMarker {
   return {
     id: item.id,
@@ -859,6 +867,8 @@ function markerOf(
     photo: photoUrl(item) ?? logo,
     rating: num(item, "googleRating") || null,
     ratingCount: num(item, "googleRatingCount") || null,
+    siteRating: site[item.id]?.average ?? null,
+    siteRatingCount: site[item.id]?.count ?? null,
   };
 }
 
@@ -875,11 +885,17 @@ async function listingMarkers(
   path: string,
   entries: UmbracoItem[],
 ): Promise<Map<string, MapMarker[]>> {
-  const allPlaces = await getDescendantsOfType(path, "place");
+  const [allPlaces, site] = await Promise.all([
+    getDescendantsOfType(path, "place"),
+    getSiteRatings(),
+  ]);
   return new Map(
     entries.map((entry) => {
       if (entry.contentType !== "company") {
-        return [entry.id, [markerOf(entry, entry.name, null)].filter(isPlaced)];
+        return [
+          entry.id,
+          [markerOf(entry, entry.name, null, site)].filter(isPlaced),
+        ];
       }
       const prefix = `${entry.route.path.replace(/\/+$/, "")}/`;
       const logo = photoUrl(entry);
@@ -888,7 +904,12 @@ async function listingMarkers(
         allPlaces
           .filter((place) => place.route.path.startsWith(prefix))
           .map((branch) =>
-            markerOf(branch, branchDisplayName(branch.name, entry.name), logo),
+            markerOf(
+              branch,
+              branchDisplayName(branch.name, entry.name),
+              logo,
+              site,
+            ),
           )
           .filter(isPlaced),
       ];
@@ -1603,12 +1624,14 @@ async function MallView({ item }: { item: UmbracoItem }) {
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-3xl font-bold">{item.name}</h1>
             {directions && <DirectionsLink href={directions} locale={locale} />}
-            <ShareButtons
-              url={absoluteUrl(item.route.path)}
-              title={item.name}
-              className="sm:ml-auto"
-            />
+            <div className="flex flex-wrap items-center gap-3 sm:ml-auto">
+              <FavoriteButton placeId={item.id} name={item.name} />
+              <ShareButtons url={absoluteUrl(item.route.path)} title={item.name} />
+            </div>
           </div>
+          <a href="#opiniones" className="mt-1 inline-block hover:opacity-80">
+            <Rating place={item} locale={locale} />
+          </a>
           <dl className="mt-3 space-y-1.5 text-sm">
             {text(item, "address") && (
               <div className="flex gap-2">
@@ -1690,6 +1713,8 @@ async function MallView({ item }: { item: UmbracoItem }) {
         </p>
       )}
 
+      <PlaceReviews place={item} locale={locale} />
+
       {latitude !== 0 && longitude !== 0 && (
         <section className="mt-10">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1727,7 +1752,10 @@ async function CompanyView({
   query: ListingQuery;
 }) {
   const locale = await activeLocale();
-  const children = await getChildren(item.route.path);
+  const [children, site] = await Promise.all([
+    getChildren(item.route.path),
+    getSiteRatings(),
+  ]);
   const logo = photoUrl(item);
   const branches = children.filter((c) => c.contentType === "place");
   const website = text(item, "website");
@@ -1736,7 +1764,7 @@ async function CompanyView({
     branches.map((branch) => [
       branch.id,
       [
-        markerOf(branch, branchDisplayName(branch.name, item.name), logo),
+        markerOf(branch, branchDisplayName(branch.name, item.name), logo, site),
       ].filter(isPlaced),
     ]),
   );
@@ -1901,14 +1929,15 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <h1 className="text-3xl font-bold">{displayName}</h1>
         {directions && <DirectionsLink href={directions} locale={locale} />}
-        <ShareButtons
-          url={absoluteUrl(item.route.path)}
-          title={displayName}
-          className="sm:ml-auto"
-        />
+        <div className="flex flex-wrap items-center gap-3 sm:ml-auto">
+          <FavoriteButton placeId={item.id} name={displayName} />
+          <ShareButtons url={absoluteUrl(item.route.path)} title={displayName} />
+        </div>
       </div>
       <div className="mt-1">
-        <Rating place={item} locale={locale} />
+        <a href="#opiniones" className="hover:opacity-80">
+          <Rating place={item} locale={locale} />
+        </a>
       </div>
       <div className="mt-6 grid gap-8 lg:grid-cols-[14rem_1fr]">
         <div>
@@ -2064,6 +2093,8 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
           )}
         </div>
       </div>
+
+      <PlaceReviews place={item} locale={locale} />
 
       {latitude !== 0 && longitude !== 0 && (
         <section className="mt-10">

@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useLocale } from "@/components/LocaleProvider";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { RatingBadge } from "./Rating";
+import { RatingPair } from "./RatingBadge";
 
 /**
  * A map and the list of the places it pins, drawn as one block: shared border,
@@ -102,6 +102,8 @@ export function MapPanelRow({
   thumbnail,
   rating,
   ratingCount,
+  siteRating,
+  siteRatingCount,
   detail,
   onPoint,
 }: {
@@ -111,6 +113,9 @@ export function MapPanelRow({
   thumbnail?: string | null;
   rating?: number | null;
   ratingCount?: number | null;
+  /** The portal's own visitors' rating, beside Google's. */
+  siteRating?: number | null;
+  siteRatingCount?: number | null;
   /** Second line: the distance, and the category when the list mixes them. */
   detail: ReactNode;
   onPoint: () => void;
@@ -150,10 +155,14 @@ export function MapPanelRow({
             <span className="min-w-0 truncate font-medium" title={name}>
               {name}
             </span>
-            <RatingBadge
-              value={rating}
-              count={ratingCount}
-              className="shrink-0 !text-xs"
+            <RatingPair
+              google={rating}
+              googleCount={ratingCount}
+              site={siteRating}
+              siteCount={siteRatingCount}
+              compact
+              className="shrink-0 flex-nowrap"
+              badgeClassName="!text-xs"
               locale={locale}
             />
           </span>

@@ -34,6 +34,9 @@ export interface MapMarker {
   photo?: string | null;
   rating?: number | null;
   ratingCount?: number | null;
+  /** The portal's own visitors' rating, beside Google's. */
+  siteRating?: number | null;
+  siteRatingCount?: number | null;
 }
 
 const MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
@@ -185,6 +188,8 @@ export default function MarkersMap({
                   thumbnail={mapPinIcon(marker.url, marker.logo)}
                   rating={marker.rating}
                   ratingCount={marker.ratingCount}
+                  siteRating={marker.siteRating}
+                  siteRatingCount={marker.siteRatingCount}
                   detail={formatDistance(meters)}
                   onPoint={() => setHighlighted(marker.id)}
                 />
@@ -336,6 +341,8 @@ function ClusteredMarkers({
             address={selected.address}
             rating={selected.rating}
             ratingCount={selected.ratingCount}
+            siteRating={selected.siteRating}
+            siteRatingCount={selected.siteRatingCount}
             latitude={selected.latitude}
             longitude={selected.longitude}
           />

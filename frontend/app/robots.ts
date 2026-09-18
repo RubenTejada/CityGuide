@@ -7,7 +7,7 @@ export default function robots(): MetadataRoute.Robots {
       userAgent: "*",
       allow: "/",
       // Search result pages are thin and infinite; the JSON index is not a page.
-      disallow: ["/api/", "/*/buscar"],
+      disallow: ["/api/", "/*/buscar", "/*/acceder", "/*/favoritos"],
     },
     sitemap: `${SITE_URL}/sitemap.xml`,
     host: SITE_URL,

@@ -38,6 +38,9 @@ interface NearbyPlace {
   icon: string | null;
   rating: number | null;
   ratingCount: number | null;
+  /** The portal's own visitors' rating, beside Google's. */
+  siteRating: number | null;
+  siteRatingCount: number | null;
 }
 
 interface PlaceMapProps {
@@ -163,6 +166,8 @@ export default function PlaceMap({
                   thumbnail={mapPinIcon(place.url, place.icon)}
                   rating={place.rating}
                   ratingCount={place.ratingCount}
+                  siteRating={place.siteRating}
+                  siteRatingCount={place.siteRatingCount}
                   detail={`${place.category} · ${Math.round(place.distanceMeters)} m`}
                   onPoint={() => setHighlighted(place.id)}
                 />
@@ -223,6 +228,8 @@ export default function PlaceMap({
                 address={selected.address}
                 rating={selected.rating}
                 ratingCount={selected.ratingCount}
+                siteRating={selected.siteRating}
+                siteRatingCount={selected.siteRatingCount}
                 latitude={selected.latitude}
                 longitude={selected.longitude}
               />
