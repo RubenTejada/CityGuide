@@ -346,6 +346,11 @@ const es = {
       failed: "No pudimos enviar tu solicitud. Inténtalo más tarde.",
     },
   },
+  legal: {
+    updated: "Última actualización",
+    privacy: "Privacidad",
+    terms: "Términos de uso",
+  },
   account: {
     signIn: "Entrar",
     heading: "Entra en QueHacerRD",
@@ -879,6 +884,11 @@ const en: typeof es = {
       tooMany: "We already have several requests from you. Try again in a while.",
       failed: "We could not send your request. Please try again later.",
     },
+  },
+  legal: {
+    updated: "Last updated",
+    privacy: "Privacy",
+    terms: "Terms of use",
   },
   account: {
     signIn: "Sign in",

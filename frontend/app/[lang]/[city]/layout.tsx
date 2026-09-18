@@ -13,6 +13,7 @@ import SocialLinks from "@/components/SocialLinks";
 import LanguageToggle from "@/components/LanguageToggle";
 import AccountMenu from "@/components/account/AccountMenu";
 import { getChildren, getCities, getItem, type UmbracoItem } from "@/lib/cms";
+import { LEGAL_PATHS } from "@/lib/legal";
 import { contentSegments, localeHref, t, type Locale } from "@/lib/i18n";
 import { isComingSoon, num, slugOf } from "@/lib/umbraco";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -171,6 +172,18 @@ export default async function CityLayout({
                 className="hover:text-white"
               >
                 {words.nav.contact}
+              </PendingLink>
+              <PendingLink
+                href={localeHref(locale, LEGAL_PATHS.privacy)}
+                className="hover:text-white"
+              >
+                {words.legal.privacy}
+              </PendingLink>
+              <PendingLink
+                href={localeHref(locale, LEGAL_PATHS.terms)}
+                className="hover:text-white"
+              >
+                {words.legal.terms}
               </PendingLink>
             </div>
             <SocialLinks locale={locale} className="mt-6" />

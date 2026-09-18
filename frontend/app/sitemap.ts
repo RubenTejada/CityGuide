@@ -1,3 +1,4 @@
+import { LEGAL_PATHS } from "@/lib/legal";
 import type { MetadataRoute } from "next";
 import { getCities, getDescendants } from "@/lib/cms";
 import { HREFLANG, localeHref, LOCALES, type Locale } from "@/lib/i18n";
@@ -116,6 +117,21 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     },
   }));
 
+  // The privacy policy and the terms: code routes, one page per language.
+  const legal: MetadataRoute.Sitemap = Object.values(LEGAL_PATHS).flatMap((path) =>
+    LOCALES.map((locale) => ({
+      url: `${SITE_URL}${cleanPath(localeHref(locale, path))}`,
+      changeFrequency: "yearly" as const,
+      priority: 0.2,
+      alternates: {
+        languages: languages({
+          es: localeHref("es", path),
+          en: localeHref("en", path),
+        }),
+      },
+    })),
+  );
+
   const contact: MetadataRoute.Sitemap = LOCALES.flatMap((locale) =>
     (locale === "es" ? spanish : english).cities.map((city) => {
       const slug = city.route.path.split("/").filter(Boolean).pop() ?? "";
@@ -135,6 +151,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   return [
     ...home,
+    ...legal,
     ...spanish.items.map((item) =>
       entry(item, "es", pathsById.get(item.id) ?? {}),
     ),

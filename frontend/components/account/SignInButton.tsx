@@ -7,7 +7,8 @@ import {
   requestLoginLink,
   type LoginLinkState,
 } from "@/app/[lang]/[city]/acceder/actions";
-import { t, withoutLocale } from "@/lib/i18n";
+import { localeHref, t, withoutLocale } from "@/lib/i18n";
+import { LEGAL_PATHS } from "@/lib/legal";
 import type { AuthProviders } from "@/lib/reviews";
 
 const INITIAL: LoginLinkState = { status: "idle" };
@@ -151,7 +152,24 @@ export function SignInDialog({
                 </button>
               </form>
             )}
-            <p className="mt-4 text-xs text-neutral-500">{words.privacy}</p>
+            <p className="mt-4 text-xs text-neutral-500">
+              {words.privacy}{" "}
+              <a
+                href={localeHref(locale, LEGAL_PATHS.privacy)}
+                target="_blank"
+                className="underline hover:text-neutral-700"
+              >
+                {t(locale).legal.privacy}
+              </a>
+              {" · "}
+              <a
+                href={localeHref(locale, LEGAL_PATHS.terms)}
+                target="_blank"
+                className="underline hover:text-neutral-700"
+              >
+                {t(locale).legal.terms}
+              </a>
+            </p>
           </>
         )}
       </div>

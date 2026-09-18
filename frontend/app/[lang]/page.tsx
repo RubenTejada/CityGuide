@@ -11,6 +11,7 @@ import {
   siteTitle,
 } from "@/lib/seo";
 import { getCities } from "@/lib/cms";
+import { LEGAL_PATHS } from "@/lib/legal";
 import { localeHref, otherLocale, t, type Locale } from "@/lib/i18n";
 import { isComingSoon, slugOf } from "@/lib/umbraco";
 
@@ -81,6 +82,15 @@ export default async function HomePage({ params }: PageProps<"/[lang]">) {
           )}
         </div>
       </section>
+
+      <footer className="mx-auto flex max-w-5xl gap-6 px-6 pb-10 text-sm text-neutral-500">
+        <Link href={localeHref(locale, LEGAL_PATHS.privacy)} className="hover:text-neutral-800">
+          {words.legal.privacy}
+        </Link>
+        <Link href={localeHref(locale, LEGAL_PATHS.terms)} className="hover:text-neutral-800">
+          {words.legal.terms}
+        </Link>
+      </footer>
     </main>
   );
 }
