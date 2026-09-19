@@ -180,6 +180,7 @@ cd CityGuide.Agent && dotnet run -- --paid --facilities 300 --section santiago -
 # vocabulary is closed (Facilities.All): the ten the model may guess plus the six it may
 # not ("Vistas Panorámicas", "Deportes en Pantalla", "Grupos y Celebraciones",
 # "Fotogénico", "Pet Friendly", "Brunch"), which are what a themed article groups by.
+# --remove-facility takes the same arguments and undoes one put on the wrong place.
 cd CityGuide.Agent && dotnet run -- --add-facility "Vistas Panorámicas" \
   /santiago/restaurantes/criolla/camp-david-ranch,/santiago/bares-y-clubes/otro --apply
 

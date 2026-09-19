@@ -1163,6 +1163,30 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
     }
 
     /// <summary>
+    /// Takes one facility off a place and says whether it was there. The opposite of
+    /// <see cref="AddFacilitiesAsync"/>, for the facility a person put by hand on the
+    /// wrong place: nothing else the document holds is touched.
+    /// </summary>
+    public async Task<bool> RemoveFacilityAsync(Guid id, string facility)
+    {
+        (string name, string state, Dictionary<string, object?> values) = await ReadDocumentAsync(id);
+        string[] stored = values.TryGetValue("facilities", out object? current)
+            && current is JsonElement { ValueKind: JsonValueKind.Array } list
+                ? [.. list.EnumerateArray()
+                    .Where(f => f.ValueKind == JsonValueKind.String)
+                    .Select(f => f.GetString()!)]
+                : [];
+        if (!stored.Contains(facility))
+        {
+            return false;
+        }
+
+        values["facilities"] = JsonSerializer.SerializeToElement(stored.Where(f => f != facility));
+        await WriteDocumentAsync(id, name, values, state);
+        return true;
+    }
+
+    /// <summary>
     /// Replaces a place's menu — the pages of a scanned carta, the structured one the
     /// model read off a menu page, or both — and records where it was read from and
     /// when. The source is what an editor follows to check a price and what the page

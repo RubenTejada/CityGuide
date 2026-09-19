@@ -500,14 +500,18 @@ if (args.Contains("--facilities"))
 // en ningún campo y solo sabe quien ha estado: la vista, lo fotogénico. Es la etiqueta
 // que agrupa los lugares de un artículo temático. No cuesta nada y solo añade. Plan
 // hasta --apply.
-if (args.Contains("--add-facility"))
+// "--remove-facility" es lo contrario, con los mismos argumentos: quita la que se puso
+// en el lugar equivocado.
+if (args.Contains("--add-facility") || args.Contains("--remove-facility"))
 {
-    string[] tagged = [.. args.SkipWhile(a => a != "--add-facility").Skip(1).Take(2)];
+    bool removing = args.Contains("--remove-facility");
+    string facilityFlag = removing ? "--remove-facility" : "--add-facility";
+    string[] tagged = [.. args.SkipWhile(a => a != facilityFlag).Skip(1).Take(2)];
     if (tagged.Length < 2 || tagged.Any(a => a.StartsWith("--", StringComparison.Ordinal)))
     {
         Console.Error.WriteLine(
-            "--add-facility necesita la facilidad y las rutas de los lugares separadas por "
-            + "comas. Ejemplo: dotnet run -- --add-facility \"Vistas Panorámicas\" "
+            $"{facilityFlag} necesita la facilidad y las rutas de los lugares separadas por "
+            + $"comas. Ejemplo: dotnet run -- {facilityFlag} \"Vistas Panorámicas\" "
             + "/santiago/restaurantes/criolla/camp-david-ranch,/santiago/bares-y-clubes/otro");
         return 1;
     }
@@ -535,14 +539,20 @@ if (args.Contains("--add-facility"))
     }
 
     bool applyFacility = args.Contains("--apply");
-    Console.WriteLine(applyFacility
-        ? $"\n== {tagged[0]}"
-        : $"\n== {tagged[0]} (simulación; agrega --apply para aplicarla)");
+    Console.WriteLine($"\n== {(removing ? "Quitar " : "")}{tagged[0]}"
+        + (applyFacility ? "" : " (simulación; agrega --apply para aplicarla)"));
     foreach (UmbracoClient.PublishedPlace target in targets)
     {
         if (!applyFacility)
         {
             Console.WriteLine($"  {target.Name} — {target.Path}");
+            continue;
+        }
+
+        if (removing)
+        {
+            bool removed = await umbraco.RemoveFacilityAsync(target.Id, tagged[0]);
+            Console.WriteLine($"  {target.Name}: {(removed ? "quitada" : "no la tenía")}");
             continue;
         }
 

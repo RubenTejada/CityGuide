@@ -19,6 +19,7 @@ on:
           - discover
           - facilities
           - add-facility
+          - remove-facility
           - add-article
       apply:
         description: Write the changes. Left off, the run only prints the plan.
@@ -52,11 +53,11 @@ on:
         default: false
       facility:
         description: >-
-          add-facility: the facility to add ("Vistas Panorámicas", "Fotogénico"…).
+          add-facility / remove-facility: the facility to add or take off ("Vistas Panorámicas", "Fotogénico"…).
         type: string
         required: false
       places:
-        description: "add-facility: the paths of the places, comma-separated."
+        description: "add-facility / remove-facility: the paths of the places, comma-separated."
         type: string
         required: false
       article:
@@ -131,6 +132,9 @@ jobs:
               ;;
             add-facility)
               dotnet run -c Release -- --add-facility "$FACILITY" "$PLACES" $apply_flag
+              ;;
+            remove-facility)
+              dotnet run -c Release -- --remove-facility "$FACILITY" "$PLACES" $apply_flag
               ;;
             add-article)
               city="/${ARTICLE%%/*}"
