@@ -1,7 +1,7 @@
 name: Agent — artículos y facilidades
 
 # The passes behind a themed article ("Los restaurantes con las mejores vistas de
-# Santiago"): what Google states about the facilities of the places a city already has,
+# Santiago"): the two or three searches written for the theme, what Google states about the facilities of the places a city already has,
 # a facility put by hand on the places of one theme, and the article itself, written
 # outside the agent and committed under CityGuide.Agent/Articulos. They live here and
 # not in "Run agent" because that workflow already carries the 25 inputs GitHub allows.
@@ -16,6 +16,7 @@ on:
         type: choice
         required: true
         options:
+          - discover
           - facilities
           - add-facility
           - add-article
@@ -28,6 +29,14 @@ on:
         description: >-
           facilities: the part of the site to cover, as in "Run agent"
           ("santiago", "santiago/restaurantes").
+        type: string
+        required: false
+      query:
+        description: >-
+          discover: fragments of the searches to run, comma-separated ("sports
+          bar,vista"). Only the searches of "section" whose text contains one are
+          asked of Google — a whole section repeats dozens of queries and creates
+          hundreds of places. Billed: Google per query, the model per new place.
         type: string
         required: false
       count:
@@ -59,6 +68,7 @@ on:
         required: false
 
 permissions:
+  id-token: write
   contents: read
 
 # The same group as "Run agent": two passes writing the same places at once would
@@ -78,6 +88,15 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      # Only "discover" writes descriptions, and the model behind them is reached
+      # through the Azure CLI login this step provides, as in "Run agent".
+      - uses: azure/login@v2
+        if: ${{ inputs.task == 'discover' }}
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
       - name: Run the pass
         working-directory: CityGuide.Agent
         env:
@@ -87,6 +106,7 @@ jobs:
           TASK: ${{ inputs.task }}
           APPLY: ${{ inputs.apply }}
           SECTION: ${{ inputs.section }}
+          QUERY: ${{ inputs.query }}
           COUNT: ${{ inputs.count }}
           FORCE: ${{ inputs.force }}
           FACILITY: ${{ inputs.facility }}
@@ -96,6 +116,12 @@ jobs:
           apply_flag=""
           if [ "$APPLY" = "true" ]; then apply_flag="--apply"; fi
           case "$TASK" in
+            discover)
+              if [ -z "$SECTION" ] || [ -z "$QUERY" ]; then
+                echo "discover needs both section and query" >&2; exit 1
+              fi
+              dotnet run -c Release -- --paid --section "$SECTION" --query "$QUERY"
+              ;;
             facilities)
               section_flag=""
               if [ -n "$SECTION" ]; then section_flag="--section $SECTION"; fi

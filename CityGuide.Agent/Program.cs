@@ -62,6 +62,39 @@ if (sections.Count > 0)
     Console.WriteLine($"Secciones seleccionadas: {string.Join(", ", sections.Select(s => string.Join('/', s)))}");
 }
 
+// --query narrows discovery to the searches whose text contains one of the given
+// fragments ("--query "sports bar,vista""), on top of --section. A section is asked
+// through dozens of queries and a paid pass repeats every one of them whose cooldown
+// has run out — hundreds of new places and their model calls — when all a themed
+// article needs is the two or three searches written for it. A fragment that matches
+// nothing is a typo, and stops the run before it spends anything.
+string[] queryFragments =
+[
+    .. args.SkipWhile(a => a != "--query").Skip(1).Take(1)
+        .SelectMany(a => a.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)),
+];
+bool QuerySelected(RunConfig run) =>
+    queryFragments.Length == 0
+    || queryFragments.Any(f => run.Query.Contains(f, StringComparison.OrdinalIgnoreCase));
+if (args.Contains("--query"))
+{
+    List<RunConfig> selectedRuns =
+        [.. config.Runs.Where(r => SectionSelected(r.ParentPath) && QuerySelected(r))];
+    if (queryFragments.Length == 0 || selectedRuns.Count == 0)
+    {
+        Console.Error.WriteLine(
+            "--query no coincide con ninguna búsqueda de las secciones seleccionadas. Ejemplo: "
+            + "dotnet run -- --paid --section santiago --query \"sports bar,vista panorámica\"");
+        return 1;
+    }
+
+    Console.WriteLine($"Búsquedas seleccionadas ({selectedRuns.Count}):");
+    foreach (RunConfig selected in selectedRuns)
+    {
+        Console.WriteLine($"  {selected.Query} -> {selected.ParentPath}");
+    }
+}
+
 // The agent publishes what it writes ("Umbraco:PublishImmediately"), and at the end of
 // the pass it also releases the drafts earlier passes left behind, under the sections it
 // covered (every Run's parent path, or only the selected ones with --section). --publish
@@ -1930,7 +1963,9 @@ bool forceQueries = args.Contains("--force");
 DateOnly today = DateOnly.FromDateTime(DateTime.UtcNow);
 var skippedByCooldown = 0;
 
-foreach (RunConfig run in discoveryEnabled ? config.Runs.Where(r => SectionSelected(r.ParentPath)) : [])
+foreach (RunConfig run in discoveryEnabled
+    ? config.Runs.Where(r => SectionSelected(r.ParentPath) && QuerySelected(r))
+    : [])
 {
     // /santo-domingo/bares-y-clubes → city slug "santo-domingo", category slug "bares-y-clubes".
     string[] segments = run.ParentPath.Trim('/').Split('/');

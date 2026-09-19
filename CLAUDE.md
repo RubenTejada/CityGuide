@@ -158,6 +158,14 @@ cd CityGuide.Agent && dotnet run -- --paid --gallery 2 --section restaurantes --
 # (the review floor still applies).
 cd CityGuide.Agent && dotnet run -- --paid --gallery 5 --section santiago/restaurantes/criolla/camp-david-ranch,santiago/bares-y-clubes/otro --apply
 
+# Only some of a section's searches: --query keeps the Runs whose text contains one of
+# the fragments, on top of --section. A paid pass over a section repeats every query
+# whose 30-day cooldown has run out (48 in Santo Domingo, 157 new places), when a themed
+# article needs the two or three written for it. A fragment that matches nothing stops
+# the run before it spends. In Azure it is the "discover" task of the "Agent — artículos
+# y facilidades" workflow.
+cd CityGuide.Agent && dotnet run -- --paid --section punta-cana --query "sports bar,vista"
+
 # The facilities of the places a city already has, from what Google states about them
 # (terrace, live music, sports on screen, groups, dogs, brunch, delivery, parking). The
 # model only guesses facilities when it creates a place, and mostly guesses none. One
