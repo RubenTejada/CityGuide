@@ -45,7 +45,7 @@ El verde más fotogénico de la zona: un campo de golf de calles anchas y vegeta
 
 ## Bulevar de Juan Dolio
 
-![Bulevar de Juan Dolio](/media/wepopaf1/bulevar-de-juan-dolio-google-1.jpg)
+![Bulevar de Juan Dolio](/media/eewfhd3f/bulevar-de-juan-dolio-google-7.jpg)
 
 El paseo donde el pueblo se junta: restaurantes, terrazas y gente caminando al caer la tarde. Es la foto de ambiente, la que cuenta cómo se vive aquí. Ve entre las cinco y las siete, cuando se encienden las luces y todavía queda cielo.
 

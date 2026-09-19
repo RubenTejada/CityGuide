@@ -42,7 +42,7 @@ The most photogenic green in the area: a golf course with wide fairways and trop
 
 ## Bulevar de Juan Dolio
 
-![Bulevar de Juan Dolio](/media/wepopaf1/bulevar-de-juan-dolio-google-1.jpg)
+![Bulevar de Juan Dolio](/media/eewfhd3f/bulevar-de-juan-dolio-google-7.jpg)
 
 The promenade where the town gathers: restaurants, terraces and people strolling in the early evening. This is the atmosphere shot, the one that tells how life is lived here. Go between five and seven, when the lights come on and there is still some sky.
 
