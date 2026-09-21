@@ -1,6 +1,7 @@
 "use server";
 
 import { updateTag } from "next/cache";
+import { purgeCdnSoon } from "@/lib/cdn";
 import { headers } from "next/headers";
 import { DEFAULT_LOCALE, isLocale, t } from "@/lib/i18n";
 import { todayInDR } from "@/lib/cinema";
@@ -157,6 +158,7 @@ export async function saveReview(
   }
 
   updateTag(REVIEWS_TAG);
+  purgeCdnSoon();
   return { status: "saved", mine: result.data };
 }
 
@@ -170,6 +172,7 @@ export async function deleteReview(
   const result = await deleteReviewInCms(placeId, session.memberKey);
   if (!result.ok) return { status: "error", error: words.failed };
   updateTag(REVIEWS_TAG);
+  purgeCdnSoon();
   return { status: "deleted", mine: null };
 }
 
