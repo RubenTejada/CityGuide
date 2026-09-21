@@ -1,3 +1,4 @@
+import { cacheLife } from "next/cache";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
@@ -20,6 +21,18 @@ import ThemeToggle from "@/components/ThemeToggle";
 import WeatherBadge from "@/components/Weather";
 import { getCityWeather } from "@/lib/weather";
 
+/**
+ * El año del pie. Leer el reloj durante el prerender está vetado — cambiaría
+ * de una página a otra —, así que se lee dentro de un caché, con la vida de
+ * todo lo demás de la página: una vida más corta que la suya se contagiaría a
+ * cada página de la ciudad, y el 1 de enero se pone al día sola.
+ */
+async function currentYear(): Promise<number> {
+  "use cache";
+  cacheLife("cms");
+  return new Date().getFullYear();
+}
+
 // Etiquetas cortas solo para la barra de navegación (el nombre real en el CMS
 // no cambia); clave = slug de la sección, en el idioma de la página.
 function navLabel(
@@ -28,6 +41,21 @@ function navLabel(
 ) {
   const slug = contentSegments(section.route.path)[1] ?? "";
   return t(locale).nav.shortLabels[slug] ?? section.name;
+}
+
+/**
+ * Every city is prerendered at build time: there are a handful, and knowing the
+ * segment is what makes the header and the footer part of the static shell of
+ * every page under it. A city opened later in the backoffice is served all the
+ * same — its first visit renders it and the cache keeps it.
+ */
+export async function generateStaticParams({
+  params,
+}: {
+  params: { lang: string };
+}) {
+  const cities = await getCities(params.lang as Locale);
+  return cities.map((city) => ({ city: slugOf(city) }));
 }
 
 export default async function CityLayout({
@@ -45,11 +73,12 @@ export default async function CityLayout({
   const comingSoon = isComingSoon(city);
   // El clima cuelga de las coordenadas que el nodo de la ciudad ya lleva, así
   // que viaja con la cabecera de cualquier ciudad sin configurar nada.
-  const [cityChildren, weather] = await Promise.all([
+  const [cityChildren, weather, year] = await Promise.all([
     comingSoon
       ? Promise.resolve<UmbracoItem[]>([])
       : getChildren(city.route.path),
     getCityWeather(num(city, "latitude"), num(city, "longitude")),
+    currentYear(),
   ]);
   // "Qué Hacer" goes right after "Inicio", regardless of CMS sort order.
   const sections = cityChildren.sort(
@@ -188,7 +217,7 @@ export default async function CityLayout({
             </div>
             <SocialLinks locale={locale} className="mt-6" />
             <p className="mt-8 text-xs text-neutral-600">
-              © {new Date().getFullYear()} QueHacerRD.com — {words.site.rights}
+              © {year} QueHacerRD.com — {words.site.rights}
             </p>
           </div>
         </footer>

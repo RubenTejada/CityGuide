@@ -21,14 +21,12 @@
 // URL, React la deduplica dentro de una renderización y Next la cachea entre
 // peticiones, así que la cabecera y la guía no pagan dos.
 
+import { cacheLife } from "next/cache";
 const OPEN_METEO = "https://api.open-meteo.com/v1/forecast";
 const WEATHER_API = "https://api.weatherapi.com/v1/forecast.json";
 
 /** Los días del pronóstico son días de calendario dominicano, como los de la guía. */
 const TIME_ZONE = "America/Santo_Domingo";
-
-/** Media hora: lo que enseña la cabecera es ambiente, no un instrumento. */
-const REVALIDATE_SECONDS = 1800;
 
 /** Hoy y los seis días siguientes: la ventana que planifica "Qué Hacer". */
 const FORECAST_DAYS = 7;
@@ -400,13 +398,24 @@ async function fromOpenMeteo(
   };
 }
 
-/** Una respuesta JSON cacheada, o null: el clima adorna la página y nunca la rompe. */
+/**
+ * Una respuesta JSON cacheada, o null: el clima adorna la página y nunca la rompe.
+ * La URL es la clave, así que la cabecera y la guía comparten la misma entrada; un
+ * fallo se guarda solo el medio minuto de `unanswered`.
+ */
 async function readJson<T>(url: string): Promise<T | null> {
+  "use cache";
   try {
-    const res = await fetch(url, { next: { revalidate: REVALIDATE_SECONDS } });
-    if (!res.ok) return null;
-    return (await res.json()) as T;
+    const res = await fetch(url);
+    if (!res.ok) {
+      cacheLife("unanswered");
+      return null;
+    }
+    const body = (await res.json()) as T;
+    cacheLife("weather");
+    return body;
   } catch {
+    cacheLife("unanswered");
     return null;
   }
 }

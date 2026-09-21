@@ -5,8 +5,6 @@ import { HREFLANG, localeHref, LOCALES, type Locale } from "@/lib/i18n";
 import { cleanPath, SITE_URL } from "@/lib/seo";
 import { isComingSoon, type UmbracoItem } from "@/lib/umbraco";
 
-export const revalidate = 600;
-
 /** How often each content type is expected to change, and how it ranks. */
 const SITEMAP_HINTS: Record<
   string,
@@ -104,9 +102,18 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     }
   }
 
+  // The front page changes when anything under it does, so it carries the
+  // newest date the content states. Not the time of the request: a sitemap
+  // whose lastmod is always "now" teaches a crawler to ignore every lastmod in
+  // it — and under Cache Components reading the clock would also take the
+  // sitemap out of the prerender.
+  const newest = [...spanish.items, ...english.items].reduce(
+    (latest, item) => (item.updateDate > latest ? item.updateDate : latest),
+    "",
+  );
   const home: MetadataRoute.Sitemap = LOCALES.map((locale) => ({
     url: `${SITE_URL}${cleanPath(localeHref(locale, "/"))}`,
-    lastModified: new Date(),
+    lastModified: newest ? new Date(newest) : undefined,
     changeFrequency: "daily" as const,
     priority: locale === "es" ? 1 : 0.9,
     alternates: {

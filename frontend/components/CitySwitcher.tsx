@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { CityEmblem } from "@/components/CityBadge";
 import { PendingLink } from "@/components/LoadingOverlay";
@@ -24,20 +24,40 @@ export type CityOption = {
  * elegida: la cabecera sobrevive a la navegación entre ciudades, así que el
  * estado abierto se recuerda junto a la ruta en la que se abrió.
  */
-export default function CitySwitcher({
-  current,
-  cities,
-  allCitiesHref,
-}: {
+type CitySwitcherProps = {
   current: CityOption;
   cities: CityOption[];
   allCitiesHref: string;
-}) {
+};
+
+/**
+ * Reading the path is what suspends: Cache Components prerenders a static
+ * shell for a city's pages before their segments are known, and a hook in the
+ * city layout that asks where it is would hold that whole shell back. Until it is known the
+ * emblem is drawn closed, which is all the menu ever is before a click.
+ */
+export default function CitySwitcher(props: CitySwitcherProps) {
+  return (
+    <Suspense fallback={<Switcher {...props} pathname={null} />}>
+      <CurrentSwitcher {...props} />
+    </Suspense>
+  );
+}
+
+function CurrentSwitcher(props: CitySwitcherProps) {
+  return <Switcher {...props} pathname={usePathname()} />;
+}
+
+function Switcher({
+  current,
+  cities,
+  allCitiesHref,
+  pathname,
+}: CitySwitcherProps & { pathname: string | null }) {
   const words = useWords();
   const box = useRef<HTMLDivElement>(null);
-  const pathname = usePathname();
   const [menu, setMenu] = useState<string | null>(null);
-  const open = menu === pathname;
+  const open = pathname !== null && menu === pathname;
 
   useEffect(() => {
     if (!open) return;

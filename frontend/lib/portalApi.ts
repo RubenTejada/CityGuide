@@ -8,6 +8,7 @@
 // (`updateTag`) y el CMS descarta cuando un editor oculta una opinión o bloquea a
 // alguien (`/api/revalidate?tag=reviews`). Lo que es de un visitante no se cachea.
 
+import { cacheLife, cacheTag } from "next/cache";
 import type { Locale } from "@/lib/i18n";
 import type {
   OwnReview,
@@ -17,7 +18,6 @@ import type {
 
 const BASE_URL = process.env.UMBRACO_BASE_URL ?? "http://localhost:54509";
 export const REVIEWS_TAG = "reviews";
-const REVALIDATE_SECONDS = 600;
 
 type Result<T> = { ok: true; data: T } | { ok: false; error?: string; status: number };
 
@@ -56,15 +56,25 @@ async function send<T>(
     : { ok: false, status: response.status, error: body?.error };
 }
 
-const cached: RequestInit = {
-  next: { revalidate: REVALIDATE_SECONDS, tags: [REVIEWS_TAG] },
-};
+/**
+ * Una lectura pública, cacheada con la etiqueta "reviews": lo que las páginas
+ * muestran a todos. Null cuando el CMS no respondió, que se guarda solo el medio
+ * minuto de `unanswered`; lo demás, los diez minutos de `cms` o hasta que una
+ * escritura descarte la etiqueta.
+ */
+async function readPublic<T>(path: string): Promise<T | null> {
+  "use cache";
+  cacheTag(REVIEWS_TAG);
+  const response = await call(path);
+  const body = response?.ok ? ((await response.json()) as T) : null;
+  if (body === null) cacheLife("unanswered");
+  else cacheLife("cms");
+  return body;
+}
 
 /** La valoración del portal de cada lugar que tiene opiniones, por clave de nodo. */
 export async function getSiteRatings(): Promise<Record<string, SiteRating>> {
-  const response = await call("/reviews/summaries", cached);
-  if (!response?.ok) return {};
-  return response.json();
+  return (await readPublic<Record<string, SiteRating>>("/reviews/summaries")) ?? {};
 }
 
 export async function getSiteRating(placeId: string): Promise<SiteRating | null> {
@@ -72,9 +82,12 @@ export async function getSiteRating(placeId: string): Promise<SiteRating | null>
 }
 
 export async function getPlaceReviews(placeId: string): Promise<PlaceReviews> {
-  const response = await call(`/reviews/${placeId}`, cached);
-  if (!response?.ok) return { summary: null, reviews: [] };
-  return response.json();
+  return (
+    (await readPublic<PlaceReviews>(`/reviews/${placeId}`)) ?? {
+      summary: null,
+      reviews: [],
+    }
+  );
 }
 
 /** La opinión propia del visitante y si guardó el lugar. */

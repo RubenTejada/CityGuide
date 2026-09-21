@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import PlaceCard from "@/components/PlaceCard";
@@ -7,8 +8,6 @@ import { matchesTokens, searchText, searchTokens } from "@/lib/search";
 import { buildSearchIndex } from "@/lib/searchIndex";
 import { activeLocale, getDescendantsOfType, getItem } from "@/lib/cms";
 import { text, type UmbracoItem } from "@/lib/umbraco";
-
-export const revalidate = 600;
 
 export async function generateMetadata({
   params,
@@ -40,7 +39,7 @@ function trimPath(path: string): string {
  * result this page then denies. What the index does not carry is a place's
  * description: it ships to every visitor, so prose-only matches do not score.
  */
-export default async function SearchPage({
+async function SearchPageBody({
   params,
   searchParams,
 }: {
@@ -94,7 +93,9 @@ export default async function SearchPage({
     contentType === "place" ||
     contentType === "company" ||
     contentType === "mall";
-  const cards = found.filter((hit) => hit.item && isPlaceLike(hit.item.contentType));
+  const cards = found.filter(
+    (hit) => hit.item && isPlaceLike(hit.item.contentType),
+  );
   const eventHits = found.filter(
     (hit) => hit.item?.contentType === "eventItem",
   );
@@ -159,7 +160,9 @@ export default async function SearchPage({
 
           {links.length > 0 && (
             <section className="mt-10">
-              <h2 className="text-xl font-semibold">{words.search.moreLinks}</h2>
+              <h2 className="text-xl font-semibold">
+                {words.search.moreLinks}
+              </h2>
               <ul className="mt-4 divide-y divide-neutral-200 overflow-hidden rounded-xl border border-neutral-200 bg-white">
                 {links.map(({ entry }) => (
                   <li key={entry.path}>
@@ -195,5 +198,21 @@ export default async function SearchPage({
         </>
       )}
     </main>
+  );
+}
+
+/**
+ * What was searched for is in the query string, which is request-time data:
+ * the results are rendered per visit, behind the boundary that lets the city's
+ * header and footer be served before them.
+ */
+export default function SearchPage(props: {
+  params: Promise<{ city: string }>;
+  searchParams: Promise<{ q?: string }>;
+}) {
+  return (
+    <Suspense fallback={<main className="min-h-[60vh]" aria-busy="true" />}>
+      <SearchPageBody {...props} />
+    </Suspense>
   );
 }

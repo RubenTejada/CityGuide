@@ -7,6 +7,48 @@ export const PAGE_PARAM = "pagina";
 /** A page's query string as the router hands it over. */
 export type ListingQuery = { [key: string]: string | string[] | undefined };
 
+/**
+ * Which document types read the query string. `searchParams` is request-time
+ * data: the page that awaits it cannot be prerendered, and the catch-all serves
+ * every document type from one route — so it only asks for the query where the
+ * view really reads it (a listing's page and filters, the day of a cartelera or
+ * of the guide), and the thousands of places, plazas, excursiones, eventos and
+ * artículos that read none are prerendered. A cinema branch is the one `place`
+ * that reads it; the catch-all recognises that one itself.
+ */
+const QUERY_TYPES = new Set([
+  "categoryPage",
+  "subcategory",
+  "company",
+  "eventsPage",
+  "thingsToDoPage",
+  "articlesPage",
+  "movie",
+]);
+
+/** Whether this type's view reads the query string. See {@link QUERY_TYPES}. */
+export function readsQuery(contentType: string): boolean {
+  return QUERY_TYPES.has(contentType);
+}
+
+/**
+ * The types whose listing paginates, which is all the *metadata* reads the
+ * query for: `?pagina=3` is a page of its own and says so, while any other
+ * parameter folds into the bare URL — the answer an empty query already gives.
+ */
+const PAGINATED_TYPES = new Set([
+  "categoryPage",
+  "subcategory",
+  "company",
+  "eventsPage",
+  "articlesPage",
+]);
+
+/** Whether a `?pagina=` on this type names a page of its own. */
+export function paginates(contentType: string): boolean {
+  return PAGINATED_TYPES.has(contentType);
+}
+
 /** What the browser needs to draw one dropdown — never the values themselves. */
 export type FilterControl = {
   key: string;

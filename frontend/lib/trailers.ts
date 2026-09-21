@@ -4,7 +4,7 @@
 // Results are cached for a week; on any failure the caller keeps the
 // Caribbean Cinemas trailer as fallback.
 
-const REVALIDATE_SECONDS = 604_800; // 7 days
+import { cacheLife } from "next/cache";
 
 interface VideoResult {
   id: string;
@@ -50,6 +50,19 @@ function collectVideos(node: unknown, out: VideoResult[]): void {
 export async function findYoutubeTrailer(
   movieName: string,
 ): Promise<string | null> {
+  "use cache";
+  const found = await searchYoutube(movieName);
+  // What was found — a trailer, or a search that turned none up — is kept a
+  // week; YouTube not answering is kept only `unanswered`'s half minute.
+  if (found === undefined) cacheLife("unanswered");
+  else cacheLife("weeks");
+  return found ?? null;
+}
+
+/** The search itself: an id, null when nothing suitable came up, undefined when YouTube did not answer. */
+async function searchYoutube(
+  movieName: string,
+): Promise<string | null | undefined> {
   try {
     const query = encodeURIComponent(
       `${movieName} tráiler oficial español latino`,
@@ -62,10 +75,9 @@ export async function findYoutubeTrailer(
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
           "accept-language": "es-419,es;q=0.9",
         },
-        next: { revalidate: REVALIDATE_SECONDS },
       },
     );
-    if (!res.ok) return null;
+    if (!res.ok) return undefined;
     const html = await res.text();
 
     const marker = "ytInitialData = ";
@@ -95,6 +107,6 @@ export async function findYoutubeTrailer(
       candidates[0];
     return match?.id ?? null;
   } catch {
-    return null;
+    return undefined;
   }
 }

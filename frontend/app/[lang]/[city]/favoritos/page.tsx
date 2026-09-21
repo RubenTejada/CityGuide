@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import PlaceCard from "@/components/PlaceCard";
 import SignInButton from "@/components/account/SignInButton";
 import { getItemsById } from "@/lib/cms";
@@ -21,7 +22,7 @@ export async function generateMetadata({
  * antiguo. Es la única página personal del portal: lee la sesión, así que se pinta en
  * cada petición y nunca entra en la caché ni en el índice.
  */
-export default async function FavoritesPage({
+async function FavoritesPageBody({
   params,
 }: PageProps<"/[lang]/[city]/favoritos">) {
   const { lang, city } = await params;
@@ -62,5 +63,20 @@ export default async function FavoritesPage({
         </>
       )}
     </main>
+  );
+}
+
+/**
+ * Who is asking is in the session cookie, which is request-time data: the
+ * list is rendered per visit, behind the boundary that lets the city's header
+ * and footer be served before it.
+ */
+export default function FavoritesPage(
+  props: PageProps<"/[lang]/[city]/favoritos">,
+) {
+  return (
+    <Suspense fallback={<main className="min-h-[60vh]" aria-busy="true" />}>
+      <FavoritesPageBody {...props} />
+    </Suspense>
   );
 }

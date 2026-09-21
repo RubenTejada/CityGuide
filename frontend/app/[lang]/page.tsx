@@ -15,8 +15,6 @@ import { LEGAL_PATHS } from "@/lib/legal";
 import { localeHref, otherLocale, t, type Locale } from "@/lib/i18n";
 import { isComingSoon, slugOf } from "@/lib/umbraco";
 
-export const revalidate = 600;
-
 // The root layout's defaults would cover the home page, but stating them here
 // keeps every route's canonical, Open Graph and robots directives coming from
 // the same builder. The title carries the brand already, so it is absolute.

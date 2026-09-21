@@ -2,7 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { t, type Locale } from "@/lib/i18n";
-import { useEffect, useRef } from "react";
+import { Suspense, useEffect, useRef } from "react";
 import { PendingLink } from "@/components/LoadingOverlay";
 
 export type SectionTab = { id: string; href: string; label: string };
@@ -19,21 +19,44 @@ export type SectionTab = { id: string; href: string; label: string };
  * is shortened in `nav.shortLabels` — the lever "Empresas y Servicios" already
  * uses to fit as "Empresas".
  */
-export default function SectionTabs({
-  home,
-  locale,
-  sections,
-}: {
+type SectionTabsProps = {
   /** "Inicio": selected only on the city page itself. */
   home: string;
   locale: Locale;
   sections: SectionTab[];
-}) {
+};
+
+/**
+ * Reading the path is what suspends: Cache Components prerenders a static
+ * shell for a city's pages before their segments are known, and a hook in the
+ * city layout that asks where it is would hold that whole shell back. So the bar is drawn
+ * without a lit tab until the path is known — which a prerendered page always
+ * is, so what a visitor gets is the bar with its tab lit.
+ */
+export default function SectionTabs(props: SectionTabsProps) {
+  return (
+    <Suspense fallback={<TabBar {...props} pathname={null} />}>
+      <CurrentTabBar {...props} />
+    </Suspense>
+  );
+}
+
+function CurrentTabBar(props: SectionTabsProps) {
+  return <TabBar {...props} pathname={usePathname()} />;
+}
+
+function TabBar({
+  home,
+  locale,
+  sections,
+  pathname: path,
+}: SectionTabsProps & { pathname: string | null }) {
   // The CMS gives section paths with a trailing slash; `usePathname` never has
   // one, so both sides are trimmed before comparing.
-  const pathname = trim(usePathname());
+  const pathname = path === null ? null : trim(path);
   const inSection = (href: string) =>
-    pathname === trim(href) || pathname.startsWith(`${trim(href)}/`);
+    pathname !== null &&
+    (pathname === trim(href) || pathname.startsWith(`${trim(href)}/`));
 
   // La fila deslizable del móvil deja fuera de pantalla la pestaña encendida
   // («Artículos» está al final): se centra sola, así la barra sigue diciendo
@@ -59,7 +82,7 @@ export default function SectionTabs({
         ref={bar}
         className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-6 [scrollbar-width:none] sm:flex-wrap sm:overflow-x-visible [&::-webkit-scrollbar]:hidden"
       >
-        <Tab href={home} active={pathname === trim(home)}>
+        <Tab href={home} active={pathname !== null && pathname === trim(home)}>
           {t(locale).nav.home}
         </Tab>
         {sections.map((section) => (

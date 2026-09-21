@@ -1,4 +1,4 @@
-import { imdbUrl, rottenTomatoesUrl, type MovieReviews } from "@/lib/cinema";
+import { imdbUrl, rottenTomatoesUrl, type MovieReviews } from "@/lib/movieReviews";
 import { INTL_LOCALE, type Locale } from "@/lib/i18n";
 
 /**
