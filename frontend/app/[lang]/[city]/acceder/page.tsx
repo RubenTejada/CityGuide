@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import RedeemForm from "@/components/account/RedeemForm";
 import SignInButton from "@/components/account/SignInButton";
 import { t, type Locale } from "@/lib/i18n";
@@ -20,7 +21,7 @@ export async function generateMetadata({
  * botón que canjea el enlace — un filtro de correo que abre la página para revisarla
  * no lo gasta —; con `?error=` explica qué pasó y ofrece intentarlo de nuevo.
  */
-export default async function SignInPage({
+async function SignInPageBody({
   params,
   searchParams,
 }: PageProps<"/[lang]/[city]/acceder">) {
@@ -66,5 +67,18 @@ export default async function SignInPage({
         </>
       )}
     </main>
+  );
+}
+
+/**
+ * The link's token and the error both arrive in the query string, which is
+ * request-time data: the page is rendered per visit, behind the boundary that
+ * lets the city's header and footer be served before it.
+ */
+export default function SignInPage(props: PageProps<"/[lang]/[city]/acceder">) {
+  return (
+    <Suspense fallback={<main className="min-h-[60vh]" aria-busy="true" />}>
+      <SignInPageBody {...props} />
+    </Suspense>
   );
 }

@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { cacheLife } from "next/cache";
+import { Suspense } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -36,18 +38,6 @@ import {
   seoDescription,
   seoTitle,
 } from "@/lib/seo";
-
-export const revalidate = 600;
-
-/**
- * No city is prerendered at build time — the portal opens new ones from the
- * backoffice — but a route with no `generateStaticParams` at all is rendered
- * from scratch on every request. The empty array asks for the other behaviour:
- * rendered the first time the path is asked for, then served from the ISR cache.
- */
-export function generateStaticParams() {
-  return [];
-}
 
 /** What the home page's ticker rotates through: three windows of three. */
 const HOME_EVENTS = 9;
@@ -130,14 +120,38 @@ async function ComingSoon({ city }: { city: UmbracoItem }) {
   );
 }
 
-export default async function CityLandingPage({
+/**
+ * The params are read inside the boundary, so the header and the footer of
+ * the city are part of the static shell and the front page streams into it.
+ */
+export default function CityLandingPage({
   params,
 }: {
   params: Promise<{ city: string }>;
 }) {
+  return (
+    <Suspense fallback={<div className="min-h-[60vh]" aria-busy="true" />}>
+      <Landing params={params} />
+    </Suspense>
+  );
+}
+
+async function Landing({ params }: { params: Promise<{ city: string }> }) {
+  const { city } = await params;
+  return <CityLanding citySlug={city} />;
+}
+
+/**
+ * The front page, cached by city (and by language, which it reads from the
+ * route). The cache is what lets it read the clock — which events are still
+ * to come — during the prerender: the day is captured with the page, for the
+ * ten minutes the page is kept.
+ */
+async function CityLanding({ citySlug }: { citySlug: string }) {
+  "use cache";
+  cacheLife("cms");
   const locale = await activeLocale();
   const words = t(locale);
-  const { city: citySlug } = await params;
   const city = await getItem(`/${citySlug}`);
   if (!city || city.contentType !== "city") notFound();
 

@@ -5,13 +5,13 @@
 import {
   CINEMAS_BY_CITY,
   getMovieBillboard,
-  movieReviews,
   resolveTrailers,
   toMovieCards,
   type CatalogMovie,
   type MovieCardProps,
 } from "@/lib/cinema";
 import { getDescendantsOfType } from "@/lib/cms";
+import { movieReviews } from "@/lib/movieReviews";
 import { type Locale } from "@/lib/i18n";
 import { localizedSectionPath } from "@/lib/sectionSlugs";
 import { text } from "@/lib/umbraco";

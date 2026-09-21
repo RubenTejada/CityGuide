@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
+import { cacheLife } from "next/cache";
 import Link from "next/link";
 import Image from "next/image";
 import { notFound } from "next/navigation";
@@ -59,9 +60,9 @@ import {
   cinemaSiteIds,
   getAvailableDates,
   getMovieShowings,
-  movieReviews,
   todayInDR,
 } from "@/lib/cinema";
+import { movieReviews } from "@/lib/movieReviews";
 import {
   INTL_LOCALE,
   contentSegments,
@@ -99,6 +100,8 @@ import {
   LISTING_PAGE_SIZE,
   selectedFilters,
   canonicalListingPath,
+  paginates,
+  readsQuery,
   withPage,
   PAGE_PARAM,
   type FilterGroup,
@@ -146,21 +149,113 @@ import {
 } from "@/lib/umbraco";
 import { getCityWeather } from "@/lib/weather";
 
-export const revalidate = 600;
-
-export default async function ContentPage({
+/**
+ * One page per city is prerendered at build time — its first section — and that
+ * is only what Cache Components requires to validate the route: the thousands of
+ * nodes under a city are rendered at their first visit and served from the cache
+ * to every visitor after it.
+ */
+export async function generateStaticParams({
   params,
-  searchParams,
 }: {
-  params: Promise<{ lang: string; city: string; slug: string[] }>;
-  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+  params: { lang: string; city: string };
 }) {
+  const [first] = await getChildren(`/${params.city}`, 1, params.lang as Locale);
+  const slug = first ? contentSegments(first.route.path).slice(1) : [];
+  return slug.length > 0 ? [{ slug }] : [];
+}
+
+type ContentProps = {
+  params: Promise<{ lang: string; city: string; slug: string[] }>;
+  searchParams: Promise<ListingQuery>;
+};
+
+/**
+ * The page is allowed to block on finding its node, and that is deliberate.
+ * Streaming a shell first would answer an unvisited URL at once — but with a
+ * 200 already sent, a path the CMS has no node for could only be told apart
+ * by a `noindex` in the body, and the not-found page would be cached as a
+ * page like any other: every mistyped or retired URL a soft 404 for good.
+ * So the node is looked up before anything is sent (one cached Delivery API
+ * read), `notFound()` still sets the status, and what blocks is only the
+ * first visit to a URL: the finished page is prerendered after it.
+ */
+export const instant = false;
+
+/**
+ * What the page is, and whether it needs the query string. Which entries a
+ * listing shows and which day a cartelera is read for are both in the query
+ * and both settled on the server — but `searchParams` is request-time data,
+ * and awaiting it for a place or an article would keep the whole portal out
+ * of the prerender. So only the pages that read it ask for it (see
+ * `readsQuery`), inside a boundary; everything else hands the view an empty
+ * query and is rendered once for every visitor.
+ */
+export default async function ContentPage({ params, searchParams }: ContentProps) {
   const { lang, city, slug } = await params;
+  const item = await getItem(`/${city}/${slug.join("/")}`);
+  if (!item) notFound();
   const locale = lang as Locale;
-  const path = `/${city}/${slug.join("/")}`;
-  // Which entries a listing shows, and which day a cartelera is read for, are
-  // both in the query string and both settled on the server.
-  const [item, query] = await Promise.all([getItem(path), searchParams]);
+  if (!readsQuery(item.contentType) && !isCinemaBranch(item, city, slug)) {
+    return <ContentView locale={locale} city={city} slug={slug} query={{}} />;
+  }
+  return (
+    <Suspense fallback={<div className="min-h-[60vh]" aria-busy="true" />}>
+      <QueriedContent
+        locale={locale}
+        city={city}
+        slug={slug}
+        searchParams={searchParams}
+      />
+    </Suspense>
+  );
+}
+
+/** A page that reads the query: rendered per query, from the cache when it can. */
+async function QueriedContent({
+  searchParams,
+  ...page
+}: {
+  locale: Locale;
+  city: string;
+  slug: string[];
+  searchParams: Promise<ListingQuery>;
+}) {
+  return <ContentView {...page} query={{ ...(await searchParams) }} />;
+}
+
+/** A cinema's own page, which carries its cartelera and the day it is read for. */
+function isCinemaBranch(item: UmbracoItem, city: string, slug: string[]) {
+  return (
+    item.contentType === "place" &&
+    slug.map(canonicalSlug).includes("cines") &&
+    cinemaByName(city, item.name) !== null
+  );
+}
+
+/**
+ * The page itself, cached by what it is rendered from — the path and the query.
+ * A place, which reads no query, has one entry and is prerendered; a listing
+ * has one per page and filter a visitor asks for, so the second visitor to
+ * "?pagina=3" is served what the first one's visit rendered. The cache is also
+ * what lets a view read the clock — the day a cartelera opens on, whether an
+ * event is past — during a prerender: the value is captured with the page, for
+ * the ten minutes the page is kept, which is what the portal always did.
+ */
+async function ContentView({
+  locale,
+  city,
+  slug,
+  query,
+}: {
+  locale: Locale;
+  city: string;
+  slug: string[];
+  query: ListingQuery;
+}) {
+  "use cache";
+  cacheLife("cms");
+  const item = await getItem(`/${city}/${slug.join("/")}`);
   if (!item) notFound();
   const fecha = typeof query.fecha === "string" ? query.fecha : undefined;
 
@@ -271,11 +366,15 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { lang, city: citySlug, slug } = await params;
   const locale = lang as Locale;
-  const [item, query] = await Promise.all([
-    getItem(`/${citySlug}/${slug.join("/")}`),
-    searchParams,
-  ]);
+  const item = await getItem(`/${citySlug}/${slug.join("/")}`);
   if (!item) return {};
+  // Only a listing's `?pagina=` names a page of its own; every other parameter
+  // folds into the bare URL, which is the answer an empty query already gives.
+  // So a page that does not paginate never asks for the query, and its
+  // metadata is prerendered with it.
+  const query: ListingQuery = paginates(item.contentType)
+    ? await searchParams
+    : {};
 
   // Page 2 of a listing is a page of its own and says so; a ticked filter, the
   // map view and the day of a cartelera all fold into the bare URL.

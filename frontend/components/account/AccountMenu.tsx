@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useLocale } from "@/components/LocaleProvider";
 import { localeHref, t } from "@/lib/i18n";
 import SignInButton from "./SignInButton";
@@ -18,6 +18,18 @@ const CORNER_BUTTON =
  * saber quién es, ni nada en absoluto en una instalación sin cuentas configuradas.
  */
 export default function AccountMenu({ citySlug }: { citySlug: string }) {
+  // Reading the path suspends in the static shell Cache Components prerenders
+  // for a city's pages before their segments are known. Nothing is lost by
+  // waiting: the menu draws nothing on the server anyway, since who the
+  // visitor is is only asked from the browser.
+  return (
+    <Suspense fallback={null}>
+      <Menu citySlug={citySlug} />
+    </Suspense>
+  );
+}
+
+function Menu({ citySlug }: { citySlug: string }) {
   const locale = useLocale();
   const words = t(locale).account;
   const account = useAccount();

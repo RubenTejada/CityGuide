@@ -805,31 +805,64 @@ hand a Route Handler its injected query. The node id is shared by both cultures,
 the Spanish and English URLs of a page open the same node; a path the CMS does not
 own (contact, search, a typo) has no node and lands on the content section root.
 
-**What is prerendered, and what is not.** A route with no `generateStaticParams` at
-all is rendered from scratch on every request — cache or no cache, and whatever
-`revalidate` says, since that option caches the `fetch` calls and not the HTML. That
-is why the city front page and the contact page carry an empty `generateStaticParams`:
-nothing is prerendered at build time (the portal holds thousands of nodes and opens
-new cities from the backoffice), but each path is then rendered the first time it is
-asked for and served from the ISR cache afterwards — `x-nextjs-cache: HIT`, 3 ms
-against the four seconds the first render costs. The one thing that stood in the way
-was `LanguageToggle`, which sits in the layout of every city page and reads the query
-string to carry it across languages: `useSearchParams` is a request-time API, so one
-language link kept the whole portal out of the prerender. It is now the link
-(`LanguageToggleLink`) behind a `Suspense` boundary — on a page rendered for the
-request the server still writes the href, query and all, and on a prerendered one the
-placeholder ships and the browser fills it in.
+**What is prerendered, and what is not — Cache Components.** The portal runs with
+`cacheComponents: true` (Partial Prerendering): a page is a static shell with what
+varies per request streamed into it. The previous model had only two kinds of route,
+static or rendered from scratch on every visit, and the catch-all — which serves the
+thousands of places, plazas and articles that read no query string *and* the listings
+that read one — was the second kind for all of them, because one `await searchParams`
+decides for the whole route. Now:
 
-The catch-all is the exception and stays dynamic (`ƒ`). It reads `searchParams` —
-which page of a listing, which day of a cartelera — and a route cannot be both: with
-`generateStaticParams` present Next treats it as static and *throws*
-(`DYNAMIC_SERVER_USAGE`) the moment the query is touched, rather than falling back to
-a dynamic render. Serving the thousands of places, plazas, excursiones and artículos
-that read no query from the ISR cache means adopting Cache Components
-(`cacheComponents: true`, PPR: a static shell with the listing streaming into it),
-which is app-wide — every `revalidate` segment config becomes `cacheLife`, every
-cached fetch a `use cache` scope with `cacheTag` in place of the `"umbraco"` fetch
-tag. Not done.
+- **Data is cached with `use cache`, not with `fetch` options** — under Cache
+  Components a bare `fetch` is request-time data. `read` in `lib/cms.ts` is the one
+  cached Delivery API reader (tag `CMS_TAG` = "umbraco", which `/api/revalidate`
+  drops on publish), and the same shape serves the cinema GraphQL (`gql`), the
+  weather (`readJson`), the YouTube trailer search and the public reviews
+  (`readPublic`, tag "reviews"). Their lifetimes are the named profiles in
+  `next.config.ts` (`cms`, `cinema`, `weather`, and `unanswered` — half a minute —
+  for a source that failed, so a CMS restart never pins a broken page for ten
+  minutes). A tag read inside a render is carried by the prerendered page, so a
+  publish or a review expires the page with the data. `cacheLife` takes one call
+  per invocation, and a ternary does not type-check against its overloads: branch.
+  `use cache` only exists on the server, which is why the movie score helpers moved
+  to `lib/movieReviews.ts` — a Client Component (`MovieCard`) renders them, and a
+  value imported from `lib/cinema.ts` would drag the fetch layer into the browser.
+- **The catch-all blocks on finding its node and then renders a cached view.**
+  `ContentPage` awaits the params and `getItem` before anything is sent
+  (`export const instant = false`), so `notFound()` still sets a real 404; a page
+  whose view reads the query (`readsQuery` in `lib/listing.ts`, plus a cinema
+  branch) awaits `searchParams` inside a `Suspense`, everything else hands the view
+  an empty query. `ContentView` is `use cache`, keyed by path and query: a place is
+  prerendered at its first visit and served as `x-nextjs-cache: HIT` after it
+  (0.4 s, then 2 ms), a listing is cached per page and filter asked for. The cache
+  is also what makes reading the clock legal in a prerender — which day a
+  cartelera opens on, whether an event is past, the footer's year — and those
+  reads have to stay inside a cached scope: `new Date()` outside one fails the
+  build, or worse, fails the prerender of a page at its first visit.
+- **`partialPrefetching` is off on purpose.** It answers an unvisited URL with a
+  generic shell before rendering it, and that shell goes out as a 200: a path with
+  no node came back as a soft 404 (a `noindex` not-found page, cached as a page),
+  and a real one without its `<title>` in the `<head>`. Every deploy empties the
+  cache, so a crawler is often the first visitor.
+- **`generateStaticParams` returns every city** (city layout) **and one page per
+  city** (catch-all): Cache Components refuses an empty array, and needs one path
+  to validate the route. The rest renders at its first visit.
+- **Client hooks that read the route suspend** in the shell prerendered before the
+  segments are known, so the ones in the city and root layouts (`SectionTabs`,
+  `CitySwitcher`, `AccountMenu`, `MetaPixel`, `LanguageToggleLink`) read it behind
+  their own `Suspense`, with a fallback drawn the same way without it (no lit tab,
+  menu closed). A prerendered page always knows its path, so a visitor gets the
+  finished markup. Pages below the catch-all read it freely.
+- **The request-time pages** — search (`?q`), the sign-in link (`?token`) and
+  favourites (the session cookie) — render their body inside a `Suspense`.
+- **`use cache` lives in memory** (an LRU sized by `cacheMaxMemorySize`, raised to
+  256 MB), and the prerendered pages on disk; both are emptied by a deploy.
+- Cache Components keeps a page's React state across navigations (`<Activity>`): a
+  dialog left open when the visitor navigates away is still open on the way back.
+- Locally, the standalone server redirects plain http to the canonical origin
+  (`next.config.ts`), and the proxy's rewrite only resolves when `HOSTNAME` matches
+  the host the server answers on: run it with `HOSTNAME=localhost` and send
+  `x-forwarded-proto: https`.
 
 A `movie` has its own page (`MovieView`): the CMS catalog entry (poster, sinopsis, trailer button, IMDb/Rotten Tomatoes badges) over the *live* Caribbean showings — every cinema in the city presenting it on the chosen date (`?fecha=`), its showtimes as booking links, and a map of those cinemas. Cartelera cards link into it whenever the catalog has the movie, matching on name (`getMovieCatalog`, keyed by lowercased name — the same join the trailer override and the badges use); a title the agent has not catalogued yet simply keeps the inline expander and no link. The per-cinema list and its map are `MovieShowtimes`, shared by the card's expanded body and the movie page, and the date pills are `DateTabs`, shared by the movie page and `Cartelera`. `getMovieShowings` asks for the billboard with `trailers: false` — the movie page reads its trailer from the CMS, so the slow YouTube fallback search must not run there.
 

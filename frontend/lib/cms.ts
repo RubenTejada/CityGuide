@@ -1,6 +1,8 @@
-// Reads from the Umbraco Content Delivery API v2. Server-only: every fetch is
-// cached with ISR and asks for the language the page being rendered is in.
+// Reads from the Umbraco Content Delivery API v2. Server-only: every answer is
+// cached (`use cache`, tagged "umbraco") and asks for the language the page
+// being rendered is in.
 
+import { cacheLife, cacheTag } from "next/cache";
 import {
   CULTURE,
   DEFAULT_LOCALE,
@@ -13,7 +15,14 @@ import type { UmbracoItem } from "@/lib/umbraco";
 export type { MediaItem, UmbracoItem } from "@/lib/umbraco";
 
 const BASE_URL = process.env.UMBRACO_BASE_URL ?? "http://localhost:54509";
-export const REVALIDATE_SECONDS = 600;
+
+/**
+ * The tag every Delivery API answer carries, which /api/revalidate — called by
+ * the CMS on publish, unpublish, delete and move — drops all at once. It
+ * reaches the pages too: a cache tag read inside a render is carried by the
+ * prerendered page, so a publish expires the page along with the data.
+ */
+export const CMS_TAG = "umbraco";
 
 interface UmbracoList {
   total: number;
@@ -41,22 +50,38 @@ export async function activeLocale(locale?: Locale): Promise<Locale> {
   return segment && isLocale(segment) ? segment : DEFAULT_LOCALE;
 }
 
-interface UmbracoList {
-  total: number;
-  items: UmbracoItem[];
+/**
+ * One Delivery API answer: its body, or null when there is none to give.
+ *
+ * Cached rather than fetched, because under Cache Components a plain `fetch` is
+ * request-time data and would keep every page that reads the CMS out of the
+ * prerender. The culture is an argument and not read here, so it is part of
+ * the key: each language caches separately, and the route handlers that name
+ * the language themselves share the entries the pages fill.
+ *
+ * A 404 is an answer — nothing is published at that path — and is kept as long
+ * as any other. Anything else is the CMS failing, and it is kept only for the
+ * half minute `unanswered` gives it: long enough not to hammer a CMS that is
+ * restarting, short enough that a page rendered during the hiccup does not
+ * stay broken for the ten minutes a real answer is kept.
+ */
+async function read<T>(path: string, culture: string): Promise<T | null> {
+  "use cache";
+  cacheTag(CMS_TAG);
+  const res = await fetch(`${BASE_URL}/umbraco/delivery/api/v2${path}`, {
+    headers: { "Accept-Language": culture },
+  });
+  if (res.ok) {
+    cacheLife("cms");
+    return (await res.json()) as T;
+  }
+  if (res.status === 404) cacheLife("cms");
+  else cacheLife("unanswered");
+  return null;
 }
 
-async function api(path: string, locale?: Locale): Promise<Response> {
-  const culture = CULTURE[await activeLocale(locale)];
-  return fetch(`${BASE_URL}/umbraco/delivery/api/v2${path}`, {
-    // The culture decides which language's text and route paths come back, and it
-    // is part of the request, so each language caches separately.
-    headers: { "Accept-Language": culture },
-    // Tagged so /api/revalidate (called by an Umbraco webhook on publish/
-    // unpublish/delete) can drop every CMS response at once; the time-based
-    // revalidate stays as a fallback.
-    next: { revalidate: REVALIDATE_SECONDS, tags: ["umbraco"] },
-  });
+async function api<T>(path: string, locale?: Locale): Promise<T | null> {
+  return read<T>(path, CULTURE[await activeLocale(locale)]);
 }
 
 /**
@@ -70,13 +95,11 @@ export async function getItem(
   expand?: string,
   locale?: Locale,
 ): Promise<UmbracoItem | null> {
-  const res = await api(
+  return api<UmbracoItem>(
     `/content/item${path.startsWith("/") ? path : `/${path}`}` +
       (expand ? `?expand=${encodeURIComponent(expand)}` : ""),
     locale,
   );
-  if (!res.ok) return null;
-  return res.json();
 }
 
 /**
@@ -91,16 +114,14 @@ export async function getChildren(
   locale?: Locale,
   contentType?: string,
 ): Promise<UmbracoItem[]> {
-  const res = await api(
+  const data = await api<UmbracoList>(
     `/content?fetch=${encodeURIComponent(`children:${path}`)}&sort=sortOrder:asc&take=${take}` +
       (contentType
         ? `&filter=${encodeURIComponent(`contentType:${contentType}`)}`
         : ""),
     locale,
   );
-  if (!res.ok) return [];
-  const data: UmbracoList = await res.json();
-  return data.items;
+  return data?.items ?? [];
 }
 
 /**
@@ -125,9 +146,11 @@ export async function getDescendantsOfType(
   const items: UmbracoItem[] = [];
   while (items.length < max) {
     const take = Math.min(pageSize, max - items.length);
-    const res = await api(`${query}&skip=${items.length}&take=${take}`, locale);
-    if (!res.ok) break;
-    const data: UmbracoList = await res.json();
+    const data = await api<UmbracoList>(
+      `${query}&skip=${items.length}&take=${take}`,
+      locale,
+    );
+    if (!data) break;
     items.push(...data.items);
     if (data.items.length === 0 || items.length >= data.total) break;
   }
@@ -147,12 +170,11 @@ export async function getDescendants(
   const pageSize = 100;
   const items: UmbracoItem[] = [];
   for (let skip = 0; skip < max; skip += pageSize) {
-    const res = await api(
+    const data = await api<UmbracoList>(
       `/content?fetch=${encodeURIComponent(`descendants:${path}`)}&skip=${skip}&take=${pageSize}`,
       locale,
     );
-    if (!res.ok) break;
-    const data: UmbracoList = await res.json();
+    if (!data) break;
     items.push(...data.items);
     if (items.length >= data.total || data.items.length === 0) break;
   }
@@ -161,13 +183,11 @@ export async function getDescendants(
 
 /** All cities in the portal (children of the site root). */
 export async function getCities(locale?: Locale): Promise<UmbracoItem[]> {
-  const res = await api(
+  const data = await api<UmbracoList>(
     `/content?filter=${encodeURIComponent("contentType:city")}&take=50`,
     locale,
   );
-  if (!res.ok) return [];
-  const data: UmbracoList = await res.json();
-  return data.items;
+  return data?.items ?? [];
 }
 
 /**
@@ -184,10 +204,8 @@ export async function alternateOf(
   locale: Locale,
 ): Promise<{ locale: Locale; path: string } | null> {
   const other = otherLocale(locale);
-  const res = await api(`/content/item/${item.id}`, other);
-  if (!res.ok) return null;
-  const translated: UmbracoItem = await res.json();
-  return translated.route?.path
+  const translated = await api<UmbracoItem>(`/content/item/${item.id}`, other);
+  return translated?.route?.path
     ? { locale: other, path: translated.route.path }
     : null;
 }
@@ -201,12 +219,11 @@ export async function getItemsById(
   locale?: Locale,
 ): Promise<UmbracoItem[]> {
   if (ids.length === 0) return [];
-  const res = await api(
-    `/content/items?${ids.map((id) => `id=${encodeURIComponent(id)}`).join("&")}`,
-    locale,
-  );
-  if (!res.ok) return [];
-  const items: UmbracoItem[] = await res.json();
+  const items =
+    (await api<UmbracoItem[]>(
+      `/content/items?${ids.map((id) => `id=${encodeURIComponent(id)}`).join("&")}`,
+      locale,
+    )) ?? [];
   const byId = new Map(items.map((item) => [item.id, item]));
   return ids.flatMap((id) => byId.get(id) ?? []);
 }

@@ -5,18 +5,6 @@ import { pageMetadata } from "@/lib/seo";
 import { getItem } from "@/lib/cms";
 import { localeHref, otherLocale, t, type Locale } from "@/lib/i18n";
 
-export const revalidate = 600;
-
-/**
- * No city is prerendered at build time — the portal opens new ones from the
- * backoffice — but a route with no `generateStaticParams` at all is rendered
- * from scratch on every request. The empty array asks for the other behaviour:
- * rendered the first time the path is asked for, then served from the ISR cache.
- */
-export function generateStaticParams() {
-  return [];
-}
-
 export async function generateMetadata({
   params,
 }: PageProps<"/[lang]/[city]/contacto">): Promise<Metadata> {

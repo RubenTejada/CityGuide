@@ -2,7 +2,7 @@
 
 import Script from "next/script";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { Suspense, useEffect, useRef } from "react";
 import { META_PIXEL_ID } from "@/lib/meta";
 
 declare global {
@@ -23,11 +23,27 @@ declare global {
  * and the first one is skipped because the snippet already sent it.
  */
 export default function MetaPixel() {
+  if (!META_PIXEL_ID) return null;
+
+  return (
+    <>
+      <BaseSnippet />
+      {/* Reading the path suspends in the static shell prerendered before a
+          page's segments are known, so the watcher waits behind its own
+          boundary and the snippet above ships in the shell regardless. */}
+      <Suspense fallback={null}>
+        <PageViews />
+      </Suspense>
+    </>
+  );
+}
+
+/** One PageView per client-side navigation after the first. */
+function PageViews() {
   const pathname = usePathname();
   const firstPath = useRef(true);
 
   useEffect(() => {
-    if (!META_PIXEL_ID) return;
     if (firstPath.current) {
       firstPath.current = false;
       return;
@@ -35,8 +51,10 @@ export default function MetaPixel() {
     window.fbq?.("track", "PageView");
   }, [pathname]);
 
-  if (!META_PIXEL_ID) return null;
+  return null;
+}
 
+function BaseSnippet() {
   return (
     <Script id="meta-pixel" strategy="afterInteractive">
       {`!function(f,b,e,v,n,t,s)
