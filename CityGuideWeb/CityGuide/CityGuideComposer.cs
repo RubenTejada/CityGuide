@@ -1,5 +1,6 @@
 using Umbraco.Cms.Core.Composing;
 using Umbraco.Cms.Core.Notifications;
+using Umbraco.Extensions;
 
 namespace CityGuideWeb.CityGuide;
 
@@ -13,6 +14,7 @@ public class CityGuideComposer : IComposer
         builder.Services.AddSingleton<NearbyIndex>();
         builder.Services.AddSingleton<ReviewStore>();
         builder.Services.AddSingleton<FrontendRevalidator>();
+        builder.Services.AddRecurringBackgroundJob<FormRetention>();
         builder.AddNotificationAsyncHandler<UmbracoApplicationStartingNotification, UserContentMigration>();
         builder.AddNotificationAsyncHandler<UmbracoApplicationStartedNotification, CityGuideSeeder>();
         builder

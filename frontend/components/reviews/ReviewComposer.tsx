@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useState, useTransition } from "react";
 import { deleteReview, saveReview } from "@/app/[lang]/[city]/[...slug]/actions";
 import { useLocale } from "@/components/LocaleProvider";
+import LegalNote from "@/components/LegalNote";
 import SignInButton from "@/components/account/SignInButton";
 import { usePlaceAccount } from "@/components/account/useAccount";
 import { t } from "@/lib/i18n";
@@ -96,7 +97,11 @@ export default function ReviewComposer({ placeId }: { placeId: string }) {
           className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
         />
       </label>
-      <p className="mt-1 text-xs text-neutral-500">{words.publicNote}</p>
+      <LegalNote
+        text={words.publicNote}
+        document="terms"
+        className="mt-1 text-xs text-neutral-500"
+      />
       {error && (
         <p role="alert" className="mt-3 text-sm text-red-600">
           {error}

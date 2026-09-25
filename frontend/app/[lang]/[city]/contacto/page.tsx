@@ -52,6 +52,14 @@ export default async function ContactPage({
           <strong className="font-semibold">{words.bullets.adsLabel}</strong>{" "}
           {words.bullets.ads}
         </li>
+        <li>
+          <strong className="font-semibold">{words.bullets.dataLabel}</strong>{" "}
+          {words.bullets.data}
+        </li>
+        <li>
+          <strong className="font-semibold">{words.bullets.reportLabel}</strong>{" "}
+          {words.bullets.report}
+        </li>
       </ul>
       <div className="mt-8">
         <ContactForm locale={locale} />

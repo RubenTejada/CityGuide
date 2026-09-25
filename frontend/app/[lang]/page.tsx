@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import CityBadge from "@/components/CityBadge";
 import JsonLd from "@/components/JsonLd";
+import { CookieSettingsButton } from "@/components/CookieConsent";
 import SiteLogo from "@/components/SiteLogo";
 import ThemeToggle from "@/components/ThemeToggle";
 import {
@@ -93,6 +94,7 @@ export default async function HomePage({ params }: PageProps<"/[lang]">) {
         <Link href={localeHref(locale, LEGAL_PATHS.terms)} className="hover:text-neutral-800">
           {words.legal.terms}
         </Link>
+        <CookieSettingsButton className="hover:text-neutral-800" />
       </footer>
     </main>
   );

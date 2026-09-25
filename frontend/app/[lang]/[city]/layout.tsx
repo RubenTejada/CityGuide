@@ -11,6 +11,7 @@ import CitySwitcher, { type CityOption } from "@/components/CitySwitcher";
 import SectionTabs from "@/components/SectionTabs";
 import SiteLogo from "@/components/SiteLogo";
 import SocialLinks from "@/components/SocialLinks";
+import { CookieSettingsButton } from "@/components/CookieConsent";
 import LanguageToggle from "@/components/LanguageToggle";
 import AccountMenu from "@/components/account/AccountMenu";
 import { getChildren, getCities, getItem, type UmbracoItem } from "@/lib/cms";
@@ -214,6 +215,7 @@ export default async function CityLayout({
               >
                 {words.legal.terms}
               </PendingLink>
+              <CookieSettingsButton className="text-left hover:text-white" />
             </div>
             <SocialLinks locale={locale} className="mt-6" />
             <p className="mt-8 text-xs text-neutral-600">

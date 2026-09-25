@@ -25,7 +25,7 @@ public class ContactController : ControllerBase
     private static readonly string[] RequestTypes =
     [
         "Consulta general", "Agregar mi negocio", "Quitar mi negocio",
-        "Publicidad en el sitio",
+        "Publicidad en el sitio", "Mis datos personales", "Denunciar contenido",
     ];
 
     /// <summary>One sender may file a handful of messages per hour, not a flood.</summary>

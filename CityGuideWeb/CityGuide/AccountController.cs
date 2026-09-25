@@ -250,6 +250,75 @@ public class AccountController : ControllerBase
         return Ok(new { favorite = false });
     }
 
+    /// <summary>
+    /// Everything the portal holds about the member, for them to take away (the right of
+    /// access in Ley 172-13). A suspended member is still owed it, so only existence is
+    /// checked. Place names are read now; a place since deleted keeps only its key.
+    /// </summary>
+    [HttpGet("{memberKey:guid}/export")]
+    public IActionResult Export(Guid memberKey)
+    {
+        IMember? member = _memberService.GetById(memberKey);
+        if (member is null)
+        {
+            return NotFound();
+        }
+
+        List<ReviewRow> reviews = _store.ForMember(memberKey);
+        List<FavoriteRow> favorites = _store.FavoriteRows(memberKey);
+        Dictionary<Guid, string?> places = _contentService
+            .GetByIds(reviews.Select(r => r.PlaceKey).Concat(favorites.Select(f => f.PlaceKey)).Distinct())
+            .ToDictionary(c => c.Key, c => c.Name);
+
+        return Ok(new
+        {
+            exportedUtc = DateTime.UtcNow,
+            account = new
+            {
+                name = member.Name,
+                email = member.Email,
+                createdUtc = member.CreateDate.ToUniversalTime(),
+                lastSignInUtc = member.LastLoginDate?.ToUniversalTime(),
+                suspended = MemberAccounts.IsBlocked(member),
+            },
+            reviews = reviews.Select(r => new
+            {
+                placeKey = r.PlaceKey,
+                place = places.GetValueOrDefault(r.PlaceKey),
+                r.Rating,
+                r.Comment,
+                createdUtc = ReviewsController.Utc(r.CreatedUtc),
+                updatedUtc = ReviewsController.Utc(r.UpdatedUtc),
+                hiddenByModerator = r.Hidden,
+            }),
+            favorites = favorites.Select(f => new
+            {
+                placeKey = f.PlaceKey,
+                place = places.GetValueOrDefault(f.PlaceKey),
+                savedUtc = ReviewsController.Utc(f.CreatedUtc),
+            }),
+        });
+    }
+
+    /// <summary>
+    /// Deletes the member at their own request. Their reviews and favourites go with it
+    /// (<see cref="MemberReviewSync"/>, the same path an editor's delete takes), and a
+    /// suspended member may do it too: erasure is not a privilege of good standing.
+    /// </summary>
+    [HttpDelete("{memberKey:guid}")]
+    public IActionResult DeleteAccount(Guid memberKey)
+    {
+        IMember? member = _memberService.GetById(memberKey);
+        if (member is null)
+        {
+            return NotFound();
+        }
+
+        _memberService.Delete(member);
+        _logger.LogInformation("CityGuide: member {Key} deleted their account", memberKey);
+        return Ok(new { ok = true });
+    }
+
     /// <summary>A published establishment of a type visitors can rate and keep.</summary>
     internal static bool IsRateablePlace(IContentService contentService, Guid placeKey)
     {

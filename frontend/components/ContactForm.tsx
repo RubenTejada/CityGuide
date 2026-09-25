@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import { sendContactMessage } from "@/app/[lang]/[city]/contacto/actions";
 import { REQUEST_TYPES, type ContactState } from "@/lib/contact";
+import LegalNote from "@/components/LegalNote";
 import { t, type Locale } from "@/lib/i18n";
 
 const INITIAL: ContactState = { status: "idle" };
@@ -148,7 +149,11 @@ export default function ContactForm({ locale }: { locale: Locale }) {
       >
         {pending ? words.sending : words.send}
       </button>
-      <p className="mt-3 text-xs text-neutral-500">{words.privacy}</p>
+      <LegalNote
+        text={words.privacy}
+        document="privacy"
+        className="mt-3 text-xs text-neutral-500"
+      />
     </form>
   );
 }

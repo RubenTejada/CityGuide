@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Oswald } from "next/font/google";
 import Analytics from "@/components/Analytics";
+import CookieConsent from "@/components/CookieConsent";
 import InlineScript from "@/components/InlineScript";
 import JsonLd from "@/components/JsonLd";
 import MetaPixel from "@/components/MetaPixel";
@@ -108,7 +109,10 @@ export default async function RootLayout({
         <JsonLd data={siteJsonLd(locale)} />
         <Analytics />
         <MetaPixel />
-        <LocaleProvider locale={locale}>{children}</LocaleProvider>
+        <LocaleProvider locale={locale}>
+          {children}
+          <CookieConsent />
+        </LocaleProvider>
       </body>
     </html>
   );
