@@ -281,10 +281,44 @@ export async function getAvailableDates(siteIds: string[]): Promise<string[]> {
     return [];
   }
   const today = todayInDR();
-  return dates
-    .filter((d) => d >= today)
-    .sort()
-    .slice(0, 7);
+  const upcoming = dates.filter((d) => d >= today).sort();
+  // The API keeps listing today after its last show has started, which opened
+  // the cartelera late at night on a day with nothing left to see.
+  if (upcoming[0] === today && !(await hasShowingsLeftToday(siteIds))) {
+    upcoming.shift();
+  }
+  return upcoming.slice(0, 7);
+}
+
+/**
+ * Whether any of the sites still has a show to start today. Asks with the very
+ * requests the billboard makes, so the day it keeps is read from the cache.
+ * No answer at all keeps the day: a failed request is not an empty cartelera.
+ */
+async function hasShowingsLeftToday(siteIds: string[]): Promise<boolean> {
+  const today = todayInDR();
+  const cutoff = nowMinutesInDR();
+  const answers = await Promise.all(
+    siteIds.map((id) => getShowingRows(id, today)),
+  );
+  if (answers.every((rows) => rows === null)) return true;
+  return answers.some((rows) =>
+    rows?.some(
+      (row) => row.movie && parseTime(row.time, today).minutes > cutoff,
+    ),
+  );
+}
+
+/** A site's showings on a date, or null when the API did not answer. */
+async function getShowingRows(
+  siteId: string,
+  date: string,
+): Promise<RawShowing[] | null> {
+  const data = await gql<{ showingsForDate: { data: RawShowing[] } }>(
+    SHOWINGS_QUERY,
+    { date, siteIds: [siteId] },
+  );
+  return data ? (data.showingsForDate?.data ?? []) : null;
 }
 
 const BADGE_LABELS: Record<string, string> = {
@@ -368,11 +402,7 @@ async function getCinemaShowings(
   cinema: Cinema,
   date: string,
 ): Promise<MovieShowings[]> {
-  const data = await gql<{ showingsForDate: { data: RawShowing[] } }>(
-    SHOWINGS_QUERY,
-    { date, siteIds: [cinema.id] },
-  );
-  const rows = data?.showingsForDate?.data ?? [];
+  const rows = (await getShowingRows(cinema.id, date)) ?? [];
 
   const isToday = date === todayInDR();
   const cutoff = isToday ? nowMinutesInDR() : -1;
