@@ -94,6 +94,14 @@ cd CityGuide.Agent && dotnet run -- --recycle-place /santo-domingo/empresas-y-se
 # site's preview image, then Google, which is billed and so needs --paid — and the old
 # media item goes to the media recycle bin. Plan until --apply.
 cd CityGuide.Agent && dotnet run -- --paid --reset-photo /santiago/atracciones/parque-central-de-santiago --apply
+# Give a credit (author, licence, source) to the photos downloaded before the agent kept
+# one. A Commons photo is credited in place, for free, from the file its media name
+# records; a Google photo cannot be traced back to the attribution it came with, so it is
+# downloaded again with it (the main photo through the usual chain, a gallery from
+# Google) and the old one is recycled — billed, so that half needs --paid, and the plan
+# prints the bill. Scoped by --section. Plan until --apply.
+cd CityGuide.Agent && dotnet run -- --photo-credits
+cd CityGuide.Agent && dotnet run -- --paid --photo-credits --apply
 # Send to the recycle bin the events the agent imported that do not happen in the
 # city: every ticket portal lists the whole country, and the section filled up with
 # Santiago, Higüey and Punta Cana. Plan until --apply.
@@ -499,6 +507,30 @@ either: "Santiago" is also Chile, which is the photo the Parque Central got.
 only with `--paid`) and recycles the old media item. Among what survives, a card-shaped
 landscape beats a portrait and a portrait beats a panorama. The media item is named after
 the place *and* its source, so provenance survives in the backoffice.
+
+**A photo that is not the venue's own carries its credit, on the media item.** A Commons
+photograph is CC BY, CC BY-SA or public domain, and the first two are only ours to show
+with the author, the licence and a link (Ley 65-00 makes the name a moral right besides);
+a Google place photo may only be shown with the `authorAttributions` Google sends with
+it. So the "Image" media type has three more properties (`photoAuthor`, `photoLicense`,
+`photoSource`, added by `EnsureImageCreditSchemaAsync`), and every upload writes them
+(`PhotoCredit` on `FoundImage`): Commons from the file's `extmetadata` (Artist,
+LicenseShortName) and its description page, Google from the photo's attributions — kept
+on `GooglePhoto` from the answer that named the photo, since the download returns bytes
+and nothing else — with the author's Maps profile as the source and no licence. The
+venue's og:image and an event's own poster need none. The credit lives on the media item
+and not beside the node's picker because it belongs to the picture: a gallery holds seven,
+and a photo handed from a copy to the survivor keeps its author. The Delivery API serves a
+media item's own properties only when the picker is **expanded**, which is why `getItem`
+expands `properties[photo,gallery]` by default and the agent's `GetPublishedPlacesAsync`
+does the same. The frontend reads it into `Photo.credit` and `PhotoCreditLine` prints it
+under the photo of a place, plaza, event and tour, under the gallery (every author the
+block shows, in one line) and in `ImageViewer` for the image on screen: the author linked
+to the source, the licence linked to its Creative Commons text, and the provider read off
+the source's host. The curated table in `lib/photos.ts` carries the same three fields, and
+a place page falls back to it like the cards already did. `--photo-credits` is the one-off
+catch-up for the library (see the command above); events downloaded before it stay
+uncredited until they pass, since their media names never recorded the source.
 
 **A handful of places carry a gallery, not just a photo.** `gallery` is a second,
 multi-image property on `place` (`EnsurePlaceGallerySchemaAsync`), separate from `photo`

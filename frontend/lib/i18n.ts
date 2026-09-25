@@ -273,6 +273,11 @@ const es = {
     viewerZoomIn: "Acercar",
     viewerZoomOut: "Alejar",
     viewerZoomReset: "Tamaño original",
+    /** El crédito bajo una foto de Commons o de Google (PhotoCreditLine). La licencia se
+     *  guarda como la escribe Commons; solo "Public domain" es una palabra que traducir. */
+    photoCredit: "Foto",
+    photoCredits: "Fotos",
+    photoPublicDomain: "dominio público",
     location: "Ubicación",
     map: "Mapa",
     date: "Fecha",
@@ -481,7 +486,6 @@ const es = {
     bookWithOperator: "Reservar en línea",
     operatorWebsite: "Sitio web",
     operatorPhone: "Llamar",
-    photoCredit: (credit: string): string => `Foto: ${credit}`,
   },
   events: {
     about: "Acerca del evento",
@@ -850,6 +854,9 @@ const en: typeof es = {
     viewerZoomIn: "Zoom in",
     viewerZoomOut: "Zoom out",
     viewerZoomReset: "Actual size",
+    photoCredit: "Photo",
+    photoCredits: "Photos",
+    photoPublicDomain: "public domain",
     location: "Location",
     map: "Map",
     date: "Date",
@@ -1039,7 +1046,6 @@ const en: typeof es = {
     bookWithOperator: "Book online",
     operatorWebsite: "Website",
     operatorPhone: "Call",
-    photoCredit: (credit: string): string => `Photo: ${credit}`,
   },
   events: {
     about: "About this event",

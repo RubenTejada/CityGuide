@@ -61,7 +61,7 @@ export default function MenuViewer({
 
       {viewing !== null && (
         <ImageViewer
-          images={pages.map((page) => page.url)}
+          images={pages}
           name={name}
           start={viewing}
           labels={{

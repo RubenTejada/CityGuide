@@ -20,11 +20,13 @@ public class PlacePhotos(GooglePlacesClient google, FreePhotos free, UmbracoClie
     /// Uploads the best free-first image of a place into the Media library and
     /// returns its key, or null when nothing was found. The media item is named
     /// after the place and the source it came from, so provenance survives in the
-    /// backoffice — a Commons photograph carries a licence its author is owed.
+    /// backoffice, and carries the credit the page prints under it — a Commons
+    /// photograph has a licence its author is owed, a Google one the attribution the
+    /// terms require. The venue's own og:image needs none.
     /// </summary>
     public async Task<Guid?> UploadAsync(
         string name,
-        Func<Task<string?>>? googlePhoto = null,
+        Func<Task<GooglePhoto?>>? googlePhoto = null,
         string routePath = "",
         IEnumerable<string>? googleTypes = null,
         string? website = null,
@@ -46,15 +48,14 @@ public class PlacePhotos(GooglePlacesClient google, FreePhotos free, UmbracoClie
 
             // Asked for last and lazily: a node whose picture came free never spends the
             // request that would name the Google one, let alone the one that downloads it.
-            if (image is null && googlePhoto is not null && await googlePhoto() is string photoName)
+            if (image is null && googlePhoto is not null && await googlePhoto() is GooglePhoto photo)
             {
-                (byte[] Bytes, string ContentType)? photo = await google.DownloadPhotoAsync(photoName);
-                image = photo is null ? null : new FoundImage(photo.Value.Bytes, photo.Value.ContentType, "Google");
+                image = await google.DownloadPhotoAsync(photo);
             }
 
             return image is null
                 ? null
-                : await umbraco.CreateMediaImageAsync($"{name} — {image.Source}", image.Bytes, image.ContentType);
+                : await umbraco.CreateMediaImageAsync($"{name} — {image.Source}", image);
         }
         catch (Exception ex)
         {
