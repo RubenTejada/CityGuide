@@ -228,3 +228,170 @@ html.dark .theme-icon-light {
     animation: none;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Movimiento del logo y del portal
+   Todo va bajo `no-preference`: quien pide menos movimiento ve el dibujo y las
+   tarjetas quietos, que es su estado de reposo (ninguna regla de aquí deja
+   algo oculto sin la animación que lo descubre).
+
+   Logo y emblemas (LogoIcon, CityEmblem): el arco solar se traza al cargar y
+   después la escena respira — la palma se mece sobre su base, las aves
+   planean, las olas van y vienen, el sol gira y el velero cabecea. Cada
+   pieza es un <g> cuyo origen local es su punto de apoyo (la base de la
+   palma, el centro del sol), que es donde un `transform` de CSS gira por
+   defecto en SVG.
+
+   Tarjetas (`.reveal`): suben y aparecen al entrar en pantalla con una
+   animación ligada al scroll, sin JavaScript. Un navegador sin
+   `animation-timeline` las muestra sin más.
+   --------------------------------------------------------------------------- */
+@keyframes logo-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes logo-sway {
+  from {
+    transform: rotate(-3deg);
+  }
+  to {
+    transform: rotate(3deg);
+  }
+}
+@keyframes logo-glide {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(3px, -3px);
+  }
+}
+@keyframes logo-swell {
+  from {
+    transform: translateX(-4px);
+  }
+  to {
+    transform: translateX(4px);
+  }
+}
+@keyframes logo-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes logo-bob {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-1.5deg);
+  }
+  50% {
+    transform: translateY(-2px) rotate(1.5deg);
+  }
+}
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes wordmark-enter {
+  from {
+    opacity: 0;
+    transform: translateX(-0.6em);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+@keyframes wordmark-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(0.15em) scale(0.5);
+  }
+  60% {
+    opacity: 1;
+    transform: translateY(0) scale(1.15);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* El trazo lleva pathLength="1", así que la raya mide lo que el arco. */
+  .logo-draw {
+    stroke-dasharray: 1;
+    animation: logo-draw 1.4s cubic-bezier(0.65, 0, 0.35, 1) both;
+  }
+  .logo-palm {
+    animation: logo-sway 4.5s ease-in-out infinite alternate;
+  }
+  .logo-birds {
+    animation: logo-glide 7s ease-in-out infinite;
+  }
+  .logo-waves {
+    animation: logo-swell 2.8s ease-in-out infinite alternate;
+  }
+  .logo-waves-back {
+    animation: logo-swell 2.8s ease-in-out infinite alternate-reverse;
+  }
+  .logo-sun {
+    animation: logo-spin 40s linear infinite;
+  }
+  /* El casco no está en el origen: gira sobre su propia quilla. */
+  .logo-bob {
+    transform-box: fill-box;
+    transform-origin: 50% 100%;
+    animation: logo-bob 4s ease-in-out infinite;
+  }
+
+  /* Wordmark: entra desde la izquierda, "RD" salta al llegar y el ".com" y
+     el lema se asientan detrás. La cabecera sobrevive a la navegación dentro
+     de una ciudad, así que solo se ve al abrir el portal o cambiar de ciudad. */
+  .wordmark-enter {
+    animation: wordmark-enter 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .wordmark-pop {
+    animation: wordmark-pop 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) 0.45s both;
+  }
+  .wordmark-tail {
+    animation: rise-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.75s both;
+  }
+
+  /* Entrada de lo primero que se ve (portada): escalonada con --rise-delay. */
+  .rise-in {
+    animation: rise-in 0.8s cubic-bezier(0.22, 1, 0.36, 1) var(--rise-delay, 0s)
+      both;
+  }
+
+  @supports (animation-timeline: view()) {
+    .reveal {
+      animation: reveal linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 70%;
+    }
+  }
+}

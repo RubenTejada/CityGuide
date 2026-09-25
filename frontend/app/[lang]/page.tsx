@@ -54,7 +54,12 @@ export default async function HomePage({ params }: PageProps<"/[lang]">) {
               locale={locale}
             />
           </h1>
-          <p className="mt-6 text-lg text-neutral-300">{words.home.lead}</p>
+          <p
+            className="rise-in mt-6 text-lg text-neutral-300"
+            style={{ "--rise-delay": "0.6s" } as React.CSSProperties}
+          >
+            {words.home.lead}
+          </p>
         </div>
       </section>
 
@@ -65,7 +70,7 @@ export default async function HomePage({ params }: PageProps<"/[lang]">) {
             <Link
               key={city.id}
               href={localeHref(locale, `/${slugOf(city)}`)}
-              className="relative block rounded-3xl shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+              className="reveal group relative block rounded-3xl shadow-sm transition hover:shadow-lg motion-safe:hover:-translate-y-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
             >
               <CityBadge city={city} />
               {isComingSoon(city) && (

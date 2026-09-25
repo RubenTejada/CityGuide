@@ -84,14 +84,14 @@ function Switcher({
         aria-haspopup="menu"
         aria-label={`${words.nav.changeCity}: ${current.name}`}
         title={words.nav.changeCity}
-        className={`flex w-full flex-col items-center rounded-2xl px-2 py-1 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sun-300 ${
+        className={`group flex w-full flex-col items-center rounded-2xl px-2 py-1 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sun-300 ${
           open ? "bg-neutral-800" : "hover:bg-neutral-800"
         }`}
       >
         <CityEmblem
           slug={current.slug}
           ring={false}
-          className="h-20 w-auto sm:h-32"
+          className="h-20 w-auto transition-transform duration-500 ease-out motion-safe:group-hover:scale-105 sm:h-32"
         />
         <span className="mt-2 flex items-center gap-1.5 text-xs font-light tracking-[0.28em] text-white uppercase">
           {current.name}

@@ -34,7 +34,7 @@ export default function ArticleCard({
   return (
     <Link
       href={article.route.path}
-      className="group flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm transition hover:shadow-md sm:flex-row"
+      className="reveal group flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm transition hover:shadow-md motion-safe:hover:-translate-y-0.5 sm:flex-row"
     >
       <div
         className={`relative flex-none bg-neutral-200 sm:h-auto ${
@@ -46,7 +46,7 @@ export default function ArticleCard({
           alt={article.name}
           fill
           unoptimized={photo.endsWith(".svg")}
-          className="object-cover transition duration-300 group-hover:scale-105"
+          className="object-cover transition duration-500 ease-out motion-safe:group-hover:scale-105"
           sizes={
             compact
               ? "(min-width: 640px) 128px, 100vw"

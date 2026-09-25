@@ -36,10 +36,10 @@ export default function AttractionCard({
   return (
     <Link
       href={place.route.path}
-      className="group overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm transition hover:shadow-md"
+      className="reveal group overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm transition hover:shadow-md motion-safe:hover:-translate-y-0.5"
     >
       <div
-        className={`relative bg-neutral-200 ${
+        className={`relative overflow-hidden bg-neutral-200 ${
           compact ? "aspect-[16/7]" : "aspect-[2/1]"
         }`}
       >
@@ -48,7 +48,7 @@ export default function AttractionCard({
           alt={place.name}
           fill
           unoptimized={photo.endsWith(".svg")}
-          className="object-cover"
+          className="object-cover transition duration-500 ease-out motion-safe:group-hover:scale-105"
           style={{ objectPosition: focalPosition(own) }}
           sizes={
             compact

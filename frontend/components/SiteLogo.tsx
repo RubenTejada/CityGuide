@@ -1,5 +1,5 @@
 import { DEFAULT_LOCALE, t, type Locale } from "@/lib/i18n";
-import { CityEmblem } from "./CityBadge";
+import { CityEmblem, Palm } from "./CityBadge";
 
 /**
  * Logo de QueHacerRD.com — recreación SVG del logo (arco solar, iglesia
@@ -16,10 +16,18 @@ export function LogoIcon({ className }: { className?: string }) {
       strokeLinejoin="round"
     >
       {/* Arco solar */}
-      <path d="M14 62 A 46 46 0 0 1 106 62" stroke="#f5b301" strokeWidth="7" />
+      <path
+        d="M14 62 A 46 46 0 0 1 106 62"
+        className="logo-draw"
+        pathLength={1}
+        stroke="#f5b301"
+        strokeWidth="7"
+      />
       {/* Aves */}
-      <path d="M78 34 q3 -4 6 0 q3 -4 6 0" stroke="#fff" strokeWidth="2" />
-      <path d="M90 44 q2.5 -3 5 0 q2.5 -3 5 0" stroke="#fff" strokeWidth="2" />
+      <g className="logo-birds">
+        <path d="M78 34 q3 -4 6 0 q3 -4 6 0" stroke="#fff" strokeWidth="2" />
+        <path d="M90 44 q2.5 -3 5 0 q2.5 -3 5 0" stroke="#fff" strokeWidth="2" />
+      </g>
       {/* Torre de la iglesia: cúpula + cruz */}
       <path
         d="M38 96 V56 q0 -12 10 -12 q10 0 10 12 v40"
@@ -46,21 +54,21 @@ export function LogoIcon({ className }: { className?: string }) {
         stroke="#fff"
         strokeWidth="3"
       />
-      {/* Palma */}
-      <path d="M94 96 q2 -18 -2 -30" stroke="#3faa4c" strokeWidth="4" />
-      <path d="M92 66 q-10 -8 -18 -4 q10 -4 18 4 z" fill="#3faa4c" />
-      <path d="M92 66 q-2 -12 6 -18 q-6 8 -6 18 z" fill="#3faa4c" />
-      <path d="M92 66 q10 -8 18 -2 q-10 -2 -18 2 z" fill="#3faa4c" />
-      <path d="M92 66 q12 0 16 8 q-8 -6 -16 -8 z" fill="#3faa4c" />
+      {/* Palma: la misma de los emblemas, con la base en la línea del suelo */}
+      <g transform="translate(94 96)">
+        <Palm />
+      </g>
       {/* Base */}
       <path d="M16 96 h90" stroke="#fff" strokeWidth="3.5" />
       {/* Olas */}
       <path
+        className="logo-waves"
         d="M24 105 q6 -5 12 0 q6 5 12 0 q6 -5 12 0 q6 5 12 0 q6 -5 12 0"
         stroke="#2e9fd8"
         strokeWidth="3.5"
       />
       <path
+        className="logo-waves-back"
         d="M36 113 q6 -5 12 0 q6 5 12 0 q6 -5 12 0"
         stroke="#2e9fd8"
         strokeWidth="3"
@@ -119,14 +127,17 @@ export default function SiteLogo({
       <span
         className={`flex flex-col ${glyph && citySlug ? "mt-[0.3em]" : ""}`}
       >
-        <span className="font-logo text-[1.15em] leading-none font-semibold tracking-wide text-white">
-          QuéHacer<span className="text-brand-500">RD</span>
-          <span className="align-baseline text-[0.5em] font-medium text-neutral-400">
+        {/* Entrada: el nombre llega desde la izquierda, "RD" salta detrás y
+            el ".com" y el lema se asientan al final (globals.css). */}
+        <span className="wordmark-enter font-logo text-[1.15em] leading-none font-semibold tracking-wide text-white">
+          QuéHacer
+          <span className="wordmark-pop inline-block text-brand-500">RD</span>
+          <span className="wordmark-tail inline-block align-baseline text-[0.5em] font-medium text-neutral-400">
             .com
           </span>
         </span>
         {tagline && (
-          <span className="mt-[0.4em] text-center text-[max(0.36em,11px)] font-normal text-neutral-400">
+          <span className="wordmark-tail mt-[0.4em] text-center text-[max(0.36em,11px)] font-normal text-neutral-400">
             {t(locale).site.tagline}
           </span>
         )}

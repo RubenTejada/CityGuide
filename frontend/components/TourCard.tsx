@@ -39,15 +39,15 @@ export default function TourCard({
   return (
     <Link
       href={tour.route.path}
-      className="group flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm transition hover:shadow-md"
+      className="reveal group flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm transition hover:shadow-md motion-safe:hover:-translate-y-0.5"
     >
-      <div className="relative aspect-[16/9] bg-neutral-200">
+      <div className="relative aspect-[16/9] overflow-hidden bg-neutral-200">
         <Image
           src={photo}
           alt={tour.name}
           fill
           unoptimized={photo.endsWith(".svg")}
-          className="object-cover"
+          className="object-cover transition duration-500 ease-out motion-safe:group-hover:scale-105"
           style={{ objectPosition: focalPosition(own) }}
           sizes="(min-width: 1280px) 33vw, (min-width: 640px) 50vw, 100vw"
         />

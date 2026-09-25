@@ -16,10 +16,13 @@ const CITY_SUBTITLES: Record<string, string> = {
   santiago: "de los Caballeros",
 };
 
-/** Palma con la base en (0,0) y unos 30 de alto; se coloca con transform. */
-function Palm() {
+/**
+ * Palma con la base en (0,0) y unos 30 de alto; se coloca con transform. Se
+ * mece sobre esa base (`logo-palm`), que es el origen del grupo.
+ */
+export function Palm() {
   return (
-    <g>
+    <g className="logo-palm">
       <path d="M0 0 q2 -18 -2 -30" stroke={GREEN} strokeWidth="4" fill="none" />
       <path d="M-2 -30 q-10 -8 -18 -4 q10 -4 18 4 z" fill={GREEN} />
       <path d="M-2 -30 q-2 -12 6 -18 q-6 8 -6 18 z" fill={GREEN} />
@@ -33,6 +36,7 @@ function Palm() {
 function Birds() {
   return (
     <path
+      className="logo-birds"
       d="M0 0 q5 -6 10 0 q5 -6 10 0"
       stroke="#fff"
       strokeWidth="2.5"
@@ -44,7 +48,7 @@ function Birds() {
 /** Sol centrado en (0,0). */
 function Sun() {
   return (
-    <g stroke={ORANGE} strokeWidth="4" fill="none">
+    <g className="logo-sun" stroke={ORANGE} strokeWidth="4" fill="none">
       <circle cx="0" cy="0" r="13" />
       <path d="M0 -20 V-28 M0 20 V28 M-20 0 H-28 M20 0 H28" />
       <path d="M-14 -14 l-6 -6 M14 -14 l6 -6 M-14 14 l-6 6 M14 14 l6 6" />
@@ -57,6 +61,8 @@ function Arch() {
   return (
     <path
       d="M32 130 C 40 58, 118 38, 150 78"
+      className="logo-draw"
+      pathLength={1}
       stroke={ORANGE}
       strokeWidth="6"
       fill="none"
@@ -159,7 +165,7 @@ function SailboatScene() {
       <g transform="translate(142 128) scale(-1.45 1.45)">
         <Palm />
       </g>
-      <g stroke="#fff" fill="none">
+      <g className="logo-bob" stroke="#fff" fill="none">
         {/* Casco */}
         <path d="M78 118 H124 L118 128 H84 Z" strokeWidth="3.5" />
         {/* Mástil */}
@@ -254,6 +260,7 @@ export function CityEmblem({
       {/* Costa y olas */}
       <path d="M34 128 H166" stroke="#fff" strokeWidth="3.5" />
       <path
+        className="logo-waves"
         d="M56 142 q8 -7 16 0 q8 7 16 0 q8 -7 16 0 q8 7 16 0 q8 -7 16 0"
         stroke={BLUE}
         strokeWidth="4.5"
@@ -269,7 +276,10 @@ export default function CityBadge({ city }: { city: UmbracoItem }) {
 
   return (
     <span className="flex h-full flex-col items-center rounded-3xl bg-gradient-to-b from-neutral-800 to-neutral-900 px-6 pt-8 pb-6">
-      <CityEmblem slug={slug} className="w-full max-w-[220px]" />
+      <CityEmblem
+        slug={slug}
+        className="w-full max-w-[220px] transition-transform duration-500 ease-out motion-safe:group-hover:scale-105"
+      />
       <span className="mt-8 text-center text-xl font-light tracking-[0.28em] text-white uppercase sm:text-2xl">
         {city.name}
       </span>

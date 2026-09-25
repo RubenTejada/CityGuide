@@ -42,7 +42,7 @@ export default function PlaceCard({
   return (
     <Link
       href={place.route.path}
-      className={`group flex rounded-xl border border-neutral-200 bg-white shadow-sm transition hover:shadow-md ${
+      className={`reveal group flex rounded-xl border border-neutral-200 bg-white shadow-sm transition hover:shadow-md motion-safe:hover:-translate-y-0.5 ${
         compact ? "gap-3 p-3" : "gap-4 p-4"
       }`}
     >
@@ -60,7 +60,7 @@ export default function PlaceCard({
           alt={name}
           fill
           unoptimized={photo.endsWith(".svg")}
-          className={isLogo ? "object-contain p-2" : "object-cover"}
+          className={`transition duration-500 ease-out motion-safe:group-hover:scale-105 ${isLogo ? "object-contain p-2" : "object-cover"}`}
           style={isLogo ? undefined : { objectPosition: focalPosition(own) }}
           sizes={compact ? "80px" : "(min-width: 640px) 144px, 112px"}
         />
