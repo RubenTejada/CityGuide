@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
+import Modal from "@/components/Modal";
 import { useLocale } from "@/components/LocaleProvider";
 import { localeHref, t } from "@/lib/i18n";
 import SignInButton from "./SignInButton";
@@ -35,6 +36,7 @@ function Menu({ citySlug }: { citySlug: string }) {
   const account = useAccount();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const menu = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -94,6 +96,26 @@ function Menu({ citySlug }: { citySlug: string }) {
           >
             {words.favorites}
           </Link>
+          <a
+            role="menuitem"
+            href="/api/me/export"
+            download
+            onClick={() => setOpen(false)}
+            className="block px-4 py-2.5 hover:bg-neutral-50"
+          >
+            {words.exportData}
+          </a>
+          <button
+            role="menuitem"
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              setDeleting(true);
+            }}
+            className="block w-full px-4 py-2.5 text-left hover:bg-neutral-50"
+          >
+            {words.deleteAccount}
+          </button>
           <form action="/api/auth/signout" method="post">
             <input type="hidden" name="next" value={pathname} />
             <button
@@ -106,6 +128,71 @@ function Menu({ citySlug }: { citySlug: string }) {
           </form>
         </div>
       )}
+      {deleting && (
+        <DeleteAccountDialog
+          home={localeHref(locale, `/${citySlug}`)}
+          onClose={() => setDeleting(false)}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * La confirmación de borrar la cuenta, que no se deshace. Sale bien, y el visitante
+ * vuelve a la portada de la ciudad ya fuera de su cuenta: una recarga completa, para
+ * que cada control que lo sabía dentro lo lea de nuevo.
+ */
+function DeleteAccountDialog({ home, onClose }: { home: string; onClose: () => void }) {
+  const locale = useLocale();
+  const words = t(locale).account;
+  const [pending, setPending] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  async function remove() {
+    setPending(true);
+    setFailed(false);
+    const response = await fetch("/api/me", { method: "DELETE" }).catch(() => null);
+    if (response?.ok) {
+      window.location.assign(home);
+      return;
+    }
+    setPending(false);
+    setFailed(true);
+  }
+
+  return (
+    <Modal title={words.deleteAccount} close={words.close} onClose={onClose}>
+      <div className="p-5 text-sm text-neutral-700">
+        <p>{words.deleteBody}</p>
+        <p className="mt-3">
+          <a href="/api/me/export" download className="font-medium text-brand-600 underline">
+            {words.exportData}
+          </a>
+        </p>
+        {failed && (
+          <p role="alert" className="mt-3 text-red-600">
+            {words.errors.deleteFailed}
+          </p>
+        )}
+        <div className="mt-5 flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={remove}
+            disabled={pending}
+            className="rounded-lg bg-red-600 px-4 py-2 font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-60"
+          >
+            {pending ? words.deleting : words.deleteConfirm}
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-neutral-300 px-4 py-2 font-semibold text-neutral-800 transition-colors hover:bg-neutral-100"
+          >
+            {words.cancel}
+          </button>
+        </div>
+      </div>
+    </Modal>
   );
 }

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import SiteLogo from "@/components/SiteLogo";
+import { CookieSettingsButton } from "@/components/CookieConsent";
 import { localeHref, type Locale } from "@/lib/i18n";
 import type { LegalDocument } from "@/lib/legal";
 
@@ -58,6 +59,7 @@ export default function LegalPage({
             {document.contact} →
           </Link>
         </p>
+        <CookieSettingsButton className="mt-4 text-sm font-medium text-brand-600 hover:underline" />
       </article>
     </main>
   );

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { cookies, headers } from "next/headers";
+import { CONSENT_COOKIE } from "./consent";
 import { META_PIXEL_ID } from "./meta";
 
 /**
@@ -10,10 +11,10 @@ import { META_PIXEL_ID } from "./meta";
  * an ad campaign optimizes toward, and the one most likely to be lost to an ad
  * blocker, so it is sent from here instead of from the form.
  *
- * Nothing is sent unless both the pixel id and META_CONVERSIONS_TOKEN are set:
+ * Nothing is sent unless both the pixel id and META_CONVERSIONS_TOKEN are set,
+ * and never for a visitor who has not accepted measurement in the cookie notice:
  * this posts personal data (a hashed email, the visitor's IP and user agent) to
- * Meta, so an installation that has not opted in by configuring the token sends
- * nothing at all.
+ * Meta, which the privacy policy only promises to do with that consent.
  */
 const API_VERSION = "v21.0";
 
@@ -38,8 +39,9 @@ export async function sendMetaEvent(event: MetaEvent): Promise<void> {
   const token = process.env.META_CONVERSIONS_TOKEN;
   if (!META_PIXEL_ID || !token) return;
 
-  const headerList = await headers();
   const cookieList = await cookies();
+  if (cookieList.get(CONSENT_COOKIE)?.value !== "granted") return;
+  const headerList = await headers();
   // The pixel's own cookies, when the visitor loaded it: they are what ties a
   // server event to the browser session and the ad click that started it.
   const fbp = cookieList.get("_fbp")?.value;

@@ -3,6 +3,7 @@
 import Script from "next/script";
 import { usePathname } from "next/navigation";
 import { Suspense, useEffect, useRef } from "react";
+import { useConsent } from "@/components/CookieConsent";
 import { META_PIXEL_ID } from "@/lib/meta";
 
 declare global {
@@ -15,7 +16,8 @@ declare global {
  * The Meta pixel (Facebook + Instagram ads), rendered site-wide from the root
  * layout beside Google Analytics. Nothing is emitted when
  * NEXT_PUBLIC_META_PIXEL_ID is unset, so local development and preview builds
- * report no traffic.
+ * report no traffic — nor until the visitor accepts measurement in the cookie
+ * notice (lib/consent.ts).
  *
  * The base snippet fires one PageView when it loads. Every navigation after
  * that is a client-side route change the pixel cannot see on its own — unlike
@@ -23,7 +25,8 @@ declare global {
  * and the first one is skipped because the snippet already sent it.
  */
 export default function MetaPixel() {
-  if (!META_PIXEL_ID) return null;
+  const consent = useConsent();
+  if (!META_PIXEL_ID || consent !== "granted") return null;
 
   return (
     <>

@@ -202,6 +202,30 @@ public sealed class ReviewStore
         return reviews;
     }
 
+    /// <summary>Every review the member wrote, hidden ones included: what a data export owes them.</summary>
+    public List<ReviewRow> ForMember(Guid memberKey)
+    {
+        using IScope scope = _scopeProvider.CreateScope(autoComplete: true);
+        return scope.Database.Fetch<ReviewRow>(
+            scope.SqlContext.Sql()
+                .SelectAll()
+                .From<ReviewRow>()
+                .Where<ReviewRow>(r => r.MemberKey == memberKey)
+                .OrderByDescending<ReviewRow>(r => r.UpdatedUtc));
+    }
+
+    /// <summary>The member's list with the date each place was saved, newest first.</summary>
+    public List<FavoriteRow> FavoriteRows(Guid memberKey)
+    {
+        using IScope scope = _scopeProvider.CreateScope(autoComplete: true);
+        return scope.Database.Fetch<FavoriteRow>(
+            scope.SqlContext.Sql()
+                .SelectAll()
+                .From<FavoriteRow>()
+                .Where<FavoriteRow>(f => f.MemberKey == memberKey)
+                .OrderByDescending<FavoriteRow>(f => f.CreatedUtc));
+    }
+
     /// <summary>The newest reviews of the whole portal, hidden ones included, for moderation.</summary>
     public (List<ReviewRow> Items, long Total) Latest(int skip, int take)
     {
@@ -251,17 +275,6 @@ public sealed class ReviewStore
     }
 
     /// <summary>The member's list, newest first.</summary>
-    public List<Guid> Favorites(Guid memberKey)
-    {
-        using IScope scope = _scopeProvider.CreateScope(autoComplete: true);
-        return scope.Database
-            .Fetch<FavoriteRow>(
-                scope.SqlContext.Sql()
-                    .SelectAll()
-                    .From<FavoriteRow>()
-                    .Where<FavoriteRow>(f => f.MemberKey == memberKey)
-                    .OrderByDescending<FavoriteRow>(f => f.CreatedUtc))
-            .Select(f => f.PlaceKey)
-            .ToList();
-    }
+    public List<Guid> Favorites(Guid memberKey) =>
+        FavoriteRows(memberKey).Select(f => f.PlaceKey).ToList();
 }

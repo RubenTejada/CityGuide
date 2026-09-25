@@ -175,3 +175,13 @@ export function redeemLoginLink(token: string, locale: Locale): Promise<Result<M
     body: JSON.stringify({ token, locale }),
   });
 }
+
+/** Todo lo que el portal guarda del miembro, para que se lo lleve (derecho de acceso). */
+export function exportMember(memberKey: string): Promise<Result<unknown>> {
+  return send(`/account/${memberKey}/export`, { method: "GET" });
+}
+
+/** Borra al miembro a petición suya; sus opiniones y favoritos se van con él. */
+export function deleteMember(memberKey: string): Promise<Result<unknown>> {
+  return send(`/account/${memberKey}`, { method: "DELETE" });
+}

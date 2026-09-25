@@ -4,6 +4,8 @@ export const REQUEST_TYPES = [
   "Agregar mi negocio",
   "Quitar mi negocio",
   "Publicidad en el sitio",
+  "Mis datos personales",
+  "Denunciar contenido",
 ] as const;
 
 export type RequestType = (typeof REQUEST_TYPES)[number];

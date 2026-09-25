@@ -315,7 +315,7 @@ const es = {
       sentBody: (name: string): string =>
         `Recibimos tu solicitud para ${name} y te respondemos al correo que nos dejaste. Revisa también la carpeta de correo no deseado.`,
       privacy:
-        "Usamos tus datos solo para gestionar esta excursión con el operador.",
+        "Tus datos llegan al operador solo para gestionar esta excursión, y los borramos al año.",
     },
     /** El botón de la ficha: lo que el visitante viene a hacer, dicho en una palabra. */
     open: "Reservar una mesa",
@@ -350,7 +350,7 @@ const es = {
       `${date} · ${time} · ${party === 1 ? "1 persona" : `${party} personas`}`,
     close: "Cerrar",
     privacy:
-      "Usamos tus datos solo para gestionar esta reserva con el establecimiento.",
+      "Tus datos llegan al establecimiento solo para gestionar esta reserva, y los borramos al año.",
     honeypot: "No llenar",
     errors: {
       date: "Elige la fecha y la hora.",
@@ -367,6 +367,15 @@ const es = {
     updated: "Última actualización",
     privacy: "Privacidad",
     terms: "Términos de uso",
+    cookieSettings: "Preferencias de cookies",
+  },
+  /** El aviso de cookies: la medición solo se carga cuando el visitante la acepta. */
+  consent: {
+    heading: "Tu privacidad",
+    body: "Usamos cookies propias para que el portal funcione. Si aceptas, también las de Google Analytics y el píxel de Meta, que miden las visitas y nuestros anuncios. Puedes cambiar tu elección cuando quieras en «Preferencias de cookies», al pie de la página.",
+    policy: "Política de privacidad",
+    accept: "Aceptar",
+    reject: "Rechazar",
   },
   account: {
     signIn: "Entrar",
@@ -383,11 +392,18 @@ const es = {
     linkSent: (email: string): string =>
       `Te enviamos un enlace a ${email}. Ábrelo para entrar: sirve una sola vez y caduca en 30 minutos. Mira también en el correo no deseado.`,
     privacy:
-      "Tu correo solo sirve para entrar y no se muestra a nadie. Tu nombre aparece junto a tus opiniones.",
+      "Al entrar confirmas que tienes 18 años o más y aceptas los términos. Tu correo solo sirve para entrar y no se muestra a nadie; tu nombre aparece junto a tus opiniones.",
     close: "Cerrar",
     menu: (name: string): string => `Cuenta de ${name}`,
     favorites: "Mis favoritos",
     signOut: "Salir",
+    exportData: "Descargar mis datos",
+    deleteAccount: "Borrar mi cuenta",
+    deleteBody:
+      "Se borran tu cuenta, todas tus opiniones y tus favoritos, y no se puede deshacer. Si quieres guardar una copia, descarga antes tus datos.",
+    deleteConfirm: "Borrar mi cuenta para siempre",
+    deleting: "Borrando…",
+    cancel: "Cancelar",
     redeemHeading: "Entrar en QueHacerRD",
     redeemLead: "Pulsa el botón para terminar de entrar.",
     redeemButton: "Entrar",
@@ -400,6 +416,8 @@ const es = {
       google: "No pudimos entrar con Google. Inténtalo de nuevo.",
       blocked:
         "Esta cuenta está suspendida. Escríbenos desde el formulario de contacto si crees que es un error.",
+      deleteFailed:
+        "No pudimos borrar tu cuenta. Inténtalo más tarde o escríbenos desde el formulario de contacto.",
     },
   },
   reviews: {
@@ -582,6 +600,10 @@ const es = {
       remove: "pásanos el enlace de su página en el portal y lo retiramos.",
       adsLabel: "Publicidad en el sitio:",
       ads: "cuéntanos qué quieres promocionar y te enviamos las opciones y precios.",
+      dataLabel: "Mis datos personales:",
+      data: "pide una copia, una corrección o el borrado de tus datos. Escribe desde el correo de tu cuenta, si tienes una.",
+      reportLabel: "Denunciar contenido:",
+      report: "una opinión ofensiva o falsa, una foto tuya publicada sin permiso o cualquier contenido que infrinja tus derechos. Pásanos el enlace.",
     },
     requestType: "Tipo de solicitud",
     fields: {
@@ -608,6 +630,8 @@ const es = {
       "Agregar mi negocio": "Agregar mi negocio",
       "Quitar mi negocio": "Quitar mi negocio",
       "Publicidad en el sitio": "Publicidad en el sitio",
+      "Mis datos personales": "Mis datos personales",
+      "Denunciar contenido": "Denunciar contenido",
     } as Record<string, string>,
     optional: "(opcional)",
     ifApplicable: "(si aplica)",
@@ -615,7 +639,8 @@ const es = {
     send: "Enviar mensaje",
     sending: "Enviando…",
     sent: "¡Mensaje enviado!",
-    privacy: "Usamos tus datos solo para responderte esta solicitud.",
+    privacy:
+      "Usamos tus datos solo para responder esta solicitud, y los borramos a los dos años.",
     honeypot: "No llenar",
     types: {
       general: "Consulta general",
@@ -860,7 +885,7 @@ const en: typeof es = {
       sentBody: (name: string): string =>
         `We have your request for ${name} and will answer the email address you gave us. Check your spam folder too.`,
       privacy:
-        "We use your details only to arrange this tour with the operator.",
+        "Your details go to the operator only to arrange this tour, and we delete them after a year.",
     },
     open: "Book a table",
     openHint: "Answered by email",
@@ -891,7 +916,7 @@ const en: typeof es = {
       `${date} · ${time} · ${party === 1 ? "1 person" : `${party} people`}`,
     close: "Close",
     privacy:
-      "We use your details only to arrange this booking with the venue.",
+      "Your details go to the venue only to arrange this booking, and we delete them after a year.",
     honeypot: "Do not fill in",
     errors: {
       date: "Choose a date and a time.",
@@ -908,6 +933,14 @@ const en: typeof es = {
     updated: "Last updated",
     privacy: "Privacy",
     terms: "Terms of use",
+    cookieSettings: "Cookie preferences",
+  },
+  consent: {
+    heading: "Your privacy",
+    body: "We use our own cookies to make the portal work. If you accept, we also use those of Google Analytics and the Meta pixel, which measure visits and our ads. You can change your choice at any time under “Cookie preferences” at the foot of the page.",
+    policy: "Privacy policy",
+    accept: "Accept",
+    reject: "Reject",
   },
   account: {
     signIn: "Sign in",
@@ -924,11 +957,18 @@ const en: typeof es = {
     linkSent: (email: string): string =>
       `We sent a link to ${email}. Open it to sign in: it works once and expires in 30 minutes. Check your spam folder too.`,
     privacy:
-      "Your email is only used to sign you in and is shown to nobody. Your name appears next to your reviews.",
+      "By signing in you confirm you are 18 or older and accept the terms. Your email is only used to sign you in and is shown to nobody; your name appears next to your reviews.",
     close: "Close",
     menu: (name: string): string => `${name}'s account`,
     favorites: "My favourites",
     signOut: "Sign out",
+    exportData: "Download my data",
+    deleteAccount: "Delete my account",
+    deleteBody:
+      "Your account, all your reviews and your favourites are deleted, and this cannot be undone. If you want a copy, download your data first.",
+    deleteConfirm: "Delete my account for good",
+    deleting: "Deleting…",
+    cancel: "Cancel",
     redeemHeading: "Sign in to QueHacerRD",
     redeemLead: "Press the button to finish signing in.",
     redeemButton: "Sign in",
@@ -941,6 +981,8 @@ const en: typeof es = {
       google: "We could not sign you in with Google. Please try again.",
       blocked:
         "This account has been suspended. Write to us through the contact form if you think it is a mistake.",
+      deleteFailed:
+        "We could not delete your account. Try again later or write to us through the contact form.",
     },
   },
   reviews: {
@@ -1113,6 +1155,10 @@ const en: typeof es = {
         "send us the link to its page on the portal and we will take it down.",
       adsLabel: "Advertise on the site:",
       ads: "tell us what you want to promote and we will send you the options and prices.",
+      dataLabel: "My personal data:",
+      data: "ask for a copy, a correction or the deletion of your data. Write from your account's email, if you have one.",
+      reportLabel: "Report content:",
+      report: "an offensive or fake review, a photo of yours published without permission, or any content that infringes your rights. Send us the link.",
     },
     requestType: "Request type",
     fields: {
@@ -1138,6 +1184,8 @@ const en: typeof es = {
       "Agregar mi negocio": "Add my business",
       "Quitar mi negocio": "Remove my business",
       "Publicidad en el sitio": "Advertise on the site",
+      "Mis datos personales": "My personal data",
+      "Denunciar contenido": "Report content",
     } as Record<string, string>,
     optional: "(optional)",
     ifApplicable: "(if applicable)",
@@ -1145,7 +1193,8 @@ const en: typeof es = {
     send: "Send message",
     sending: "Sending…",
     sent: "Message sent!",
-    privacy: "We only use your details to answer this request.",
+    privacy:
+      "We only use your details to answer this request, and we delete them after two years.",
     honeypot: "Do not fill in",
     types: {
       general: "General enquiry",

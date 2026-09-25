@@ -1254,6 +1254,32 @@ reports both sides of it.
 - `META_TEST_EVENT_CODE` routes server events to the "Test events" tab of Events Manager
   instead of the dataset, for checking the wiring before a campaign runs.
 
+## Privacy and legal compliance
+
+The portal answers to Dominican law first — Ley 172-13 (personal data), Ley 358-05
+(consumer protection), Ley 65-00 (copyright) — and to the GDPR only as far as it reaches
+the European tourists the English site is written for. What each rule needs lives here:
+
+- **The documents**: `lib/legal.ts` (privacy policy and terms, both languages), served at
+  `/privacidad` and `/terminos`. They name the operator (`OPERATOR`) and have to match
+  what the code does: a new tracker, form or retention period changes the text and the date.
+- **Measurement waits for consent.** `CookieConsent` (root layout) asks once; Google
+  Analytics and the Meta pixel are not loaded until the visitor accepts, and the
+  Conversions API (`lib/metaCapi.ts`) sends nothing without the `qh_consent=granted`
+  cookie. "Preferencias de cookies" in every footer reopens the notice; withdrawing
+  consent deletes the `_ga`/`_fbp` cookies and reloads. Without a GA id or pixel id the
+  notice never shows (`MEASUREMENT_ENABLED`), which is why local development has none.
+- **Rights are self-service**: the account menu offers "Descargar mis datos"
+  (`/api/me/export` → `GET /api/account/{key}/export`, a JSON of the account, reviews and
+  favourites) and "Borrar mi cuenta" (`DELETE /api/me` → `DELETE /api/account/{key}`,
+  which deletes the member and, through `MemberReviewSync`, their reviews and favourites).
+  Both work for a suspended member too. Everything else goes through the contact form's
+  "Mis datos personales" type; content complaints through "Denunciar contenido".
+- **Retention is enforced, not promised**: `FormRetention`, a daily recurring job in the
+  CMS, deletes contact messages after two years and reservation requests after one. The
+  periods are stated in the privacy policy and in the form notices (`LegalNote`), so the
+  three change together.
+
 ## Sharing and the portal's own accounts
 
 `frontend/lib/social.ts` holds both sides of one handful of facts: the accounts the portal

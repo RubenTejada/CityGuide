@@ -20,93 +20,129 @@ export interface LegalDocument {
   contact: string;
 }
 
-const UPDATED = { es: "18 de septiembre de 2026", en: "September 18, 2026" };
+const UPDATED = { es: "25 de septiembre de 2026", en: "September 25, 2026" };
+
+/**
+ * Quién responde del portal y de los datos (Ley 172-13, Ley 358-05). Lo dicen los dos
+ * documentos, y de aquí sale en los dos idiomas.
+ */
+const OPERATOR = {
+  es: "Rubén Tejada, persona física con domicilio en Santo Domingo, República Dominicana",
+  en: "Rubén Tejada, an individual domiciled in Santo Domingo, Dominican Republic",
+};
 
 const privacy: Record<Locale, LegalDocument> = {
   es: {
     title: "Política de privacidad",
     description:
-      "Qué datos recoge QueHacerRD.com, para qué los usa, con quién los comparte y cómo pedir que se borren.",
+      "Quién es el responsable de QueHacerRD.com, qué datos recoge, para qué y con qué base, con quién los comparte, cuánto los guarda y cómo ejercer tus derechos.",
     updated: UPDATED.es,
     sections: [
       {
-        heading: "Quiénes somos",
+        heading: "Quién es el responsable",
         body: [
-          "QueHacerRD.com es una guía de restaurantes, lugares, eventos y planes en ciudades de la República Dominicana. Esta política explica qué datos personales tratamos cuando usas el portal y qué puedes hacer con ellos.",
+          `QueHacerRD.com es una guía de restaurantes, lugares, eventos y planes en ciudades de la República Dominicana. El responsable del portal y de los datos personales que se tratan en él es ${OPERATOR.es}.`,
+          "Esta política explica, conforme a la Ley 172-13 sobre protección de datos de carácter personal, qué datos tratamos cuando usas el portal y qué puedes hacer con ellos. Para cualquier asunto sobre tus datos, escríbenos desde el formulario de contacto eligiendo «Mis datos personales».",
         ],
       },
       {
         heading: "Qué datos recogemos",
         body: [
           [
-            "Tu cuenta: cuando entras con Google o con el enlace que te enviamos por correo, guardamos tu nombre y tu dirección de correo. No guardamos contraseñas: Google o tu propio correo son los que confirman que eres tú. De Google solo recibimos tu nombre, tu correo y si está verificado.",
+            "Tu cuenta: cuando entras con Google o con el enlace que te enviamos por correo, guardamos tu nombre, tu dirección de correo, la fecha en que creaste la cuenta y la de tu último acceso. No guardamos contraseñas: Google o tu propio correo son los que confirman que eres tú. De Google solo recibimos tu nombre, tu correo y si está verificado.",
             "Tus opiniones: la valoración y el comentario que publiques sobre un lugar, con la fecha. Se muestran públicamente junto a tu nombre; tu correo nunca se muestra.",
             "Tus favoritos: los lugares que guardas. Solo los ves tú.",
-            "Formulario de contacto: tu nombre, tu correo, el teléfono si lo das y tu mensaje.",
+            "Formulario de contacto: tu nombre, tu correo, el teléfono y el negocio si los das, y tu mensaje.",
             "Solicitudes de reserva: la fecha, la hora, cuántas personas van, tu nombre, tu correo, tu teléfono y tus notas.",
-            "Datos técnicos: la dirección IP y el navegador con el que nos visitas, que usamos para limitar el abuso de los formularios y que reciben los servicios de medición descritos más abajo.",
+            "Datos técnicos: la dirección IP y el navegador con el que nos visitas, que usamos para limitar el abuso de los formularios.",
+            "Medición, solo si la aceptas: las páginas que visitas y cómo llegaste a ellas, que recogen Google Analytics y el píxel de Meta.",
           ],
+          "No pedimos ni queremos datos sensibles (salud, religión, opiniones políticas y similares). No los escribas en una opinión ni en un mensaje.",
         ],
       },
       {
-        heading: "Para qué los usamos",
+        heading: "Para qué los usamos y con qué base",
         body: [
           [
-            "Para que puedas entrar, publicar opiniones y guardar favoritos.",
-            "Para responder a tus mensajes y pasar tus solicitudes de reserva al establecimiento que elegiste.",
-            "Para moderar el contenido: un editor puede ocultar una opinión o suspender una cuenta que incumpla los términos de uso.",
-            "Para saber cómo se usa el portal y medir nuestras campañas de publicidad.",
+            "Tu cuenta, tus opiniones y tus favoritos: para darte el servicio que pides al crear la cuenta. La base es tu consentimiento, que das al registrarte y retiras borrando la cuenta.",
+            "Tus mensajes y solicitudes de reserva: para atender lo que tú nos pides, lo que incluye pasar la solicitud de reserva al establecimiento o al operador que elegiste. La base es tu propia solicitud.",
+            "Moderación y prevención del abuso: ocultar una opinión o suspender una cuenta que incumpla los términos de uso, y limitar los envíos de una misma IP. La base es nuestro interés legítimo en proteger el portal y a quienes lo usan.",
+            "Medición del uso del portal y de nuestros anuncios: solo si la aceptas en el aviso de cookies. Puedes retirarla cuando quieras en «Preferencias de cookies», al pie de cada página.",
+            "Cumplir la ley: conservar o entregar datos cuando una ley o un tribunal lo exija.",
           ],
-          "No vendemos tus datos ni los usamos para enviarte publicidad por correo.",
+          "No vendemos tus datos, no los usamos para enviarte publicidad por correo y no tomamos decisiones automatizadas que te afecten.",
         ],
       },
       {
         heading: "Con quién los compartimos",
         body: [
           [
-            "Establecimientos: cuando pides una reserva, el establecimiento recibe tu solicitud y tus datos de contacto para confirmarla.",
-            "Google: el inicio de sesión con Google, los mapas y Google Analytics, que mide las visitas con cookies propias.",
-            "Meta (Facebook e Instagram): su píxel mide las visitas desde nuestros anuncios. Cuando envías el formulario de contacto le comunicamos ese hecho con tu correo y tu teléfono cifrados de forma irreversible (hash), tu IP y tu navegador.",
+            "Establecimientos y operadores: cuando pides una reserva, reciben tu solicitud y tus datos de contacto para confirmarla. A partir de ahí los tratan como responsables propios.",
+            "Google: el inicio de sesión con Google y los mapas. Si aceptas la medición, también Google Analytics.",
+            "Meta (Facebook e Instagram): solo si aceptas la medición. Su píxel mide las visitas que llegan desde nuestros anuncios, y cuando envías el formulario de contacto le comunicamos ese hecho con tu correo y tu teléfono cifrados de forma irreversible (hash), tu IP y tu navegador.",
             "Microsoft Azure: aloja el portal y su base de datos.",
             "Nuestro proveedor de correo: envía el enlace de acceso, las confirmaciones y los avisos de los formularios.",
+            "Autoridades: cuando una ley o una orden judicial nos obligue.",
           ],
-          "Cada uno de ellos trata los datos según su propia política de privacidad. Algunos de estos servicios guardan la información fuera de la República Dominicana.",
+          "Varios de estos proveedores guardan la información fuera de la República Dominicana, principalmente en Estados Unidos. Solo trabajamos con proveedores que se comprometen por contrato a proteger los datos, y la medición, que es lo que no hace falta para darte el servicio, solo se activa con tu consentimiento. Cada uno trata los datos según su propia política de privacidad.",
         ],
       },
       {
         heading: "Cookies y almacenamiento en tu navegador",
         body: [
+          "Imprescindibles, que no necesitan tu consentimiento:",
           [
-            "Sesión (qh_session): mantiene tu cuenta abierta hasta 60 días. Es imprescindible para entrar.",
+            "Sesión (qh_session): mantiene tu cuenta abierta hasta 60 días.",
             "Inicio con Google: tres cookies de diez minutos que protegen el ida y vuelta con Google.",
+            "Tu elección sobre las cookies (qh_consent): la recuerda seis meses; después te volvemos a preguntar.",
             "Tema claro u oscuro: tu preferencia se guarda en el almacenamiento local del navegador.",
-            "Medición: Google Analytics y el píxel de Meta ponen sus propias cookies (por ejemplo _ga y _fbp).",
           ],
-          "Puedes borrar o bloquear las cookies desde tu navegador. Si bloqueas la de sesión no podrás entrar en tu cuenta.",
+          "De medición, solo si las aceptas: Google Analytics (_ga, _ga_*) y el píxel de Meta (_fbp, _fbc). Mientras no contestes el aviso, o si lo rechazas, no se cargan. Si retiras un consentimiento ya dado, las borramos.",
+          "Puedes cambiar tu elección en «Preferencias de cookies», al pie de cada página, y borrar o bloquear las cookies desde tu navegador. Si bloqueas la de sesión no podrás entrar en tu cuenta.",
         ],
       },
       {
         heading: "Cuánto tiempo los guardamos",
         body: [
-          "Tu cuenta, tus opiniones y tus favoritos se guardan mientras la cuenta exista. Si nos pides borrarla, se borran también tus opiniones y tus favoritos. Los mensajes de contacto y las solicitudes de reserva se guardan el tiempo necesario para atenderlos y resolver cualquier reclamación posterior.",
+          [
+            "Tu cuenta, tus opiniones y tus favoritos: mientras la cuenta exista. Al borrarla se borran también tus opiniones y tus favoritos.",
+            "Mensajes de contacto: dos años, y después se borran automáticamente.",
+            "Solicitudes de reserva: un año, y después se borran automáticamente.",
+            "Datos de medición: lo que fije la configuración de Google Analytics y de Meta.",
+          ],
+          "Una copia de seguridad puede conservar un dato borrado durante el breve tiempo que tarda en renovarse.",
         ],
       },
       {
         heading: "Tus derechos",
         body: [
-          "Conforme a la Ley 172-13 de la República Dominicana sobre protección de datos personales, puedes pedirnos acceso a tus datos, que los corrijamos o que los borremos, y oponerte a su uso. Escríbenos desde el formulario de contacto con el correo de tu cuenta y te responderemos. Puedes borrar tus opiniones tú mismo en cualquier momento desde la ficha del lugar.",
+          "La Ley 172-13 te reconoce, sin coste, el derecho a:",
+          [
+            "Acceder a tus datos: desde el menú de tu cuenta, «Descargar mis datos» te da al momento tu cuenta, tus opiniones y tus favoritos.",
+            "Rectificarlos: cambia tu nombre entrando de nuevo con el enlace por correo, y tus opiniones editándolas en la ficha del lugar.",
+            "Suprimirlos (cancelación): «Borrar mi cuenta», en el menú de tu cuenta, lo borra todo en el momento. Tus opiniones también se pueden borrar una a una.",
+            "Oponerte a su uso y retirar tu consentimiento: rechaza la medición en «Preferencias de cookies»; lo ya hecho con él sigue siendo válido.",
+          ],
+          "Para lo demás —los datos de un mensaje o de una reserva, por ejemplo— escríbenos desde el formulario de contacto con el tipo «Mis datos personales», desde el mismo correo que usaste, para que podamos comprobar que eres tú. Si no te respondemos o no estás conforme con la respuesta, la Constitución (artículo 70) y la Ley 172-13 te permiten reclamar ante los tribunales mediante la acción de hábeas data.",
+          "Si vives en la Unión Europea o en el Reino Unido, el Reglamento General de Protección de Datos te reconoce además el derecho a la portabilidad (la descarga de tus datos sirve para eso) y el de reclamar ante la autoridad de protección de datos de tu país.",
+        ],
+      },
+      {
+        heading: "Seguridad",
+        body: [
+          "El portal solo se sirve por HTTPS; la sesión es una cookie firmada que no se puede alterar; no guardamos contraseñas; los mensajes y las reservas nunca se publican y solo los ven los editores del portal; y lo que enviamos a Meta viaja cifrado de forma irreversible. Ningún sistema es infalible: si ocurriera una brecha que afectara a tus datos, te lo haríamos saber.",
         ],
       },
       {
         heading: "Menores",
         body: [
-          "El portal no está dirigido a menores de 13 años y no creamos cuentas para ellos a sabiendas.",
+          "El portal no está dirigido a menores de edad. Para crear una cuenta, publicar opiniones o pedir una reserva tienes que tener al menos 18 años. Si sabemos que una cuenta es de un menor, la borramos.",
         ],
       },
       {
         heading: "Cambios en esta política",
         body: [
-          "Si cambiamos lo que hacemos con tus datos, actualizaremos esta página y su fecha.",
+          "Si cambiamos lo que hacemos con tus datos, actualizaremos esta página y su fecha. Si el cambio necesita tu consentimiento, te lo volveremos a pedir.",
         ],
       },
     ],
@@ -115,87 +151,114 @@ const privacy: Record<Locale, LegalDocument> = {
   en: {
     title: "Privacy policy",
     description:
-      "What data QueHacerRD.com collects, what it is used for, who it is shared with and how to have it deleted.",
+      "Who is responsible for QueHacerRD.com, what data it collects, why and on what basis, who it is shared with, how long it is kept and how to exercise your rights.",
     updated: UPDATED.en,
     sections: [
       {
-        heading: "Who we are",
+        heading: "Who is responsible",
         body: [
-          "QueHacerRD.com is a guide to restaurants, places, events and plans in cities of the Dominican Republic. This policy explains what personal data we process when you use the portal and what you can do about it.",
+          `QueHacerRD.com is a guide to restaurants, places, events and plans in cities of the Dominican Republic. The portal and the personal data processed on it are the responsibility of ${OPERATOR.en}.`,
+          "This policy explains, under Dominican Law 172-13 on the protection of personal data, what data we process when you use the portal and what you can do about it. For anything about your data, write to us through the contact form choosing “My personal data”.",
         ],
       },
       {
         heading: "What we collect",
         body: [
           [
-            "Your account: when you sign in with Google or with the link we email you, we store your name and email address. We store no passwords: Google or your own inbox is what proves it is you. From Google we receive only your name, your email and whether it is verified.",
+            "Your account: when you sign in with Google or with the link we email you, we store your name, your email address, the date you created the account and the date you last signed in. We store no passwords: Google or your own inbox is what proves it is you. From Google we receive only your name, your email and whether it is verified.",
             "Your reviews: the rating and comment you publish about a place, with the date. They are shown publicly next to your name; your email is never shown.",
             "Your favourites: the places you save. Only you can see them.",
-            "Contact form: your name, your email, your phone if you give it, and your message.",
+            "Contact form: your name, your email, your phone and business if you give them, and your message.",
             "Reservation requests: the date, time, party size, your name, email, phone and notes.",
-            "Technical data: the IP address and browser you visit with, which we use to limit abuse of the forms and which the measurement services described below receive.",
+            "Technical data: the IP address and browser you visit with, which we use to limit abuse of the forms.",
+            "Measurement, only if you accept it: the pages you visit and how you reached them, collected by Google Analytics and the Meta pixel.",
           ],
+          "We do not ask for or want sensitive data (health, religion, political opinions and the like). Please do not write it in a review or a message.",
         ],
       },
       {
-        heading: "What we use it for",
+        heading: "What we use it for, and on what basis",
         body: [
           [
-            "To let you sign in, publish reviews and save favourites.",
-            "To answer your messages and pass your reservation requests on to the venue you chose.",
-            "To moderate content: an editor can hide a review or suspend an account that breaks the terms of use.",
-            "To understand how the portal is used and measure our advertising campaigns.",
+            "Your account, reviews and favourites: to provide the service you ask for when you create the account. The basis is your consent, given when you sign up and withdrawn by deleting the account.",
+            "Your messages and reservation requests: to deal with what you ask us, which includes passing the reservation request on to the venue or operator you chose. The basis is your own request.",
+            "Moderation and abuse prevention: hiding a review or suspending an account that breaks the terms of use, and limiting submissions from one IP. The basis is our legitimate interest in protecting the portal and the people who use it.",
+            "Measuring how the portal and our ads are used: only if you accept it in the cookie notice. You can withdraw it at any time under “Cookie preferences” at the foot of every page.",
+            "Complying with the law: keeping or handing over data when a law or a court requires it.",
           ],
-          "We do not sell your data or use it to send you marketing email.",
+          "We do not sell your data, we do not use it to send you marketing email, and we make no automated decisions that affect you.",
         ],
       },
       {
         heading: "Who we share it with",
         body: [
           [
-            "Venues: when you request a reservation, the venue receives your request and contact details to confirm it.",
-            "Google: Google sign-in, the maps, and Google Analytics, which measures visits with its own cookies.",
-            "Meta (Facebook and Instagram): its pixel measures visits coming from our ads. When you send the contact form we report that event with your email and phone irreversibly hashed, your IP and your browser.",
+            "Venues and operators: when you request a reservation, they receive your request and contact details to confirm it. From then on they process them as controllers in their own right.",
+            "Google: Google sign-in and the maps. If you accept measurement, Google Analytics too.",
+            "Meta (Facebook and Instagram): only if you accept measurement. Its pixel measures visits coming from our ads, and when you send the contact form we report that event with your email and phone irreversibly hashed, your IP and your browser.",
             "Microsoft Azure: hosts the portal and its database.",
             "Our email provider: sends the sign-in link, the confirmations and the form notifications.",
+            "Authorities: when a law or a court order obliges us.",
           ],
-          "Each of them processes the data under its own privacy policy. Some of these services store information outside the Dominican Republic.",
+          "Several of these providers store information outside the Dominican Republic, mainly in the United States. We only work with providers that commit by contract to protecting the data, and measurement — the part not needed to provide the service — only runs with your consent. Each of them processes the data under its own privacy policy.",
         ],
       },
       {
         heading: "Cookies and browser storage",
         body: [
+          "Essential, which need no consent:",
           [
-            "Session (qh_session): keeps you signed in for up to 60 days. Required to sign in.",
+            "Session (qh_session): keeps you signed in for up to 60 days.",
             "Google sign-in: three ten-minute cookies that protect the round trip to Google.",
+            "Your cookie choice (qh_consent): remembered for six months, after which we ask again.",
             "Light or dark theme: your preference is kept in the browser's local storage.",
-            "Measurement: Google Analytics and the Meta pixel set their own cookies (for example _ga and _fbp).",
           ],
-          "You can delete or block cookies in your browser. If you block the session cookie you will not be able to sign in.",
+          "Measurement, only if you accept it: Google Analytics (_ga, _ga_*) and the Meta pixel (_fbp, _fbc). Until you answer the notice, or if you reject it, they are not loaded. If you withdraw consent you gave earlier, we delete them.",
+          "You can change your choice under “Cookie preferences” at the foot of every page, and delete or block cookies in your browser. If you block the session cookie you will not be able to sign in.",
         ],
       },
       {
         heading: "How long we keep it",
         body: [
-          "Your account, reviews and favourites are kept while the account exists. If you ask us to delete it, your reviews and favourites are deleted with it. Contact messages and reservation requests are kept as long as needed to deal with them and with any later claim.",
+          [
+            "Your account, reviews and favourites: while the account exists. Deleting it deletes your reviews and favourites too.",
+            "Contact messages: two years, then deleted automatically.",
+            "Reservation requests: one year, then deleted automatically.",
+            "Measurement data: as set in the Google Analytics and Meta configuration.",
+          ],
+          "A backup may hold deleted data for the short time it takes to be replaced.",
         ],
       },
       {
         heading: "Your rights",
         body: [
-          "Under Dominican Law 172-13 on personal data protection you can ask us for access to your data, have it corrected or deleted, and object to its use. Write to us through the contact form from your account's email and we will answer. You can delete your own reviews at any time from the place's page.",
+          "Law 172-13 gives you, free of charge, the right to:",
+          [
+            "Access your data: “Download my data” in your account menu gives you your account, reviews and favourites at once.",
+            "Correct it: change your name by signing in again with the email link, and your reviews by editing them on the place's page.",
+            "Delete it: “Delete my account” in your account menu erases everything on the spot. Reviews can also be deleted one by one.",
+            "Object to its use and withdraw your consent: reject measurement under “Cookie preferences”; what was done with it before remains valid.",
+          ],
+          "For anything else — the data in a message or a reservation, for instance — write to us through the contact form with the type “My personal data”, from the same email you used, so we can check it is you. If we do not answer or you disagree with the answer, the Constitution (article 70) and Law 172-13 let you go to court through a habeas data action.",
+          "If you live in the European Union or the United Kingdom, the General Data Protection Regulation also gives you the right to data portability (the data download serves that purpose) and to complain to your country's data protection authority.",
+        ],
+      },
+      {
+        heading: "Security",
+        body: [
+          "The portal is served over HTTPS only; the session is a signed cookie that cannot be tampered with; we store no passwords; messages and reservations are never published and only the portal's editors see them; and what we send to Meta travels irreversibly hashed. No system is infallible: if a breach affected your data, we would let you know.",
         ],
       },
       {
         heading: "Children",
         body: [
-          "The portal is not aimed at children under 13 and we do not knowingly create accounts for them.",
+          "The portal is not aimed at minors. You must be at least 18 to create an account, publish reviews or request a reservation. If we learn an account belongs to a minor, we delete it.",
         ],
       },
       {
         heading: "Changes to this policy",
         body: [
-          "If we change what we do with your data, we will update this page and its date.",
+          "If we change what we do with your data, we will update this page and its date. If the change needs your consent, we will ask for it again.",
         ],
       },
     ],
@@ -207,19 +270,37 @@ const terms: Record<Locale, LegalDocument> = {
   es: {
     title: "Términos de uso",
     description:
-      "Las condiciones para usar QueHacerRD.com, publicar opiniones y pedir reservas.",
+      "Las condiciones para usar QueHacerRD.com, publicar opiniones, pedir reservas y denunciar contenido.",
     updated: UPDATED.es,
     sections: [
       {
+        heading: "Quién presta el servicio",
+        body: [
+          `QueHacerRD.com lo presta ${OPERATOR.es}. Puedes escribirnos desde el formulario de contacto.`,
+        ],
+      },
+      {
         heading: "El servicio",
         body: [
-          "QueHacerRD.com es una guía gratuita de lugares, eventos y planes. Al usar el portal aceptas estos términos; si no estás de acuerdo, no lo uses.",
+          "QueHacerRD.com es una guía gratuita de lugares, eventos y planes. Al usar el portal aceptas estos términos y la política de privacidad; si no estás de acuerdo, no lo uses. Para crear una cuenta, publicar opiniones o pedir una reserva tienes que tener al menos 18 años.",
         ],
       },
       {
         heading: "La información del portal",
         body: [
-          "Buena parte de lo que publicamos procede de terceros: Google, los portales de venta de entradas, la cartelera de los cines y los sitios de los propios establecimientos. La revisamos, pero puede estar incompleta o haber cambiado: horarios, precios, menús y fechas cambian sin aviso. Confírmalos con el establecimiento antes de ir. No somos responsables de los servicios que prestan los establecimientos ni de su calidad.",
+          "Buena parte de lo que publicamos procede de terceros: Google, los portales de venta de entradas, la cartelera de los cines, las redes sociales y los sitios de los propios establecimientos, y parte de los textos se redacta o se traduce con ayuda de herramientas automáticas. La revisamos, pero puede estar incompleta o haber cambiado: horarios, precios, menús y fechas cambian sin aviso. Confírmalos con el establecimiento antes de ir. No somos responsables de los servicios que prestan los establecimientos ni de su calidad.",
+        ],
+      },
+      {
+        heading: "Precios",
+        body: [
+          "No vendemos nada en el portal. Los precios que mostramos —de una carta, de una excursión, de una entrada— los publica el establecimiento o un tercero, son orientativos y no son una oferta nuestra: el precio que vale es el que te indique quien presta el servicio. Las entradas se compran en el sitio del vendedor, con sus condiciones.",
+        ],
+      },
+      {
+        heading: "Cómo ordenamos los listados y qué es publicidad",
+        body: [
+          "Los listados se ordenan por la valoración de Google y, a igualdad, por cuántas personas la dieron; lo que no tiene valoración va al final. Ningún pago cambia ese orden. Si publicamos contenido patrocinado o anuncios, irán identificados como tales.",
         ],
       },
       {
@@ -231,7 +312,7 @@ const terms: Record<Locale, LegalDocument> = {
       {
         heading: "Tu cuenta",
         body: [
-          "Una cuenta es de una persona. Usa tu nombre real o uno que te identifique, y no te hagas pasar por otra persona o por un negocio. Eres responsable de lo que se publique desde tu cuenta.",
+          "Una cuenta es de una persona. Usa tu nombre real o uno que te identifique, y no te hagas pasar por otra persona o por un negocio. Eres responsable de lo que se publique desde tu cuenta. Puedes borrarla cuando quieras desde su menú.",
         ],
       },
       {
@@ -243,7 +324,14 @@ const terms: Record<Locale, LegalDocument> = {
             "No contener insultos, amenazas, discriminación, contenido sexual, datos personales de otras personas ni nada ilegal.",
             "No ser publicidad, spam ni opiniones falsas, compradas o escritas por el dueño, un empleado o un competidor del lugar.",
           ],
+          "Cómo funcionan: cualquier persona con cuenta puede opinar, una vez por lugar; no comprobamos que haya visitado el sitio. Se publican al momento, sin revisión previa, y se muestran de la más reciente a la más antigua. La valoración de QueHacerRD es la media de las opiniones visibles y se muestra siempre aparte de la de Google, que procede de Google y que no controlamos.",
           "Al publicar una opinión nos das permiso, sin coste y mientras siga publicada, para mostrarla en el portal y en sus traducciones. Puedes editarla o borrarla cuando quieras. Podemos ocultar una opinión que incumpla estas reglas y suspender la cuenta de quien las incumpla repetidamente.",
+        ],
+      },
+      {
+        heading: "Denunciar contenido",
+        body: [
+          "Si una opinión, una foto o cualquier otro contenido del portal infringe la ley o tus derechos —tu intimidad, tu honor, o tus derechos de autor sobre una foto conforme a la Ley 65-00—, escríbenos desde el formulario de contacto con el tipo «Denunciar contenido», el enlace a la página y el motivo. Lo revisamos, lo retiramos si procede y te respondemos con lo que decidimos. Si eres el autor de una opinión retirada, también te lo explicamos.",
         ],
       },
       {
@@ -255,19 +343,19 @@ const terms: Record<Locale, LegalDocument> = {
       {
         heading: "Propiedad intelectual",
         body: [
-          "Los textos, el diseño y la marca QueHacerRD pertenecen al portal. Las fotos pertenecen a sus autores y se muestran con su crédito o con permiso. No copies el contenido del portal de forma masiva ni con fines comerciales sin nuestro permiso.",
+          "Los textos, el diseño y la marca QueHacerRD pertenecen al portal. Las fotos pertenecen a sus autores: proceden de los propios establecimientos, de Google o de Wikimedia Commons, bajo sus respectivas licencias. Si eres autor de una foto y quieres que figure tu nombre o que la retiremos, usa «Denunciar contenido». No copies el contenido del portal de forma masiva ni con fines comerciales sin nuestro permiso.",
         ],
       },
       {
         heading: "Responsabilidad",
         body: [
-          "El portal se ofrece tal como está. En la medida en que la ley lo permita, no respondemos de los daños que resulten de usar la información publicada, de una reserva no atendida o de una interrupción del servicio.",
+          "El portal se ofrece tal como está. En la medida en que la ley lo permita, no respondemos de los daños que resulten de usar la información publicada, de una reserva no atendida o de una interrupción del servicio. Nada de esto limita los derechos que te reconocen la Ley 358-05 de protección de los derechos del consumidor o cualquier otra norma que no se pueda renunciar.",
         ],
       },
       {
         heading: "Ley aplicable y cambios",
         body: [
-          "Estos términos se rigen por las leyes de la República Dominicana. Si los cambiamos, actualizaremos esta página y su fecha; seguir usando el portal después significa aceptar la nueva versión.",
+          "Estos términos se rigen por las leyes de la República Dominicana, sin perjuicio de las normas de protección al consumidor que te correspondan. Si los cambiamos, actualizaremos esta página y su fecha; seguir usando el portal después significa aceptar la nueva versión.",
         ],
       },
     ],
@@ -276,19 +364,37 @@ const terms: Record<Locale, LegalDocument> = {
   en: {
     title: "Terms of use",
     description:
-      "The terms for using QueHacerRD.com, publishing reviews and requesting reservations.",
+      "The terms for using QueHacerRD.com, publishing reviews, requesting reservations and reporting content.",
     updated: UPDATED.en,
     sections: [
       {
+        heading: "Who provides the service",
+        body: [
+          `QueHacerRD.com is provided by ${OPERATOR.en}. You can write to us through the contact form.`,
+        ],
+      },
+      {
         heading: "The service",
         body: [
-          "QueHacerRD.com is a free guide to places, events and plans. By using the portal you accept these terms; if you do not agree, do not use it.",
+          "QueHacerRD.com is a free guide to places, events and plans. By using the portal you accept these terms and the privacy policy; if you do not agree, do not use it. You must be at least 18 to create an account, publish reviews or request a reservation.",
         ],
       },
       {
         heading: "The portal's information",
         body: [
-          "Much of what we publish comes from third parties: Google, ticketing sites, the cinemas' listings and the venues' own websites. We review it, but it may be incomplete or out of date: opening hours, prices, menus and dates change without notice. Confirm them with the venue before you go. We are not responsible for the services venues provide or their quality.",
+          "Much of what we publish comes from third parties: Google, ticketing sites, the cinemas' listings, social networks and the venues' own websites, and some of the text is written or translated with the help of automated tools. We review it, but it may be incomplete or out of date: opening hours, prices, menus and dates change without notice. Confirm them with the venue before you go. We are not responsible for the services venues provide or their quality.",
+        ],
+      },
+      {
+        heading: "Prices",
+        body: [
+          "We sell nothing on the portal. The prices we show — on a menu, for a tour, for a ticket — are published by the venue or a third party, are for guidance only and are not an offer of ours: the price that counts is the one the provider gives you. Tickets are bought on the seller's site, under its terms.",
+        ],
+      },
+      {
+        heading: "How listings are ordered, and what is advertising",
+        body: [
+          "Listings are ordered by Google rating and, when tied, by how many people gave it; anything without a rating goes last. No payment changes that order. If we publish sponsored content or ads, they will be labelled as such.",
         ],
       },
       {
@@ -300,7 +406,7 @@ const terms: Record<Locale, LegalDocument> = {
       {
         heading: "Your account",
         body: [
-          "An account belongs to one person. Use your real name or one that identifies you, and do not impersonate another person or a business. You are responsible for what is published from your account.",
+          "An account belongs to one person. Use your real name or one that identifies you, and do not impersonate another person or a business. You are responsible for what is published from your account. You can delete it at any time from its menu.",
         ],
       },
       {
@@ -312,7 +418,14 @@ const terms: Record<Locale, LegalDocument> = {
             "Contain no insults, threats, discrimination, sexual content, other people's personal data or anything illegal.",
             "Not be advertising, spam, or fake or paid reviews, nor be written by the owner, an employee or a competitor of the place.",
           ],
+          "How they work: anyone with an account can review, once per place; we do not check that they visited it. Reviews are published right away, without prior checks, and shown newest first. The QueHacerRD rating is the average of the visible reviews and is always shown apart from Google's, which comes from Google and which we do not control.",
           "By publishing a review you allow us, free of charge and for as long as it stays published, to show it on the portal and in its translations. You can edit or delete it at any time. We may hide a review that breaks these rules and suspend the account of anyone who breaks them repeatedly.",
+        ],
+      },
+      {
+        heading: "Reporting content",
+        body: [
+          "If a review, a photo or any other content on the portal breaks the law or infringes your rights — your privacy, your reputation, or your copyright in a photo under Dominican Law 65-00 — write to us through the contact form with the type “Report content”, the link to the page and the reason. We review it, take it down if warranted and reply with what we decided. If you wrote a review that was taken down, we explain why to you as well.",
         ],
       },
       {
@@ -324,19 +437,19 @@ const terms: Record<Locale, LegalDocument> = {
       {
         heading: "Intellectual property",
         body: [
-          "The text, design and QueHacerRD brand belong to the portal. Photos belong to their authors and are shown with their credit or with permission. Do not copy the portal's content in bulk or for commercial purposes without our permission.",
+          "The text, design and QueHacerRD brand belong to the portal. Photos belong to their authors: they come from the venues themselves, from Google or from Wikimedia Commons, under their respective licences. If you are the author of a photo and want your name shown or the photo removed, use “Report content”. Do not copy the portal's content in bulk or for commercial purposes without our permission.",
         ],
       },
       {
         heading: "Liability",
         body: [
-          "The portal is provided as is. To the extent the law allows, we are not liable for damage resulting from using the published information, from a reservation that was not honoured, or from an interruption of the service.",
+          "The portal is provided as is. To the extent the law allows, we are not liable for damage resulting from using the published information, from a reservation that was not honoured, or from an interruption of the service. None of this limits the rights you have under Dominican consumer protection Law 358-05 or any other rule that cannot be waived.",
         ],
       },
       {
         heading: "Governing law and changes",
         body: [
-          "These terms are governed by the laws of the Dominican Republic. If we change them, we will update this page and its date; continuing to use the portal afterwards means accepting the new version.",
+          "These terms are governed by the laws of the Dominican Republic, without prejudice to the consumer protection rules that apply to you. If we change them, we will update this page and its date; continuing to use the portal afterwards means accepting the new version.",
         ],
       },
     ],

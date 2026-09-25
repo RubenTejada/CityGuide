@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 
+import LegalNote from "@/components/LegalNote";
 import Modal from "@/components/Modal";
 import { requestReservation } from "@/app/[lang]/[city]/[...slug]/actions";
 import { INTL_LOCALE, t, type Locale } from "@/lib/i18n";
@@ -217,7 +218,7 @@ export default function ReservationDialog({
                 >
                   {pending ? words.sending : words.submit}
                 </button>
-                <p className="mt-2 text-xs text-neutral-500">{words.privacy}</p>
+                <LegalNote text={words.privacy} document="privacy" />
               </div>
             </form>
           )}
