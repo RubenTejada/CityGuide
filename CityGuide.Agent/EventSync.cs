@@ -215,11 +215,10 @@ public partial class EventSync(
                 string? photoValue = null;
                 try
                 {
-                    (byte[] Bytes, string ContentType)? image = await FindImageAsync(ev);
+                    FoundImage? image = await FindImageAsync(ev);
                     if (image is not null)
                     {
-                        Guid mediaKey = await umbraco.CreateMediaImageAsync(
-                            ev.Name, image.Value.Bytes, image.Value.ContentType);
+                        Guid mediaKey = await umbraco.CreateMediaImageAsync($"{ev.Name} — {image.Source}", image);
                         photoValue = $"[{{\"key\":\"{Guid.NewGuid()}\",\"mediaKey\":\"{mediaKey}\"}}]";
                     }
                     else
@@ -672,13 +671,14 @@ public partial class EventSync(
     /// declared, the og:image of its ticket page, and finally a Google photo of
     /// the venue. An event without any image falls back to the section picture in
     /// the frontend, which looks the same for every event — worth two extra
-    /// requests to avoid.
+    /// requests to avoid. The first two are the event's own promotion and need no
+    /// credit; the venue's Google photo carries the attribution Google requires.
     /// </summary>
-    private async Task<(byte[] Bytes, string ContentType)?> FindImageAsync(ScrapedEvent ev)
+    private async Task<FoundImage?> FindImageAsync(ScrapedEvent ev)
     {
         if (ev.ImageUrl is not null && await FetchImageAsync(ev.ImageUrl) is { } declared)
         {
-            return declared;
+            return new FoundImage(declared.Bytes, declared.ContentType, $"Evento — {new Uri(ev.ImageUrl).Host}");
         }
 
         try
@@ -686,7 +686,7 @@ public partial class EventSync(
             string? og = OgContent(await FetchAsync(ev.Url), "og:image");
             if (og is not null && await FetchImageAsync(og) is { } fromPage)
             {
-                return fromPage;
+                return new FoundImage(fromPage.Bytes, fromPage.ContentType, $"Evento — {new Uri(ev.Url).Host}");
             }
         }
         catch (Exception ex)
@@ -700,8 +700,8 @@ public partial class EventSync(
         }
 
         string cityName = city.CityPath.Trim('/').Split('/').Last().Replace('-', ' ');
-        string? photoName = await google.FindPhotoAsync($"{ev.Venue}, {cityName}");
-        return photoName is null ? null : await google.DownloadPhotoAsync(photoName);
+        GooglePhoto? photo = await google.FindPhotoAsync($"{ev.Venue}, {cityName}");
+        return photo is null ? null : await google.DownloadPhotoAsync(photo);
     }
 
     /// <summary>Downloads an image URL; null unless the response is an image.</summary>

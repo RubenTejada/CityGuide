@@ -343,7 +343,7 @@ const terms: Record<Locale, LegalDocument> = {
       {
         heading: "Propiedad intelectual",
         body: [
-          "Los textos, el diseño y la marca QueHacerRD pertenecen al portal. Las fotos pertenecen a sus autores: proceden de los propios establecimientos, de Google o de Wikimedia Commons, bajo sus respectivas licencias. Si eres autor de una foto y quieres que figure tu nombre o que la retiremos, usa «Denunciar contenido». No copies el contenido del portal de forma masiva ni con fines comerciales sin nuestro permiso.",
+          "Los textos, el diseño y la marca QueHacerRD pertenecen al portal. Las fotos pertenecen a sus autores. Las de Wikimedia Commons se publican bajo la licencia que eligió su autor (Creative Commons o dominio público) y las de Google Maps bajo las condiciones de Google: unas y otras llevan junto a la foto el nombre de su autor, la licencia cuando la hay y un enlace a su origen, y es esa licencia, no lo que dice este apartado, la que decide cómo se pueden reutilizar. Las demás fotos proceden de los propios establecimientos. Si eres autor de una foto y tu nombre falta o está mal, o quieres que la retiremos, usa «Denunciar contenido». No copies el contenido del portal de forma masiva ni con fines comerciales sin nuestro permiso.",
         ],
       },
       {
@@ -437,7 +437,7 @@ const terms: Record<Locale, LegalDocument> = {
       {
         heading: "Intellectual property",
         body: [
-          "The text, design and QueHacerRD brand belong to the portal. Photos belong to their authors: they come from the venues themselves, from Google or from Wikimedia Commons, under their respective licences. If you are the author of a photo and want your name shown or the photo removed, use “Report content”. Do not copy the portal's content in bulk or for commercial purposes without our permission.",
+          "The text, design and QueHacerRD brand belong to the portal. Photos belong to their authors. Those from Wikimedia Commons are published under the licence their author chose (Creative Commons or public domain) and those from Google Maps under Google's terms: both carry, next to the photo, the author's name, the licence where there is one and a link to where it comes from, and it is that licence, not this section, that decides how they may be reused. The other photos come from the venues themselves. If you are the author of a photo and your name is missing or wrong, or you want the photo removed, use “Report content”. Do not copy the portal's content in bulk or for commercial purposes without our permission.",
         ],
       },
       {

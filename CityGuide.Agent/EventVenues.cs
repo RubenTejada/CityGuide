@@ -163,7 +163,7 @@ public class EventVenues(
         Guid? photoKey = photos is null
             ? null
             : await photos.UploadAsync(
-                venue.Name, () => Task.FromResult(venue.PhotoName), parentPath, venue.Types,
+                venue.Name, () => Task.FromResult(venue.Photo), parentPath, venue.Types,
                 venue.Website, city?.CityName, city?.Area);
 
         // The category prompt of the section it lands in ("bares-y-clubes"), the same

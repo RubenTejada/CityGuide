@@ -5,6 +5,7 @@ import { type CSSProperties, useEffect, useState } from "react";
 
 import ImageViewer from "@/components/ImageViewer";
 import { useWords } from "@/components/LocaleProvider";
+import PhotoCreditLine from "@/components/PhotoCreditLine";
 import { focalPosition, type Photo } from "@/lib/umbraco";
 
 /** Cada cuánto sube a la foto principal la siguiente de la tira. Tiene que dejar la
@@ -29,6 +30,9 @@ const WIDE_FROM = 7;
  *
  * Se detiene mientras el puntero está encima o el visor está abierto, y no rota si el
  * visitante pidió menos movimiento.
+ *
+ * Debajo va el crédito de las fotos que el bloque enseña — la principal y la tira, que
+ * rotan entre sí —, todos los autores en una línea; en el visor, cada foto lleva el suyo.
  */
 export default function PhotoGallery({
   photos,
@@ -100,10 +104,15 @@ export default function PhotoGallery({
           ))}
         </div>
       </div>
+      <PhotoCreditLine
+        credit={photos.slice(0, tiles).map((photo) => photo.credit)}
+        words={words.place}
+        className="mt-1 text-neutral-500"
+      />
 
       {viewing !== null && (
         <ImageViewer
-          images={photos.map((photo) => photo.url)}
+          images={photos}
           name={name}
           start={viewing}
           labels={{
