@@ -372,7 +372,7 @@ const es = {
   /** El aviso de cookies: la medición solo se carga cuando el visitante la acepta. */
   consent: {
     heading: "Tu privacidad",
-    body: "Usamos cookies propias para que el portal funcione. Si aceptas, también las de Google Analytics y el píxel de Meta, que miden las visitas y nuestros anuncios. Puedes cambiar tu elección cuando quieras en «Preferencias de cookies», al pie de la página.",
+    body: "Usamos cookies para que el portal funcione y, si aceptas, para medir las visitas y nuestros anuncios. Puedes cambiar tu elección cuando quieras en «Preferencias de cookies», al pie de la página.",
     policy: "Política de privacidad",
     accept: "Aceptar",
     reject: "Rechazar",
@@ -937,7 +937,7 @@ const en: typeof es = {
   },
   consent: {
     heading: "Your privacy",
-    body: "We use our own cookies to make the portal work. If you accept, we also use those of Google Analytics and the Meta pixel, which measure visits and our ads. You can change your choice at any time under “Cookie preferences” at the foot of the page.",
+    body: "We use cookies to make the portal work and, if you accept, to measure visits and our ads. You can change your choice at any time under “Cookie preferences” at the foot of the page.",
     policy: "Privacy policy",
     accept: "Accept",
     reject: "Reject",
