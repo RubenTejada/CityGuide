@@ -1,5 +1,6 @@
 import { revalidateTag } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
+import { cdnConfigured, purgeCdnSoon } from "@/lib/cdn";
 
 // Called by the CMS (FrontendRevalidator) whenever content is published,
 // unpublished or deleted, which drops every cached Delivery API response
@@ -14,12 +15,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ revalidated: false }, { status: 401 });
   }
 
-  // "max" expires the tag as far as a route handler can; updateTag (immediate)
-  // is Server Actions only.
   const requested = request.nextUrl.searchParams.get("tag") ?? "umbraco";
   if (!TAGS.has(requested)) {
     return NextResponse.json({ revalidated: false }, { status: 400 });
   }
-  revalidateTag(requested, "max");
+  // Without a CDN, "max": the next visitor is served the page as it was while
+  // it is rendered again, and the one after gets the new one. With a CDN that
+  // visitor is the edge, which would keep the old page for another ten
+  // minutes — so the tag is expired outright, the first request after the
+  // purge waits for the fresh render, and that is what the edge keeps.
+  // (updateTag does the same, but only from a Server Action.)
+  revalidateTag(requested, cdnConfigured() ? { expire: 0 } : "max");
+  purgeCdnSoon();
   return NextResponse.json({ revalidated: true, tag: requested });
 }

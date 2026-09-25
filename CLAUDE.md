@@ -1225,6 +1225,39 @@ Boot-time indexing race: content published during startup is NOT picked up by th
 
 Bank logos live in `CityGuideWeb/CityGuide/SeedAssets/` and are imported into the Media library at seed time; `photo` is a MediaPicker3 property whose value is JSON `[{"key":<guid>,"mediaKey":<mediaKey>}]`.
 
+## CDN (Cloudflare)
+
+Cloudflare fronts `quehacerrd.com` and keeps the prerendered pages at its edge for
+the `s-maxage` Next.js sends them with (ten minutes). What stays at the origin on
+every request is what Next marks `private, no-store` — the part of a listing, a
+cartelera or the guide that reads the query, the search, `/api/*` — and the edge
+still helps there: TLS ends near the visitor and the connection to Arizona is kept
+warm.
+
+- **Freshness is pushed, not waited for.** `/api/revalidate` (a publish) and the
+  review actions call `purgeCdnSoon` (`lib/cdn.ts`), which empties the edge once a
+  burst of calls settles (20 s quiet, 2 min at most: an agent pass publishes
+  hundreds of nodes, one call each). And with a CDN configured the route expires
+  the tag with `{ expire: 0 }` instead of `"max"`: stale-while-revalidate would
+  hand the edge's first request the *old* page while re-rendering, and the edge
+  would keep that for another ten minutes. Both need `CLOUDFLARE_ZONE_ID` and
+  `CLOUDFLARE_API_TOKEN` (scoped to Zone → Cache Purge) as runtime settings of the
+  App Service; without them nothing is purged and the route keeps `"max"`.
+- **SSL mode is Full (strict), never Flexible.** Flexible talks to the origin over
+  http, the origin answers `x-forwarded-proto: http` with the 308 `next.config.ts`
+  sends to https, and the edge follows it back — a redirect loop. The origin
+  certificate is a Cloudflare Origin CA one bound to both hostnames on the App
+  Service: the free App Service managed certificate is only renewed while the
+  hostname resolves to the app itself, which a proxied record never does.
+- **The edge must not rewrite the HTML.** Rocket Loader and Email Address
+  Obfuscation change the markup React hydrates against; both are off.
+- **Caching HTML is a Cache Rule**, since Cloudflare caches no HTML by default:
+  hostname `quehacerrd.com`, path not starting with `/api/` → eligible for cache,
+  edge TTL from the origin's `Cache-Control` (bypass when there is none), query
+  string in the key. The `_rsc` parameter Next adds to its navigation requests is
+  what keeps an RSC payload and the HTML of one URL apart, since Cloudflare
+  ignores the `Vary` Next sends.
+
 ## Analytics
 
 Google Analytics 4 (gtag.js) is rendered site-wide by `frontend/components/Analytics.tsx`, mounted in
