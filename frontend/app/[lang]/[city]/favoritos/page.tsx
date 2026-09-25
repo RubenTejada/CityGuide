@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import PlaceCard from "@/components/PlaceCard";
 import SignInButton from "@/components/account/SignInButton";
 import { getItemsById } from "@/lib/cms";
-import { localeHref, t, type Locale } from "@/lib/i18n";
+import { localeHref, t, localeParam } from "@/lib/i18n";
 import { getFavorites } from "@/lib/portalApi";
 import { accountsEnabled, getSession, googleEnabled } from "@/lib/session";
 
@@ -12,7 +12,7 @@ export async function generateMetadata({
 }: PageProps<"/[lang]/[city]/favoritos">): Promise<Metadata> {
   const { lang } = await params;
   return {
-    title: t(lang as Locale).favorites.heading,
+    title: t(localeParam(lang)).favorites.heading,
     robots: { index: false, follow: false },
   };
 }
@@ -26,7 +26,7 @@ async function FavoritesPageBody({
   params,
 }: PageProps<"/[lang]/[city]/favoritos">) {
   const { lang, city } = await params;
-  const locale = lang as Locale;
+  const locale = localeParam(lang);
   const words = t(locale).favorites;
   const session = await getSession();
   const places = session

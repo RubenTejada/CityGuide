@@ -3,13 +3,13 @@ import { notFound } from "next/navigation";
 import ContactForm from "@/components/ContactForm";
 import { pageMetadata } from "@/lib/seo";
 import { getItem } from "@/lib/cms";
-import { localeHref, otherLocale, t, type Locale } from "@/lib/i18n";
+import { localeHref, otherLocale, t, localeParam } from "@/lib/i18n";
 
 export async function generateMetadata({
   params,
 }: PageProps<"/[lang]/[city]/contacto">): Promise<Metadata> {
   const { lang, city: citySlug } = await params;
-  const locale = lang as Locale;
+  const locale = localeParam(lang);
   const words = t(locale).contact;
   const city = await getItem(`/${citySlug}`);
   const other = otherLocale(locale);
@@ -30,7 +30,7 @@ export default async function ContactPage({
   params,
 }: PageProps<"/[lang]/[city]/contacto">) {
   const { lang, city: citySlug } = await params;
-  const locale = lang as Locale;
+  const locale = localeParam(lang);
   const words = t(locale).contact;
   const city = await getItem(`/${citySlug}`);
   if (!city || city.contentType !== "city") notFound();

@@ -6,6 +6,7 @@
 // field for, and the closed vocabularies the agent deliberately leaves in Spanish
 // because they are keys rather than prose (a place's facilities).
 
+import { notFound } from "next/navigation";
 import type { WeatherCondition } from "@/lib/weather";
 
 /** URL segment of each language. Spanish is the portal's own and carries none. */
@@ -34,6 +35,19 @@ export const INTL_LOCALE: Record<Locale, string> = { es: "es-DO", en: "en-US" };
 
 export function isLocale(value: string): value is Locale {
   return (LOCALES as readonly string[]).includes(value);
+}
+
+/**
+ * The `[lang]` segment of a route, or a 404. The proxy leaves every path with a
+ * dot alone so that the files in /public are served as they are, which means a
+ * file that does not exist ("/favicon.ico", Chrome's "/.well-known/…" probe)
+ * falls through to the app with its name as the language. Cache Components does
+ * not allow `dynamicParams = false`, so every route under `[lang]` reads the
+ * segment through here instead of casting it.
+ */
+export function localeParam(lang: string): Locale {
+  if (!isLocale(lang)) notFound();
+  return lang;
 }
 
 /**

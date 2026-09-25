@@ -5,7 +5,7 @@ import InlineScript from "@/components/InlineScript";
 import JsonLd from "@/components/JsonLd";
 import MetaPixel from "@/components/MetaPixel";
 import LocaleProvider from "@/components/LocaleProvider";
-import { HTML_LANG, LOCALES, OG_LOCALE, type Locale } from "@/lib/i18n";
+import { HTML_LANG, LOCALES, OG_LOCALE, localeParam } from "@/lib/i18n";
 import {
   siteDescription,
   SITE_NAME,
@@ -43,7 +43,7 @@ export async function generateMetadata({
   params,
 }: LayoutProps<"/[lang]">): Promise<Metadata> {
   const { lang } = await params;
-  const locale = lang as Locale;
+  const locale = localeParam(lang);
   const title = siteTitle(locale);
   const description = siteDescription(locale);
   return {
@@ -89,7 +89,7 @@ export default async function RootLayout({
   params,
 }: LayoutProps<"/[lang]">) {
   const { lang } = await params;
-  const locale = lang as Locale;
+  const locale = localeParam(lang);
   return (
     <html
       lang={HTML_LANG[locale]}

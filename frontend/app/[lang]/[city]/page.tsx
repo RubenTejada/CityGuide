@@ -25,7 +25,7 @@ import {
   text,
   type UmbracoItem,
 } from "@/lib/umbraco";
-import { localeHref, t, type Locale } from "@/lib/i18n";
+import { localeHref, t, localeParam } from "@/lib/i18n";
 import { sectionListImage } from "@/lib/sections";
 import {
   absoluteImage,
@@ -48,7 +48,7 @@ export async function generateMetadata({
   params,
 }: PageProps<"/[lang]/[city]">): Promise<Metadata> {
   const { lang, city: citySlug } = await params;
-  const locale = lang as Locale;
+  const locale = localeParam(lang);
   const words = t(locale).seo;
   const city = await getItem(`/${citySlug}`);
   if (!city) return {};

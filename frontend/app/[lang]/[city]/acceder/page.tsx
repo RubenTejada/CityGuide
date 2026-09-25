@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import RedeemForm from "@/components/account/RedeemForm";
 import SignInButton from "@/components/account/SignInButton";
-import { t, type Locale } from "@/lib/i18n";
+import { t, localeParam } from "@/lib/i18n";
 import { safeReturnPath } from "@/lib/reviews";
 import { accountsEnabled, googleEnabled } from "@/lib/session";
 
@@ -11,7 +11,7 @@ export async function generateMetadata({
 }: PageProps<"/[lang]/[city]/acceder">): Promise<Metadata> {
   const { lang } = await params;
   return {
-    title: t(lang as Locale).account.redeemHeading,
+    title: t(localeParam(lang)).account.redeemHeading,
     robots: { index: false, follow: false },
   };
 }
@@ -26,7 +26,7 @@ async function SignInPageBody({
   searchParams,
 }: PageProps<"/[lang]/[city]/acceder">) {
   const { lang } = await params;
-  const locale = lang as Locale;
+  const locale = localeParam(lang);
   const words = t(locale).account;
   const query = await searchParams;
   const read = (key: string) => {

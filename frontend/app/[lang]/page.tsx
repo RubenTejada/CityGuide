@@ -12,7 +12,7 @@ import {
 } from "@/lib/seo";
 import { getCities } from "@/lib/cms";
 import { LEGAL_PATHS } from "@/lib/legal";
-import { localeHref, otherLocale, t, type Locale } from "@/lib/i18n";
+import { localeHref, otherLocale, t, localeParam } from "@/lib/i18n";
 import { isComingSoon, slugOf } from "@/lib/umbraco";
 
 // The root layout's defaults would cover the home page, but stating them here
@@ -22,7 +22,7 @@ export async function generateMetadata({
   params,
 }: PageProps<"/[lang]">): Promise<Metadata> {
   const { lang } = await params;
-  const locale = lang as Locale;
+  const locale = localeParam(lang);
   const other = otherLocale(locale);
   return pageMetadata({
     title: siteTitle(locale),
@@ -37,7 +37,7 @@ export async function generateMetadata({
 
 export default async function HomePage({ params }: PageProps<"/[lang]">) {
   const { lang } = await params;
-  const locale = lang as Locale;
+  const locale = localeParam(lang);
   const words = t(locale);
   const cities = await getCities();
 

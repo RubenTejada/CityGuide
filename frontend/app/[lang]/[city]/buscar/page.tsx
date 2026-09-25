@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import PlaceCard from "@/components/PlaceCard";
-import { localeHref, t, type Locale } from "@/lib/i18n";
+import { localeHref, t, localeParam } from "@/lib/i18n";
 import { matchesTokens, searchText, searchTokens } from "@/lib/search";
 import { buildSearchIndex } from "@/lib/searchIndex";
 import { activeLocale, getDescendantsOfType, getItem } from "@/lib/cms";
@@ -13,7 +13,7 @@ export async function generateMetadata({
   params,
 }: PageProps<"/[lang]/[city]/buscar">): Promise<Metadata> {
   const { lang, city: citySlug } = await params;
-  const locale = lang as Locale;
+  const locale = localeParam(lang);
   const words = t(locale).search;
   const city = await getItem(`/${citySlug}`);
   const name = city?.name ?? words.theCity;

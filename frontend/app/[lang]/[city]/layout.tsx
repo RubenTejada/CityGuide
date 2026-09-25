@@ -15,7 +15,7 @@ import LanguageToggle from "@/components/LanguageToggle";
 import AccountMenu from "@/components/account/AccountMenu";
 import { getChildren, getCities, getItem, type UmbracoItem } from "@/lib/cms";
 import { LEGAL_PATHS } from "@/lib/legal";
-import { contentSegments, localeHref, t, type Locale } from "@/lib/i18n";
+import { contentSegments, localeHref, t, type Locale, localeParam } from "@/lib/i18n";
 import { isComingSoon, num, slugOf } from "@/lib/umbraco";
 import ThemeToggle from "@/components/ThemeToggle";
 import WeatherBadge from "@/components/Weather";
@@ -54,7 +54,7 @@ export async function generateStaticParams({
 }: {
   params: { lang: string };
 }) {
-  const cities = await getCities(params.lang as Locale);
+  const cities = await getCities(localeParam(params.lang));
   return cities.map((city) => ({ city: slugOf(city) }));
 }
 
@@ -63,7 +63,7 @@ export default async function CityLayout({
   params,
 }: LayoutProps<"/[lang]/[city]">) {
   const { lang, city: citySlug } = await params;
-  const locale = lang as Locale;
+  const locale = localeParam(lang);
   const words = t(locale);
   const city = await getItem(`/${citySlug}`);
   if (!city || city.contentType !== "city") notFound();

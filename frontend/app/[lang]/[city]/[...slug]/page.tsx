@@ -70,6 +70,7 @@ import {
   type Locale,
   localeHref,
   t,
+  localeParam,
 } from "@/lib/i18n";
 import { hasMenu, placeMenu } from "@/lib/menu";
 import { curatedPhoto, curatedPhotoCredit } from "@/lib/photos";
@@ -160,7 +161,7 @@ export async function generateStaticParams({
 }: {
   params: { lang: string; city: string };
 }) {
-  const [first] = await getChildren(`/${params.city}`, 1, params.lang as Locale);
+  const [first] = await getChildren(`/${params.city}`, 1, localeParam(params.lang));
   const slug = first ? contentSegments(first.route.path).slice(1) : [];
   return slug.length > 0 ? [{ slug }] : [];
 }
@@ -195,7 +196,7 @@ export default async function ContentPage({ params, searchParams }: ContentProps
   const { lang, city, slug } = await params;
   const item = await getItem(`/${city}/${slug.join("/")}`);
   if (!item) notFound();
-  const locale = lang as Locale;
+  const locale = localeParam(lang);
   if (!readsQuery(item.contentType) && !isCinemaBranch(item, city, slug)) {
     return <ContentView locale={locale} city={city} slug={slug} query={{}} />;
   }
@@ -365,7 +366,7 @@ export async function generateMetadata({
   searchParams: Promise<ListingQuery>;
 }): Promise<Metadata> {
   const { lang, city: citySlug, slug } = await params;
-  const locale = lang as Locale;
+  const locale = localeParam(lang);
   const item = await getItem(`/${citySlug}/${slug.join("/")}`);
   if (!item) return {};
   // Only a listing's `?pagina=` names a page of its own; every other parameter
