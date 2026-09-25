@@ -131,6 +131,9 @@ const es = {
     search: "Busca por nombre, sector, calle o categoría",
     searchButton: "Buscar",
     changeCity: "Cambiar ciudad",
+    /** El botón hamburguesa del móvil, cuando no hay sección encendida. */
+    sections: "Secciones",
+    openSections: "Abrir el menú de secciones",
     changeTheme: "Cambiar tema",
     themeHint: "Cambiar entre modo claro y oscuro",
     language: "Idioma",
@@ -693,6 +696,8 @@ const en: typeof es = {
     search: "Search by name, neighborhood, street or category",
     searchButton: "Search",
     changeCity: "Change city",
+    sections: "Sections",
+    openSections: "Open the sections menu",
     changeTheme: "Change theme",
     themeHint: "Switch between light and dark mode",
     language: "Language",
