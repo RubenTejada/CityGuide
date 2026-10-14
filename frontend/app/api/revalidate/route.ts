@@ -14,12 +14,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ revalidated: false }, { status: 401 });
   }
 
-  // "max" expires the tag as far as a route handler can; updateTag (immediate)
-  // is Server Actions only.
+  // Expired outright, not marked stale: with "max" the next visitor of every page
+  // was served the version from before the publish while it regenerated in the
+  // background — and that regeneration read the nested Delivery API caches, stale
+  // too, so a city page went on listing yesterday's articles for hours. A page
+  // few people visit has no second visitor to pay for the first. updateTag
+  // would do the same, but it is Server Actions only.
   const requested = request.nextUrl.searchParams.get("tag") ?? "umbraco";
   if (!TAGS.has(requested)) {
     return NextResponse.json({ revalidated: false }, { status: 400 });
   }
-  revalidateTag(requested, "max");
+  revalidateTag(requested, { expire: 0 });
   return NextResponse.json({ revalidated: true, tag: requested });
 }
