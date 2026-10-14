@@ -29,6 +29,13 @@ public static class ChainNames
             // Google never abbreviates APAP, which is how the company node is named.
             ["APAP"] = ["Asociación Popular de Ahorros y Préstamos"],
             ["Mail Boxes Etc"] = ["MBE"],
+            // Half the KFC listings outside the capital carry the chain's full name.
+            ["KFC"] = ["Kentucky Fried Chicken"],
+            // The pizza chains' listings add "Pizza" to the brand, which the branch name
+            // should not keep ("Little Caesars — Pizza - La Vecina").
+            ["Little Caesars"] = ["Little Caesars Pizza", "Little Caesar's Pizza"],
+            ["Domino's"] = ["Domino's Pizza"],
+            ["Papa John's"] = ["Papa John's Pizza"],
         };
 
     /// <summary>The chain's own name first, then every other name its branches carry.</summary>

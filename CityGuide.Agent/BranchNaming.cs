@@ -24,6 +24,9 @@ public static class BranchNaming
         // The chain under every name Google gives it: a branch the company node calls
         // "Banco Popular Dominicano" is named "Banco Popular" outside the capital, and
         // subtracting the node's own spelling would leave the chain in the branch name.
+        // The name that subtracts the most wins: "Little Caesars Pizza - La Vecina"
+        // minus "Little Caesars" still carries the chain's "Pizza".
+        string? best = null;
         foreach (string name in ChainNames.Of(companyName))
         {
             // "Vimenca y Western Union" minus the chain is "y Western Union"; "MoneyGram inside
@@ -35,13 +38,14 @@ public static class BranchNaming
             // calls APAP's branches "Asociación Popular de Ahorros y Préstamos"), and
             // the name is the chain's however it is spelled — fall back to the address.
             // What is left has to say something: "(1)" — Umbraco's suffix on a twin — does not.
-            if (local.Length > 0 && local.Length < trimmed.Length && local.Any(char.IsLetter))
+            if (local.Length > 0 && local.Length < trimmed.Length && local.Any(char.IsLetter)
+                && (best is null || local.Length < best.Length))
             {
-                return local;
+                best = local;
             }
         }
 
-        return PlaceNaming.AddressLine(address) ?? "Sucursal";
+        return best ?? PlaceNaming.AddressLine(address) ?? "Sucursal";
     }
 
     private static string StripCompany(string placeName, string companyName)
@@ -57,6 +61,6 @@ public static class BranchNaming
                 return words.Length == 0 || !words.All(chain.Contains);
             });
 
-        return string.Join(' ', kept).Trim(' ', '-', '–', '—', ',', '•', '|');
+        return string.Join(' ', kept).Trim(' ', '-', '–', '—', ',', '•', '|', '(', ')');
     }
 }
