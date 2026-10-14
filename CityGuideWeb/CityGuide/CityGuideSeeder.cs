@@ -4027,22 +4027,36 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
     /// <summary>
     /// Logos of the chains the agent creates on its own (a chain run with
     /// <c>CreatesCompanies</c> makes the brand node from the first location it finds,
-    /// without a logo). Keyed by the company name exactly as the run names it.
+    /// without a logo). Keyed by the company name exactly as the run names it; the
+    /// folder is where the logo lands in the Media library.
     /// </summary>
-    private static readonly (string Name, string LogoFile)[] AgentChainLogos =
+    private static readonly (string Name, string LogoFile, string Folder)[] AgentChainLogos =
     [
-        ("Vimenca", "vimenca.png"),
-        ("Caribe Express", "caribe-express.png"),
-        ("Western Union", "western-union.png"),
-        ("MoneyGram", "moneygram.png"),
-        ("EPS", "eps.png"),
-        ("Aeropaq", "aeropaq.png"),
-        ("Domex", "domex.png"),
-        ("DHL", "dhl.png"),
-        ("BM Cargo", "bm-cargo.png"),
-        ("Liberty Express", "liberty-express.png"),
-        ("Mail Boxes Etc", "mail-boxes-etc.png"),
-        ("Priority Courier", "priority-courier.png"),
+        ("Vimenca", "vimenca.png", "Remesas y Envíos"),
+        ("Caribe Express", "caribe-express.png", "Remesas y Envíos"),
+        ("Western Union", "western-union.png", "Remesas y Envíos"),
+        ("MoneyGram", "moneygram.png", "Remesas y Envíos"),
+        ("EPS", "eps.png", "Remesas y Envíos"),
+        ("Aeropaq", "aeropaq.png", "Remesas y Envíos"),
+        ("Domex", "domex.png", "Remesas y Envíos"),
+        ("DHL", "dhl.png", "Remesas y Envíos"),
+        ("BM Cargo", "bm-cargo.png", "Remesas y Envíos"),
+        ("Liberty Express", "liberty-express.png", "Remesas y Envíos"),
+        ("Mail Boxes Etc", "mail-boxes-etc.png", "Remesas y Envíos"),
+        ("Priority Courier", "priority-courier.png", "Remesas y Envíos"),
+        ("McDonald's", "mcdonalds.png", "Comida Rápida"),
+        ("Burger King", "burger-king.png", "Comida Rápida"),
+        ("Wendy's", "wendys.png", "Comida Rápida"),
+        ("KFC", "kfc.png", "Comida Rápida"),
+        ("Pizza Hut", "pizza-hut.png", "Comida Rápida"),
+        ("Domino's", "dominos.png", "Comida Rápida"),
+        ("Papa John's", "papa-johns.png", "Comida Rápida"),
+        ("Little Caesars", "little-caesars.png", "Comida Rápida"),
+        ("Taco Bell", "taco-bell.png", "Comida Rápida"),
+        ("Subway", "subway.png", "Comida Rápida"),
+        ("Krispy Kreme", "krispy-kreme.png", "Comida Rápida"),
+        ("Pollos Victorina", "pollos-victorina.png", "Comida Rápida"),
+        ("Popeyes", "popeyes.png", "Comida Rápida"),
     ];
 
     /// <summary>
@@ -4064,9 +4078,9 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         {
             ["Caribbean Cinemas"] = ("caribbean-cinemas.png", "Cines"),
         };
-        foreach ((string name, string logoFile) in AgentChainLogos)
+        foreach ((string name, string logoFile, string folder) in AgentChainLogos)
         {
-            logos[name] = (logoFile, "Remesas y Envíos");
+            logos[name] = (logoFile, folder);
         }
 
         foreach ((Chain[] Chains, string Folder) group in new[]
