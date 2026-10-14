@@ -451,6 +451,30 @@ jobs:
             dotnet run -c Release -- $paid_flag
           fi
 
+      # The article of the day, one per city: the day's headlines joined to the portal's
+      # places and events, written and published in both languages (--daily-articles).
+      # It is the one scheduled step that spends: two model calls and a look at the photos
+      # per city, and a Google search for an establishment a headline names that the
+      # portal lacks (at most two per article). Both crons run it because one is not
+      # reliably daily; a city that already has an article dated today is skipped, so the
+      # second run only writes what the first did not. The login is repeated here: the
+      # free pass above can outlive the token the first one bought.
+      - uses: azure/login@v2
+        if: ${{ !cancelled() && github.event_name == 'schedule' }}
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Write the article of the day
+        if: ${{ !cancelled() && github.event_name == 'schedule' }}
+        working-directory: CityGuide.Agent
+        env:
+          Umbraco__BaseUrl: https://quehacerrd-cms.azurewebsites.net
+          Umbraco__ClientSecret: ${{ secrets.UMBRACO_AGENT_CLIENT_SECRET }}
+          Google__ApiKey: ${{ secrets.GOOGLE_API_KEY }}
+        run: dotnet run -c Release -- --paid --daily-articles --apply
+
       # The one post a day per city. Only the 20:23 cron posts — it lands in the
       # Dominican afternoon or evening, and the morning one fires before dawn there —
       # and it posts after the free pass has refreshed the events and the cartelera,

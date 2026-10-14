@@ -5,6 +5,9 @@ name: Agent — artículos y facilidades
 # a facility put by hand on the places of one theme, and the article itself, written
 # outside the agent and committed under CityGuide.Agent/Articulos. They live here and
 # not in "Run agent" because that workflow already carries the 25 inputs GitHub allows.
+# "daily-articles" is the article of the day "Run agent" writes on its own after each
+# scheduled pass, dispatched by hand: without "apply" it prints the article it would
+# publish, and the model calls behind it are billed either way.
 # The gallery and the menu of the chosen places are "Run agent" with gallery/menus and
 # the places' own paths as the section.
 
@@ -21,6 +24,7 @@ on:
           - add-facility
           - remove-facility
           - add-article
+          - daily-articles
       apply:
         description: Write the changes. Left off, the run only prints the plan.
         type: boolean
@@ -29,7 +33,8 @@ on:
       section:
         description: >-
           facilities: the part of the site to cover, as in "Run agent"
-          ("santiago", "santiago/restaurantes").
+          ("santiago", "santiago/restaurantes"). daily-articles: the cities to write
+          today's article for ("santiago,punta-cana"); empty is every city.
         type: string
         required: false
       query:
@@ -89,10 +94,10 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      # Only "discover" writes descriptions, and the model behind them is reached
-      # through the Azure CLI login this step provides, as in "Run agent".
+      # "discover" and "daily-articles" are the tasks that ask the model, reached through
+      # the Azure CLI login this step provides, as in "Run agent".
       - uses: azure/login@v2
-        if: ${{ inputs.task == 'discover' }}
+        if: ${{ inputs.task == 'discover' || inputs.task == 'daily-articles' }}
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -143,5 +148,10 @@ jobs:
               else
                 dotnet run -c Release -- --add-article "$city" "Articulos/$ARTICLE.md" $apply_flag
               fi
+              ;;
+            daily-articles)
+              section_flag=""
+              if [ -n "$SECTION" ]; then section_flag="--section $SECTION"; fi
+              dotnet run -c Release -- --paid --daily-articles $section_flag $apply_flag
               ;;
           esac
