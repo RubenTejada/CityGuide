@@ -2,10 +2,11 @@ import Image from "next/image";
 import Link from "next/link";
 
 // Minimal markdown renderer for article bodies: paragraphs, "## " headings,
-// "- " bullet lists, "![alt](url)" image figures, **bold** and [text](url)
-// links. Internal links (paths starting with "/") navigate client-side via
-// next/link; external links open in a new tab. Kept deliberately small —
-// article bodies are authored by the seeder/editors with only these constructs.
+// "- " bullet lists, "![alt](url)" image figures (a line right under the image,
+// in the same block, is its photo credit), **bold** and [text](url) links.
+// Internal links (paths starting with "/") navigate client-side via next/link;
+// external links open in a new tab. Kept deliberately small — article bodies
+// are authored by the seeder, the editors and the agent with only these constructs.
 
 function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
   const nodes: React.ReactNode[] = [];
@@ -59,7 +60,7 @@ export default function ArticleBody({ markdown }: { markdown: string }) {
     <div className="max-w-3xl space-y-4 text-neutral-700">
       {blocks.map((block, blockIndex) => {
         const key = `b${blockIndex}`;
-        const image = /^!\[([^\]]*)\]\(([^)\s]+)\)$/.exec(block);
+        const image = /^!\[([^\]]*)\]\(([^)\s]+)\)(?:\n(.+))?$/.exec(block);
         if (image) {
           return (
             <figure key={key} className="py-2">
@@ -72,9 +73,14 @@ export default function ArticleBody({ markdown }: { markdown: string }) {
                   sizes="(min-width: 768px) 48rem, 100vw"
                 />
               </div>
-              {image[1] && (
+              {(image[1] || image[3]) && (
                 <figcaption className="mt-2 text-center text-sm text-neutral-500">
                   {image[1]}
+                  {image[3] && (
+                    <span className="mt-0.5 block text-[11px] leading-snug">
+                      {renderInline(image[3].trim(), `${key}-credit`)}
+                    </span>
+                  )}
                 </figcaption>
               )}
             </figure>

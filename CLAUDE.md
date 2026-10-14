@@ -203,6 +203,16 @@ cd CityGuide.Agent && dotnet run -- --add-facility "Vistas Panorámicas" \
 cd CityGuide.Agent && dotnet run -- --add-article /santiago Articulos/santiago/restaurantes-con-vista.md \
   --en Articulos/santiago/restaurantes-con-vista.en.md --apply
 
+# The article of the day, one per city, written by the agent: the day's headlines
+# (Google News and Google Trends, free), a topic no other city got today, the places,
+# events and films of the portal that answer it, the photos cropped around their subject,
+# both languages, published. The model is billed per token and an establishment a
+# headline names that the portal lacks is created through Google, hence --paid. A city
+# that already has an article dated today is skipped. Plan until --apply; the plan
+# prints the whole article. The "Run agent" workflow runs it after both scheduled passes.
+cd CityGuide.Agent && dotnet run -- --paid --daily-articles --section santiago
+cd CityGuide.Agent && dotnet run -- --paid --daily-articles --apply
+
 # The menu of the best-rated restaurants, read from their own site: Google's Places
 # API states no menu, only the address of the site, so that is the one source there
 # is. A PDF becomes one image per page and a "carta" page gives up the pictures on
@@ -489,7 +499,7 @@ repeated inside the window only runs what is new — `--force` asks everything a
 emptying the field in the backoffice has the same effect for one city. The log lives in
 the CMS because the container the agent runs in keeps nothing between passes.
 
-What runs on its own is the free pass: `.github/workflows/run-agent.yml` fires twice a day, at 08:23 and 20:23 UTC (4:23 AM and 4:23 PM in Santo Domingo), with no inputs, so `paid` is empty and the run refreshes the cartelera and the events without touching Google or the model. Two crons because one is not reliably daily: GitHub starts a scheduled run hours after its cron, and the workflow's concurrency group keeps only one pending run, so a manual dispatch queued while the scheduled run waits behind a long pass cancels it for good. Eventbrite answers the GitHub runner with 405 (its bot protection blocks the datacenter address; the same request from a home connection gets 200), so the events the scheduled pass imports come from TodoTickets alone until the agent runs from somewhere else. Discovery and the rating backfill are dispatched by hand with the `paid` input. (`deploy/schedule-agent-job.sh` documents the Azure Container Apps Job the schedule would live in once the subscription has room for a second environment; `deploy/provision-azure-openai.sh` documents the model resource.) The agent also runs `CinemaSync` once per city in `Cinemas:Cities` (each entry a `CityPath` plus the Caribbean site ids of that city — Santo Domingo's eight, Santiago's two, Bávaro for Punta Cana; the chain name and the `Cinemas:Ratings` keys stay shared, since those arrive as `Cinemas__Ratings__*` from the workflow and a per-city list would break them): upserts the "Caribbean Cinemas" company + branch places from the Caribbean Cinemas GraphQL API and maintains the `movie` catalog under that city's `cines` (synopsis, poster, YouTube trailer in Latino Spanish via search) — this content is published immediately, not drafted, and stale movies are deleted. The catalog covers exactly what the portal can put on screen: every movie with a showing on one of the dates the cartelera's tabs offer (`datesWithShowing` from today on, capped at 7 — the same window `getAvailableDates` gives the frontend), read from `showingsForDate`. The site's own `movies` list is not that set — it is paginated (10 per site by default, which is why most cartelera rows used to have no "Ver detalle" link) and it carries titles that are no longer scheduled. A cartelera row without a catalog node keeps the inline expander and loses its page, so the window the agent catalogues and the window the frontend renders have to stay the same. A branch place is named exactly as the Caribbean API names the site, which is the key `CINEMAS_BY_CITY` (frontend/lib/cinema.ts) joins on: a name that differs there leaves the branch page without showtimes and makes the next sync create a second branch beside it. It also fills each movie's IMDb and Rotten Tomatoes scores (`MovieRatingsClient`, config `Cinemas:Ratings`): Caribbean only gives the Spanish release title, which neither service indexes, so TMDb resolves it to an IMDb id plus the original title and OMDb turns that id into the IMDb rating/votes and the Tomatometer (it carries both). The IMDb id never changes, so a movie that already stores one skips the TMDb round trip. Every step degrades to nothing — no key, no match or a failed request leaves the portal without scores — and a failed lookup rewrites the values already stored instead of blanking them (a PUT replaces the whole document). Rotten Tomatoes exposes no id, so the portal links to its search for the original title. **Photos come from the cheapest source that has one** (`PlacePhotos`, over `FreePhotos`):
+What runs on its own is the free pass: `.github/workflows/run-agent.yml` fires twice a day, at 08:23 and 20:23 UTC (4:23 AM and 4:23 PM in Santo Domingo), with no inputs, so `paid` is empty and the run refreshes the cartelera and the events without touching Google or the model. The one scheduled step that spends comes after it: the article of the day (`--paid --daily-articles --apply`, described below), a few cents of model per city and, rarely, a Google search. Two crons because one is not reliably daily: GitHub starts a scheduled run hours after its cron, and the workflow's concurrency group keeps only one pending run, so a manual dispatch queued while the scheduled run waits behind a long pass cancels it for good. Eventbrite answers the GitHub runner with 405 (its bot protection blocks the datacenter address; the same request from a home connection gets 200), so the events the scheduled pass imports come from TodoTickets alone until the agent runs from somewhere else. Discovery and the rating backfill are dispatched by hand with the `paid` input. (`deploy/schedule-agent-job.sh` documents the Azure Container Apps Job the schedule would live in once the subscription has room for a second environment; `deploy/provision-azure-openai.sh` documents the model resource.) The agent also runs `CinemaSync` once per city in `Cinemas:Cities` (each entry a `CityPath` plus the Caribbean site ids of that city — Santo Domingo's eight, Santiago's two, Bávaro for Punta Cana; the chain name and the `Cinemas:Ratings` keys stay shared, since those arrive as `Cinemas__Ratings__*` from the workflow and a per-city list would break them): upserts the "Caribbean Cinemas" company + branch places from the Caribbean Cinemas GraphQL API and maintains the `movie` catalog under that city's `cines` (synopsis, poster, YouTube trailer in Latino Spanish via search) — this content is published immediately, not drafted, and stale movies are deleted. The catalog covers exactly what the portal can put on screen: every movie with a showing on one of the dates the cartelera's tabs offer (`datesWithShowing` from today on, capped at 7 — the same window `getAvailableDates` gives the frontend), read from `showingsForDate`. The site's own `movies` list is not that set — it is paginated (10 per site by default, which is why most cartelera rows used to have no "Ver detalle" link) and it carries titles that are no longer scheduled. A cartelera row without a catalog node keeps the inline expander and loses its page, so the window the agent catalogues and the window the frontend renders have to stay the same. A branch place is named exactly as the Caribbean API names the site, which is the key `CINEMAS_BY_CITY` (frontend/lib/cinema.ts) joins on: a name that differs there leaves the branch page without showtimes and makes the next sync create a second branch beside it. It also fills each movie's IMDb and Rotten Tomatoes scores (`MovieRatingsClient`, config `Cinemas:Ratings`): Caribbean only gives the Spanish release title, which neither service indexes, so TMDb resolves it to an IMDb id plus the original title and OMDb turns that id into the IMDb rating/votes and the Tomatometer (it carries both). The IMDb id never changes, so a movie that already stores one skips the TMDb round trip. Every step degrades to nothing — no key, no match or a failed request leaves the portal without scores — and a failed lookup rewrites the values already stored instead of blanking them (a PUT replaces the whole document). Rotten Tomatoes exposes no id, so the portal links to its search for the original title. **Photos come from the cheapest source that has one** (`PlacePhotos`, over `FreePhotos`):
 a landmark — anything under "Atracciones", a plaza, or a place Google types as monument,
 museum, park or beach — is looked up on Wikimedia Commons; anything else with a website
 takes the image that site declares for social previews (`og:image`); Google's photo, the
@@ -752,6 +762,44 @@ event and nothing is written without `--apply`. The workflow exposes all of it a
 `instagram` input (`scrape` for the diagnostic, `plan`/`apply` for the pass), which
 replaced `scrape_instagram`: the file sits at GitHub's 25-input ceiling, so a new pass
 buys its place by sharing an existing input rather than adding one.
+
+**The article of the day** (`--daily-articles`, `DailyArticles`) gives every city one new
+article a day, joined to what the city is talking about. The headlines are free and
+keyless (`TrendingNews`): Google News searched for the city's name over two days — twice,
+the bare name and the name beside the portal's subjects, because the bare name answers
+with the police page and there is a Santiago de los Caballeros in Sinaloa — and Google
+Trends' daily searches for the country. One model call (`ArticlePlanPrompt`) chooses a
+topic that bridges a headline to the portal (a vaguada → planes bajo techo; the
+Oktoberfest on the agenda → where to eat and drink around it), never crime, accidents or
+politics, never a topic among the city's recent titles nor one another city was given
+today; a headline one city used is taken off the next city's list, so two cities never
+write the same news. The plan answers from closed lists — the city's sections, the
+facility vocabulary, the article categories, headlines and events by number — and the code
+looks the candidates up from it (section, facility and keyword, best known first); what
+the plan marks as the topic's centre (the event, a place a headline named) is marked ★ and
+has to lead. A place a headline names that the portal lacks is created by the discovery
+path itself (`DiscoverAsync` with an `accept` filter: one Google search, only the answer
+carrying that name, at most two per article), so dedupe, chains, plazas and exclusions
+apply as on any run. The second call (`ArticleWritePrompt`) writes both languages at once
+and only prose: the code puts the heading, the photo and the link around each paragraph
+from the candidate the model named by number, so no address in the portal is ever typed
+by a model, and it drops what does not check out (an unknown candidate, a repeat, fewer
+than four recommendations, a title the city already has — the writer would overwrite it).
+The English links are each node's English route, or the Spanish one while it has none.
+**The photos are cropped by the agent, not by the browser** (`ArticleImages`): the page
+frames every picture with `object-fit: cover`, which keeps the centre, and a portrait or
+an off-centre subject came out as a ceiling or a tablecloth. The model looks at small
+previews of all of an article's pictures in one call (`ImageFocusPrompt`) and says where
+each subject is and whether the picture can illustrate anything — a flyer, a logo, a menu
+or a poster cannot, and that recommendation goes without a photo; a picture whose 16:9 cut
+is narrower than 640 px is dropped too. Each one is cut to 16:9 around its subject with
+SkiaSharp and uploaded as its own media item ("… — artículo"), so the place keeps its own
+photo untouched, and the article frames (16:9 in the body, the cover 16:9 on a phone and
+2:1 wider) only ever trim around a subject that is already centred. Writing goes through
+`ArticleWriter`, the same path as `--add-article`. A city with an article dated today on
+the Dominican calendar is skipped, which is what lets both crons run the step: the second
+writes only what the first did not. A plan (no `--apply`) still calls the model, uploads
+nothing and prints the whole article.
 
 Every external request goes through `ThrottlingHandler` (min interval + jitter per host, `Throttle:SecondsBetweenRequests`) so the agent is slow on purpose and never trips rate limiters.
 

@@ -2647,8 +2647,11 @@ async function ArticleView({ item }: { item: UmbracoItem }) {
             {text(item, "summary")}
           </p>
         )}
+        {/* A fixed shape rather than a fixed height: the daily article's photos are
+            cut to 16:9 around their subject by the agent (ArticleImages), and a frame
+            that kept one height at every width trimmed them to a strip on a desktop. */}
         {hero && (
-          <div className="relative mt-6 h-64 overflow-hidden rounded-2xl bg-neutral-200 sm:h-96">
+          <div className="relative mt-6 aspect-video overflow-hidden rounded-2xl bg-neutral-200 sm:aspect-[2/1]">
             <Image
               src={hero}
               alt={item.name}

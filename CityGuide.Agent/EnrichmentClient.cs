@@ -35,7 +35,8 @@ public record PromptPart(string? Text, string? ImageUrl)
 /// newly discovered place, the category of a scraped event, the cuisine of a restaurant
 /// Google types generically, the carta behind a restaurant's menu page, the agenda a
 /// venue writes on its own site or announces on its Instagram, and the English
-/// translation of the prose already in the CMS. Implemented by
+/// translation of the prose already in the CMS, and the daily article — its topic, its
+/// text and where the subject of each of its pictures is. Implemented by
 /// AzureOpenAiClient (production) and ClaudeClient (fallback). Everything else
 /// (dedupe, rating refresh, cinema sync, trailers, event scraping) is plain code.
 /// </summary>
@@ -73,6 +74,20 @@ public interface IEnrichmentClient
     /// position in the list and then by property alias. Entries or fields the model left
     /// out stay untranslated, and the next pass asks for them again.</summary>
     Task<Dictionary<int, Dictionary<string, string>>> TranslateAsync(IReadOnlyList<TranslationRequest> entries);
+
+    /// <summary>The topic of a city's article for the day, from its headlines and what
+    /// the portal holds, or null when the answer named none.</summary>
+    Task<ArticlePlan?> PlanArticleAsync(ArticleBrief brief);
+
+    /// <summary>The article on that topic in both languages, recommending only the
+    /// candidates given, or null when the answer cannot be published as it came.</summary>
+    Task<ArticleDraft?> WriteArticleAsync(
+        string cityName, ArticlePlan plan, IReadOnlyList<Headline> headlines,
+        IReadOnlyList<ArticleCandidate> candidates);
+
+    /// <summary>Whether each picture can illustrate an article and where its subject
+    /// is, keyed by its position in the list.</summary>
+    Task<Dictionary<int, ImageFocus>> LocateSubjectsAsync(IReadOnlyList<string> imageUrls);
 }
 
 /// <summary>Prompt, schema and response parsing shared by both model providers.</summary>

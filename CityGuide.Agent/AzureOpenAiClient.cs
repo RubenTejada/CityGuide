@@ -98,6 +98,33 @@ public class AzureOpenAiClient(HttpClient http, AzureOpenAiConfig config) : IEnr
         return arguments is null ? [] : Translation.Parse(arguments.Value, entries);
     }
 
+    public async Task<ArticlePlan?> PlanArticleAsync(ArticleBrief brief)
+    {
+        JsonElement? arguments = await CallToolAsync(
+            ArticlePlanPrompt.ToolName, ArticlePlanPrompt.ToolDescription, ArticlePlanPrompt.Schema(brief),
+            ArticlePlanPrompt.UserMessage(brief), brief.CityName, temperature: 0.7);
+        return arguments is null ? null : ArticlePlanPrompt.Parse(arguments.Value, brief);
+    }
+
+    public async Task<ArticleDraft?> WriteArticleAsync(
+        string cityName, ArticlePlan plan, IReadOnlyList<Headline> headlines,
+        IReadOnlyList<ArticleCandidate> candidates)
+    {
+        JsonElement? arguments = await CallToolAsync(
+            ArticleWritePrompt.ToolName, ArticleWritePrompt.ToolDescription, ArticleWritePrompt.Schema,
+            ArticleWritePrompt.UserMessage(cityName, plan, headlines, candidates), plan.Topic,
+            temperature: 0.8, maxTokens: ArticleWritePrompt.MaxAnswerTokens);
+        return arguments is null ? null : ArticleWritePrompt.Parse(arguments.Value, candidates.Count);
+    }
+
+    public async Task<Dictionary<int, ImageFocus>> LocateSubjectsAsync(IReadOnlyList<string> imageUrls)
+    {
+        JsonElement? arguments = await CallToolAsync(
+            ImageFocusPrompt.ToolName, ImageFocusPrompt.ToolDescription, ImageFocusPrompt.Schema,
+            Content(ImageFocusPrompt.UserMessage(imageUrls)), "fotos", temperature: 0);
+        return arguments is null ? [] : ImageFocusPrompt.Parse(arguments.Value, imageUrls.Count);
+    }
+
     /// <summary>
     /// One forced function call, returning its arguments — null when Azure's
     /// content filter refused the request, which callers answer with an empty

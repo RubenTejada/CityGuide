@@ -596,102 +596,17 @@ if (args.Contains("--add-article"))
         return 1;
     }
 
-    // La categoría es vocabulario y no texto libre: la página inglesa la traduce por
-    // tabla, y una que la tabla no conoce saldría en español.
-    if (spanish.Category is not null)
+    try
     {
-        if (TranslatedVocabulary.Category(spanish.Category) is not { } englishCategory)
-        {
-            Console.Error.WriteLine($"Categoría desconocida: {spanish.Category}.");
-            return 1;
-        }
-
-        english = english is null ? null : english with { Category = englishCategory };
+        await new ArticleWriter(umbraco).WriteAsync(
+            given[0], spanish, english, args.Contains("--apply"));
     }
-
-    // La sección solo existe en las ciudades que el CMS sembró con artículos de muestra;
-    // en las demás la crea el primer artículo, con su nombre en los dos idiomas, porque
-    // una cultura solo enruta cuando todos sus ancestros están publicados en ella.
-    string cityPath = $"/{given[0].Trim('/')}";
-    string articlesPath = $"{cityPath}/articulos";
-    (Guid Id, string Name)? articlesPage = await umbraco.GetContentByPathAsync(articlesPath);
-    if (articlesPage is null && await umbraco.GetContentByPathAsync(cityPath) is null)
+    catch (ArgumentException ex)
     {
-        Console.Error.WriteLine($"No hay ninguna ciudad publicada en {cityPath}.");
+        Console.Error.WriteLine(ex.Message);
         return 1;
     }
 
-    UmbracoClient.ChildDocument? existingArticle = articlesPage is null
-        ? null
-        : (await umbraco.GetChildrenAsync(articlesPage.Value.Id))
-            .FirstOrDefault(c => c.Name.Equals(spanish.Title, StringComparison.OrdinalIgnoreCase));
-    bool applyArticle = args.Contains("--apply");
-    Console.WriteLine(applyArticle
-        ? $"\n== Artículo en {articlesPath}"
-        : $"\n== Artículo en {articlesPath} (simulación; agrega --apply para aplicarla)");
-    if (articlesPage is null)
-    {
-        Console.WriteLine($"  la sección {articlesPath} no existe: se crea");
-    }
-
-    Console.WriteLine($"  {(existingArticle is null ? "nuevo" : "se actualiza")}: {spanish.Title}");
-    Console.WriteLine($"  {spanish.Summary}");
-    Console.WriteLine($"  {spanish.Body.Length} caracteres, categoría {spanish.Category ?? "ninguna"}, "
-        + $"portada {spanish.HeroImage ?? "ninguna"}");
-    Console.WriteLine(english is null
-        ? "  sin versión en inglés: queda para --translate"
-        : $"  en inglés: {english.Title} ({english.Body.Length} caracteres)");
-    if (!applyArticle)
-    {
-        return 0;
-    }
-
-    if (articlesPage is null)
-    {
-        (Guid cityId, _) = (await umbraco.GetContentByPathAsync(cityPath))!.Value;
-        articlesPage = (await umbraco.CreateDocumentAsync(
-            cityId, await umbraco.GetDocumentTypeIdAsync("Articles Page"), "Artículos",
-            [new
-            {
-                alias = "intro",
-                value = (object?)"Guías, rutas e ideas escritas para disfrutar la ciudad: "
-                    + "planes por barrio, por presupuesto y para cada tipo de plan.",
-            }],
-            englishValues: [new
-            {
-                alias = "intro",
-                value = (object?)"Guides, routes and ideas for enjoying the city: plans by "
-                    + "neighborhood, by budget and for every kind of outing.",
-            }]), "Artículos");
-    }
-
-    Guid articleId;
-    if (existingArticle is null)
-    {
-        // La fecha de publicación es la del primer día y no se toca al actualizar: es
-        // lo que ordena la sección y lo que el artículo declara a los buscadores.
-        articleId = await umbraco.CreateDocumentAsync(
-            articlesPage.Value.Id, await umbraco.GetDocumentTypeIdAsync("Article"), spanish.Title,
-            spanish.Values(shared: true).Append(new
-            {
-                alias = "publishDate",
-                value = (object?)DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss"),
-            }));
-    }
-    else
-    {
-        articleId = existingArticle.Id;
-        await umbraco.WriteCultureAsync(
-            articleId, spanish.Title, spanish.Values(shared: true), ContentCultures.Spanish);
-    }
-
-    if (english is not null)
-    {
-        await umbraco.WriteCultureAsync(
-            articleId, english.Title, english.Values(shared: false), ContentCultures.English);
-    }
-
-    Console.WriteLine("  publicado");
     return 0;
 }
 
@@ -1999,10 +1914,65 @@ bool forceQueries = args.Contains("--force");
 DateOnly today = DateOnly.FromDateTime(DateTime.UtcNow);
 var skippedByCooldown = 0;
 
+// The article of the day, one per city (DailyArticles): the day's headlines, a topic
+// the city has not had and no other city got today, the places, events and films of the
+// portal that answer it, and the photos cropped around their subject. Both model calls
+// are billed per token, so it needs --paid; an establishment a headline names and the
+// portal lacks is created through the discovery run below (one Google search, at most
+// two per article). It sits here, after the discovery state is set up and before the
+// discovery runs, and returns on its own: the daily workflow runs it as its own step
+// after the free pass. --section picks the cities. Plan until --apply.
+if (args.Contains("--daily-articles"))
+{
+    if (enricher is null)
+    {
+        Console.Error.WriteLine("--daily-articles escribe con el modelo, que se factura por token. Añade --paid.");
+        return 1;
+    }
+
+    // One establishment by name: the city's query for it, filed where the plan said, and
+    // only the answer that carries the name — the first, being the best known.
+    Func<string, string, Task<Guid?>>? createPlace = discoveryEnabled
+        ? async (sectionPath, name) =>
+        {
+            var taken = false;
+            List<Guid> found = await DiscoverAsync(
+                new RunConfig
+                {
+                    Query = $"{name} {{city}}",
+                    ParentPath = sectionPath,
+                    MaxPlaces = 5,
+                    AutoCategorize = config.Runs.Any(r =>
+                        r.AutoCategorize && r.ParentPath.Equals(sectionPath, StringComparison.OrdinalIgnoreCase)),
+                },
+                place => !taken && (taken = TextMatch.MatchesWords(name, place.Name)));
+            return found.Count > 0 ? found[0] : null;
+        }
+        : null;
+    int articleFailures = await new DailyArticles(
+            umbraco, enricher, new TrendingNews(http),
+            new ArticleImages(http, umbraco, enricher, config.Umbraco.BaseUrl), new ArticleWriter(umbraco))
+        .RunAsync(args.Contains("--apply"), SectionSelected, CityConfigAsync, createPlace);
+    await SaveQueryLogsAsync();
+    return articleFailures == 0 ? 0 : 1;
+}
+
 foreach (RunConfig run in discoveryEnabled
     ? config.Runs.Where(r => SectionSelected(r.ParentPath) && QuerySelected(r))
     : [])
 {
+    await DiscoverAsync(run);
+}
+
+// One discovery run: the query asked of Google and every place of its answer created,
+// completed or skipped by the rules above. Returns the nodes the run created or found
+// already stored. <paramref name="accept"/> narrows the answer before anything is done
+// with it — the daily article asks Google for one establishment by name, and only the
+// place carrying that name may become content, not the rivals Google answers it with.
+async Task<List<Guid>> DiscoverAsync(RunConfig run, Func<DiscoveredPlace, bool>? accept = null)
+{
+    var touched = new List<Guid>();
+
     // /santo-domingo/bares-y-clubes → city slug "santo-domingo", category slug "bares-y-clubes".
     string[] segments = run.ParentPath.Trim('/').Split('/');
     UmbracoClient.CityAgentConfig? cityConfig = segments.Length > 0 ? await CityConfigAsync(segments[0]) : null;
@@ -2026,7 +1996,7 @@ foreach (RunConfig run in discoveryEnabled
         Console.WriteLine($"\n== Run: \"{query}\" -> {run.ParentPath}"
             + $"\n  omitida: Google la respondió hace {today.DayNumber - asked.DayNumber} día(s) "
             + $"(se repite a los {cooldownDays}; --force la fuerza)");
-        continue;
+        return touched;
     }
 
     string? categoryPrompt = segments.Length > 1 && cityConfig is not null
@@ -2041,7 +2011,7 @@ foreach (RunConfig run in discoveryEnabled
     if (parent is null)
     {
         Console.Error.WriteLine($"  Parent path not found in CMS, skipping: {run.ParentPath}");
-        continue;
+        return touched;
     }
 
     // The baseline above lists published places only. The agent creates places as
@@ -2067,6 +2037,11 @@ foreach (RunConfig run in discoveryEnabled
 
     List<DiscoveredPlace> places = await google.SearchAsync(query, run.MaxPlaces, cityConfig?.Area);
     Console.WriteLine($"  Google returned {places.Count} places");
+    if (accept is not null)
+    {
+        places = [.. places.Where(accept)];
+    }
+
     var runCreated = 0;
     var runSkipped = 0;
 
@@ -2142,7 +2117,7 @@ foreach (RunConfig run in discoveryEnabled
             Console.Error.WriteLine(
                 $"  Empresa '{run.CompanyName}' no existe bajo {run.ParentPath} — "
                 + "créala en el backoffice (con su logo) antes de importar sus sucursales. Run omitido.");
-            continue;
+            return touched;
         }
     }
 
@@ -2168,6 +2143,7 @@ foreach (RunConfig run in discoveryEnabled
         {
             runSkipped++;
             knownPlaceIds[place.GooglePlaceId] = storedMall.Id;
+            touched.Add(storedMall.Id);
             try
             {
                 UmbracoClient.Completion filled = await umbraco.CompletePlaceAsync(
@@ -2188,6 +2164,7 @@ foreach (RunConfig run in discoveryEnabled
         if (knownPlaceIds.TryGetValue(place.GooglePlaceId, out Guid existingId))
         {
             runSkipped++;
+            touched.Add(existingId);
 
             // A place the CMS already has is never skipped outright: the search answer in
             // hand carries the rating and a photo, so whatever the stored node is missing
@@ -2333,6 +2310,7 @@ foreach (RunConfig run in discoveryEnabled
 
             siblings[name] = id;
             knownPlaceIds[place.GooglePlaceId] = id;
+            touched.Add(id);
             created++;
             runCreated++;
 
@@ -2376,24 +2354,32 @@ foreach (RunConfig run in discoveryEnabled
     // Queries overlap on purpose (a broad one plus per-sector and per-cuisine
     // ones): the skipped count is how much of this run the others already had.
     Console.WriteLine($"  Run: {runCreated} nuevos, {runSkipped} ya en el CMS");
+    return touched;
 }
+
+await SaveQueryLogsAsync();
 
 // The agent's memory of what it has already asked Google, kept where it survives the
 // container: the "Agente" tab of each city.
-foreach (string citySlug in queryLogsChanged)
+async Task SaveQueryLogsAsync()
 {
-    try
+    foreach (string citySlug in queryLogsChanged)
     {
-        if (await umbraco.GetContentByPathAsync($"/{citySlug}") is { } cityNode)
+        try
         {
-            await umbraco.SetTextValueAsync(cityNode.Id, "agentQueryLog",
-                UmbracoClient.FormatQueryLog(queryLogs[citySlug]));
+            if (await umbraco.GetContentByPathAsync($"/{citySlug}") is { } cityNode)
+            {
+                await umbraco.SetTextValueAsync(cityNode.Id, "agentQueryLog",
+                    UmbracoClient.FormatQueryLog(queryLogs[citySlug]));
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"  ! registrar las consultas de {citySlug}: {ex.Message}");
         }
     }
-    catch (Exception ex)
-    {
-        Console.Error.WriteLine($"  ! registrar las consultas de {citySlug}: {ex.Message}");
-    }
+
+    queryLogsChanged.Clear();
 }
 
 if (skippedByCooldown > 0)

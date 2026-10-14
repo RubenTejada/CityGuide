@@ -71,6 +71,33 @@ public class ClaudeClient(HttpClient http, string apiKey, string model) : IEnric
         return Translation.Parse(arguments, entries);
     }
 
+    public async Task<ArticlePlan?> PlanArticleAsync(ArticleBrief brief)
+    {
+        JsonElement arguments = await CallToolAsync(
+            ArticlePlanPrompt.ToolName, ArticlePlanPrompt.ToolDescription, ArticlePlanPrompt.Schema(brief),
+            ArticlePlanPrompt.UserMessage(brief), temperature: 0.7);
+        return ArticlePlanPrompt.Parse(arguments, brief);
+    }
+
+    public async Task<ArticleDraft?> WriteArticleAsync(
+        string cityName, ArticlePlan plan, IReadOnlyList<Headline> headlines,
+        IReadOnlyList<ArticleCandidate> candidates)
+    {
+        JsonElement arguments = await CallToolAsync(
+            ArticleWritePrompt.ToolName, ArticleWritePrompt.ToolDescription, ArticleWritePrompt.Schema,
+            ArticleWritePrompt.UserMessage(cityName, plan, headlines, candidates),
+            temperature: 0.8, maxTokens: ArticleWritePrompt.MaxAnswerTokens);
+        return ArticleWritePrompt.Parse(arguments, candidates.Count);
+    }
+
+    public async Task<Dictionary<int, ImageFocus>> LocateSubjectsAsync(IReadOnlyList<string> imageUrls)
+    {
+        JsonElement arguments = await CallToolAsync(
+            ImageFocusPrompt.ToolName, ImageFocusPrompt.ToolDescription, ImageFocusPrompt.Schema,
+            Content(ImageFocusPrompt.UserMessage(imageUrls)), temperature: 0);
+        return ImageFocusPrompt.Parse(arguments, imageUrls.Count);
+    }
+
     /// <summary>One forced tool call, returning its input. <paramref name="temperature"/>
     /// is 0 where the answer is a label, so two runs agree, and 1 for the descriptions.</summary>
     private async Task<JsonElement> CallToolAsync(
@@ -129,11 +156,23 @@ public class ClaudeClient(HttpClient http, string apiKey, string model) : IEnric
     }
 
     /// <summary>A multimodal user message in the shape the Messages API takes: text
-    /// blocks as they are, an image as the address the model fetches it from.</summary>
+    /// blocks as they are, an image as the address the model fetches it from — or, for
+    /// a data address, which the Messages API does not fetch, as the bytes it carries.</summary>
     private static object[] Content(IReadOnlyList<PromptPart> parts) =>
     [
         .. parts.Select(part => part.Text is not null
             ? new { type = "text", text = part.Text }
-            : (object)new { type = "image", source = new { type = "url", url = part.ImageUrl } }),
+            : part.ImageUrl!.StartsWith("data:", StringComparison.Ordinal)
+                ? (object)new
+                {
+                    type = "image",
+                    source = new
+                    {
+                        type = "base64",
+                        media_type = part.ImageUrl[5..part.ImageUrl.IndexOf(';')],
+                        data = part.ImageUrl[(part.ImageUrl.IndexOf(',') + 1)..],
+                    },
+                }
+                : new { type = "image", source = new { type = "url", url = part.ImageUrl } }),
     ];
 }

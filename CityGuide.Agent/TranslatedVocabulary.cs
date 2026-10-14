@@ -185,6 +185,10 @@ public static partial class TranslatedVocabulary
         return SpanishLetters().IsMatch(english) ? null : english;
     }
 
+    /// <summary>Every category the portal knows, in Spanish: what an article may be
+    /// filed under and still read in English.</summary>
+    public static IReadOnlyCollection<string> CategoryNames => Categories.Keys;
+
     /// <summary>The English label of an event or article category, or null when it is
     /// one nobody has mapped.</summary>
     public static string? Category(string spanish) =>

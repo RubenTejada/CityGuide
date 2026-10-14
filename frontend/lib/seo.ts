@@ -22,6 +22,11 @@ import { num, photoUrl, picked, text, type UmbracoItem } from "./umbraco";
 
 export const SITE_NAME = "QueHacerRD";
 
+/** The other ways people write the name. A new brand that is one run-together
+ * word reads to Google as a typo ("quehacerrd" becomes "quehaceres"), and the
+ * WebSite/Organization `alternateName` is where the site says these are itself. */
+const SITE_ALTERNATE_NAMES = ["QueHacerRD.com", "Que Hacer RD", "Qué Hacer RD"];
+
 /** Title and description of the portal itself: the home page's own metadata and
  * the default every page below inherits from the root layout. */
 /** Where the portal is, for an address the CMS left without a country. */
@@ -858,6 +863,7 @@ export function publisherJsonLd(): JsonLd {
     "@type": "Organization",
     "@id": `${SITE_URL}/#organization`,
     name: SITE_NAME,
+    alternateName: SITE_ALTERNATE_NAMES,
     url: SITE_URL,
     logo: { "@type": "ImageObject", url: `${SITE_URL}/logo.svg` },
     // The profiles the portal publishes to: what ties the site and the accounts
@@ -878,7 +884,8 @@ export function siteJsonLd(locale: Locale): JsonLd[] {
       "@context": "https://schema.org",
       "@type": "WebSite",
       "@id": `${SITE_URL}/#website`,
-      name: `${SITE_NAME}.com`,
+      name: SITE_NAME,
+      alternateName: SITE_ALTERNATE_NAMES,
       url: SITE_URL,
       inLanguage: HTML_LANG[locale],
       publisher: { "@id": `${SITE_URL}/#organization` },

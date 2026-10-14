@@ -791,47 +791,87 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
     /// </summary>
     public record PublishedItem(
         Guid Id, string Name, string Path, DateTime CreateDate,
-        string? PhotoUrl, Dictionary<string, string> Text);
+        string? PhotoUrl, Dictionary<string, string> Text, PhotoCredit? PhotoCredit = null);
 
-    public async Task<List<PublishedItem>> GetPublishedItemsAsync(string contentType)
+    /// <summary>The picture is expanded because a media item's own properties — the
+    /// credit a Commons or Google photo has to be shown with — only come back with an
+    /// expanded picker.</summary>
+    public async Task<List<PublishedItem>> GetPublishedItemsAsync(string contentType) =>
+        [.. (await GetDeliveryItemsAsync($"contentType%3A{contentType}", expand: "properties[photo]")).Select(ItemOf)];
+
+    /// <summary>One published node by id in one culture, or null when it is not published
+    /// in it — which is how a caller learns the English address of a page, or that it has
+    /// none yet.</summary>
+    public async Task<PublishedItem?> GetPublishedItemAsync(Guid id, string culture = ContentCultures.Spanish)
     {
-        var items = new List<PublishedItem>();
-        foreach (JsonElement item in await GetDeliveryItemsAsync($"contentType%3A{contentType}"))
+        var request = new HttpRequestMessage(
+            HttpMethod.Get, $"{config.BaseUrl}/umbraco/delivery/api/v2/content/item/{id}");
+        request.Headers.Add("Accept-Language", culture);
+        HttpResponseMessage response = await http.SendAsync(request);
+        if (!response.IsSuccessStatusCode)
         {
-            JsonElement props = item.GetProperty("properties");
-            var text = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            foreach (JsonProperty property in props.EnumerateObject())
-            {
-                // A number reads as text here on purpose: a rating and a duration are
-                // written into a sentence, never computed with.
-                if (property.Value.ValueKind == JsonValueKind.String
-                    && property.Value.GetString() is { Length: > 0 } value)
-                {
-                    text[property.Name] = value;
-                }
-                else if (property.Value.ValueKind == JsonValueKind.Number)
-                {
-                    text[property.Name] = property.Value.GetRawText();
-                }
-            }
-
-            string? photo = props.TryGetProperty("photo", out JsonElement picker)
-                && picker.ValueKind == JsonValueKind.Array && picker.GetArrayLength() > 0
-                && picker[0].TryGetProperty("url", out JsonElement url)
-                && url.ValueKind == JsonValueKind.String
-                ? url.GetString()
-                : null;
-
-            items.Add(new PublishedItem(
-                item.GetProperty("id").GetGuid(),
-                item.GetProperty("name").GetString() ?? "",
-                item.GetProperty("route").GetProperty("path").GetString() ?? "",
-                item.GetProperty("createDate").GetDateTime(),
-                photo,
-                text));
+            return null;
         }
 
-        return items;
+        using JsonDocument doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        return ItemOf(doc.RootElement);
+    }
+
+    private static PublishedItem ItemOf(JsonElement item)
+    {
+        JsonElement props = item.GetProperty("properties");
+        var text = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (JsonProperty property in props.EnumerateObject())
+        {
+            // A number reads as text here on purpose: a rating and a duration are
+            // written into a sentence, never computed with.
+            if (property.Value.ValueKind == JsonValueKind.String
+                && property.Value.GetString() is { Length: > 0 } value)
+            {
+                text[property.Name] = value;
+            }
+            else if (property.Value.ValueKind == JsonValueKind.Number)
+            {
+                text[property.Name] = property.Value.GetRawText();
+            }
+            // A list of labels ("facilities") reads as the labels it holds, which is
+            // what a sentence about the place would say.
+            else if (property.Value.ValueKind == JsonValueKind.Array
+                && property.Value.GetArrayLength() > 0
+                && property.Value.EnumerateArray().All(v => v.ValueKind == JsonValueKind.String))
+            {
+                text[property.Name] = string.Join(", ", property.Value.EnumerateArray().Select(v => v.GetString()));
+            }
+        }
+
+        string? photo = props.TryGetProperty("photo", out JsonElement picker)
+            && picker.ValueKind == JsonValueKind.Array && picker.GetArrayLength() > 0
+            && picker[0].TryGetProperty("url", out JsonElement url)
+            && url.ValueKind == JsonValueKind.String
+            ? url.GetString()
+            : null;
+
+        PhotoCredit? credit = null;
+        if (photo is not null && picker[0].TryGetProperty("properties", out JsonElement media)
+            && media.ValueKind == JsonValueKind.Object)
+        {
+            string? Credit(string alias) =>
+                media.TryGetProperty(alias, out JsonElement v) && v.ValueKind == JsonValueKind.String
+                    && v.GetString() is { Length: > 0 } value
+                    ? value
+                    : null;
+            credit = new PhotoCredit(Credit("photoAuthor"), Credit("photoLicense"), Credit("photoSource"));
+            credit = credit.IsEmpty ? null : credit;
+        }
+
+        return new PublishedItem(
+            item.GetProperty("id").GetGuid(),
+            item.GetProperty("name").GetString() ?? "",
+            item.GetProperty("route").GetProperty("path").GetString() ?? "",
+            item.GetProperty("createDate").GetDateTime(),
+            photo,
+            text,
+            credit);
     }
 
     public record DocumentDetail(string Name, Dictionary<string, string?> TextValues);
@@ -1752,6 +1792,27 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
             throw new InvalidOperationException(
                 $"Update media '{name}' failed ({(int)response.StatusCode}): {await response.Content.ReadAsStringAsync()}");
         }
+    }
+
+    /// <summary>The address a media item is served at ("/media/…/name.jpg"), or null
+    /// when the CMS does not say.</summary>
+    public async Task<string?> GetMediaUrlAsync(Guid mediaId)
+    {
+        HttpRequestMessage request = await AuthorizedRequestAsync(
+            HttpMethod.Get, $"/umbraco/management/api/v1/media/{mediaId}");
+        HttpResponseMessage response = await http.SendAsync(request);
+        if (!response.IsSuccessStatusCode)
+        {
+            return null;
+        }
+
+        using JsonDocument doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        return doc.RootElement.GetProperty("values").EnumerateArray()
+            .Where(v => v.GetProperty("alias").GetString() == "umbracoFile")
+            .Select(v => v.GetProperty("value"))
+            .Where(v => v.ValueKind == JsonValueKind.Object && v.TryGetProperty("src", out _))
+            .Select(v => v.GetProperty("src").GetString())
+            .FirstOrDefault(src => !string.IsNullOrEmpty(src));
     }
 
     private static string SafeFileName(string name)
