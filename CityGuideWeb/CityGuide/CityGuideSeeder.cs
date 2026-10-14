@@ -39,6 +39,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
 
     private readonly IRuntimeState _runtimeState;
     private readonly IContentTypeService _contentTypeService;
+    private readonly IMediaTypeService _mediaTypeService;
     private readonly IDataTypeService _dataTypeService;
     private readonly IContentService _contentService;
     private readonly IMediaService _mediaService;
@@ -63,6 +64,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
     public CityGuideSeeder(
         IRuntimeState runtimeState,
         IContentTypeService contentTypeService,
+        IMediaTypeService mediaTypeService,
         IDataTypeService dataTypeService,
         IContentService contentService,
         IMediaService mediaService,
@@ -86,6 +88,7 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
     {
         _runtimeState = runtimeState;
         _contentTypeService = contentTypeService;
+        _mediaTypeService = mediaTypeService;
         _dataTypeService = dataTypeService;
         _contentService = contentService;
         _mediaService = mediaService;
@@ -158,6 +161,8 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
         await EnsurePlaceInstagramSchemaAsync();
 
         await EnsureImageFocalPointAsync();
+
+        await EnsureImageCreditSchemaAsync();
 
         await EnsureAgentSchemaAsync();
 
@@ -4249,6 +4254,71 @@ public class CityGuideSeeder : INotificationAsyncHandler<UmbracoApplicationStart
             await _dataTypeService.UpdateAsync(picker, Constants.Security.SuperUserKey);
             _logger.LogInformation(
                 "CityGuide: enabled the local focal point on data type '{DataType}'", picker.Name);
+        }
+    }
+
+    /// <summary>
+    /// Idempotent, runs every startup: gives the "Image" media type the credit a photo has
+    /// to be shown with — its author ("photoAuthor"), its licence ("photoLicense") and the
+    /// page it is published on ("photoSource"). A Wikimedia Commons photograph is CC BY or
+    /// CC BY-SA, which ask for the three wherever it appears, and Dominican Ley 65-00 makes
+    /// the author's name a moral right; a Google place photo may only be shown with the
+    /// attribution Google sends with it. The credit lives on the media item rather than
+    /// beside a document's picker because it belongs to the picture: a gallery holds seven
+    /// of them, and a photo handed from one node to another keeps its author. The agent
+    /// writes it when it uploads; an editor fills it by hand for a photo that needs one,
+    /// and a photo of the venue's own leaves it empty. All three are invariant and plain
+    /// text, and the Delivery API serves them with the image wherever a picker points at it.
+    /// Each property is guarded on its own.
+    /// </summary>
+    private async Task EnsureImageCreditSchemaAsync()
+    {
+        IMediaType? image = _mediaTypeService.Get(Constants.Conventions.MediaTypes.Image);
+        if (image is null)
+        {
+            return;
+        }
+
+        IDataType textstring = (await _dataTypeService.GetAsync(Constants.DataTypes.Guids.TextstringGuid))!;
+        var wanted = new (string Alias, string Name, string Description)[]
+        {
+            ("photoAuthor", "Autor", "Quién hizo la foto, como pide su licencia o la fuente."),
+            ("photoLicense", "Licencia", "La licencia de la foto (\"CC BY-SA 4.0\", \"Public domain\"); vacía para Google."),
+            ("photoSource", "Fuente", "La página de la foto (Wikimedia Commons) o del autor (Google Maps)."),
+        };
+
+        var added = false;
+        foreach ((string alias, string name, string description) in wanted)
+        {
+            if (image.PropertyTypeExists(alias))
+            {
+                continue;
+            }
+
+            _logger.LogInformation("CityGuide: adding '{Alias}' property to the 'Image' media type", alias);
+            image.AddPropertyType(
+                new PropertyType(_shortStringHelper, textstring, alias)
+                {
+                    Name = name,
+                    Description = description,
+                    SortOrder = 10 + Array.FindIndex(wanted, w => w.Alias == alias),
+                },
+                "credit",
+                "Crédito");
+            added = true;
+        }
+
+        if (!added)
+        {
+            return;
+        }
+
+        Attempt<ContentTypeOperationStatus> attempt =
+            await _mediaTypeService.UpdateAsync(image, Constants.Security.SuperUserKey);
+        if (!attempt.Success)
+        {
+            throw new InvalidOperationException(
+                $"Failed to add the credit properties to 'Image': {attempt.Result}");
         }
     }
 

@@ -24,6 +24,7 @@ import PlaceCard from "@/components/PlaceCard";
 import MenuDialog from "@/components/MenuDialog";
 import MenuViewer from "@/components/MenuViewer";
 import ReservationDialog from "@/components/ReservationDialog";
+import PhotoCreditLine from "@/components/PhotoCreditLine";
 import PhotoGallery from "@/components/PhotoGallery";
 import PlaceMap from "@/components/PlaceMap";
 import Rating from "@/components/Rating";
@@ -73,7 +74,7 @@ import {
   localeParam,
 } from "@/lib/i18n";
 import { hasMenu, placeMenu } from "@/lib/menu";
-import { curatedPhoto, curatedPhotoCredit } from "@/lib/photos";
+import { curatedPhoto } from "@/lib/photos";
 import {
   durationLabel,
   includedItems,
@@ -467,6 +468,7 @@ export async function generateMetadata({
       image =
         image ??
         (company ? photoUrl(company) : null) ??
+        curatedPhoto(citySlug, slugOf(item))?.url ??
         sectionListImage(item.route.path);
       break;
     }
@@ -494,7 +496,7 @@ export async function generateMetadata({
       );
       image =
         image ??
-        curatedPhoto(citySlug, slugOf(item)) ??
+        curatedPhoto(citySlug, slugOf(item))?.url ??
         sectionListImage(item.route.path);
       break;
     }
@@ -1255,14 +1257,9 @@ async function TourView({ item }: { item: UmbracoItem }) {
   // this the list of who runs the excursion comes back empty.
   const expanded = await getItem(item.route.path, "properties[operators]");
   const citySlug = contentSegments(item.route.path)[0] ?? "";
-  const own = photoOf(item);
-  const photo =
-    own?.url ??
-    curatedPhoto(citySlug, slugOf(item)) ??
-    sectionListImage(item.route.path);
-  // Las fotos curadas son de Commons y sus licencias piden crédito; una foto puesta
-  // en el backoffice es del portal y no lleva ninguno.
-  const credit = own ? null : curatedPhotoCredit(citySlug, slugOf(item));
+  // La foto propia manda; sin ella, la curada de Commons, que trae su crédito.
+  const own = photoOf(item) ?? curatedPhoto(citySlug, slugOf(item));
+  const photo = own?.url ?? sectionListImage(item.route.path);
   const meta = tourMeta(item, locale, words);
   const price = priceLabel(item, locale);
   const included = includedItems(item);
@@ -1299,11 +1296,11 @@ async function TourView({ item }: { item: UmbracoItem }) {
               priority
             />
           </div>
-          {credit && (
-            <p className="mt-1 text-right text-[11px] text-neutral-400">
-              {words.photoCredit(credit)}
-            </p>
-          )}
+          <PhotoCreditLine
+            credit={own?.credit}
+            words={t(locale).place}
+            className="mt-1 text-right text-neutral-500"
+          />
           {text(item, "description") && (
             <p className="mt-5 whitespace-pre-line text-neutral-700">
               {text(item, "description")}
@@ -1710,14 +1707,21 @@ async function MallView({ item }: { item: UmbracoItem }) {
         })}
       />
       <div className="mt-6 flex flex-col gap-6 sm:flex-row sm:items-start">
-        <div className="relative h-32 w-32 flex-none overflow-hidden rounded-xl border border-neutral-200 bg-white">
-          <Image
-            src={photo ?? sectionListImage(item.route.path)}
-            alt={item.name}
-            fill
-            className="object-cover"
-            style={{ objectPosition: focalPosition(own) }}
-            sizes="128px"
+        <div className="w-32 flex-none">
+          <div className="relative h-32 w-32 overflow-hidden rounded-xl border border-neutral-200 bg-white">
+            <Image
+              src={photo ?? sectionListImage(item.route.path)}
+              alt={item.name}
+              fill
+              className="object-cover"
+              style={{ objectPosition: focalPosition(own) }}
+              sizes="128px"
+            />
+          </div>
+          <PhotoCreditLine
+            credit={own?.credit}
+            words={t(locale).place}
+            className="mt-1 text-neutral-500"
           />
         </div>
         <div className="min-w-0 flex-1">
@@ -1998,7 +2002,11 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
   // advertencia al lado, un precio viejo se lee por lo que es.
   const menuCaptured =
     formatDate(item.properties["menuUpdated"], locale) || null;
-  const own = photoOf(item);
+  // La foto propia; sin ella, la curada de Commons de una atracción sembrada, que es
+  // la misma que ya enseña su tarjeta.
+  const own =
+    photoOf(item) ??
+    curatedPhoto(contentSegments(item.route.path)[0] ?? "", slugOf(item));
   const ownPhoto = own?.url ?? null;
   const inheritedPhoto = ownPhoto ?? (company ? photoUrl(company) : null);
   // No photo and no company logo: fall back to the section's image.
@@ -2057,6 +2065,11 @@ async function PlaceView({ item }: { item: UmbracoItem }) {
               priority
             />
           </div>
+          <PhotoCreditLine
+            credit={own?.credit}
+            words={t(locale).place}
+            className="mt-1 text-neutral-500"
+          />
           {/* Reservar encabeza la columna: es lo que alguien viene a hacer, y el horario
               y la carta son lo que consulta antes. Solo el valor propio del nodo — leer
               el de la empresa mandaría la reserva de una sucursal al correo de la cadena. */}
@@ -2445,6 +2458,11 @@ async function EventView({ item }: { item: UmbracoItem }) {
               </div>
             )}
           </div>
+          <PhotoCreditLine
+            credit={own?.credit}
+            words={t(locale).place}
+            className="mt-1 text-neutral-500"
+          />
           <div className="mt-4 rounded-xl border border-neutral-200 bg-white p-4">
             <h2 className="font-semibold">{t(locale).place.date}</h2>
             {repeats && (

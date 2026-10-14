@@ -75,24 +75,26 @@ public class PlaceGalleries(
     /// <summary>
     /// Downloads what Google has of one place and writes it as its gallery. A photo that
     /// fails to download only costs the gallery that image, and a place Google answers
-    /// with nothing keeps none — no picture has ever blocked a node.
+    /// with nothing keeps none — no picture has ever blocked a node. A gallery the place
+    /// already had is replaced, and its images go to the media recycle bin: that is how
+    /// the credit backfill redoes a gallery downloaded before its credits were kept.
     /// </summary>
-    private async Task<int> FillAsync(UmbracoClient.PublishedPlace place)
+    public async Task<int> FillAsync(UmbracoClient.PublishedPlace place)
     {
         try
         {
-            IReadOnlyList<string> names =
-                await google.GetPhotoNamesByIdAsync(place.GooglePlaceId!, photosPerPlace);
+            IReadOnlyList<GooglePhoto> photos =
+                await google.GetPhotosByIdAsync(place.GooglePlaceId!, photosPerPlace);
             var mediaKeys = new List<Guid>();
-            foreach (string photoName in names)
+            foreach (GooglePhoto photo in photos)
             {
-                if (await google.DownloadPhotoAsync(photoName) is not (byte[] bytes, string contentType))
+                if (await google.DownloadPhotoAsync(photo) is not { } image)
                 {
                     continue;
                 }
 
                 mediaKeys.Add(await umbraco.CreateMediaImageAsync(
-                    $"{place.Name} — Google {mediaKeys.Count + 1}", bytes, contentType));
+                    $"{place.Name} — Google {mediaKeys.Count + 1}", image));
             }
 
             if (mediaKeys.Count == 0)
@@ -100,7 +102,11 @@ public class PlaceGalleries(
                 return 0;
             }
 
-            await umbraco.SetGalleryAsync(place.Id, mediaKeys);
+            foreach (Guid replaced in await umbraco.SetGalleryAsync(place.Id, mediaKeys))
+            {
+                await umbraco.RecycleMediaAsync(replaced);
+            }
+
             return mediaKeys.Count;
         }
         catch (Exception ex)

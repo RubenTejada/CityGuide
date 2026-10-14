@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -5,8 +6,26 @@ namespace CityGuide.Agent;
 
 /// <summary>An image and where it came from; the source goes into the media item's
 /// name, so an editor opening the Media library can tell a Wikimedia photo from a
-/// Google one and follow it back to its licence.</summary>
-public record FoundImage(byte[] Bytes, string ContentType, string Source);
+/// Google one and follow it back to its licence. <paramref name="Credit"/> is what the
+/// page has to print beside it, and is null for a picture that needs none — the one a
+/// venue or an event publishes of itself.</summary>
+public record FoundImage(byte[] Bytes, string ContentType, string Source, PhotoCredit? Credit = null);
+
+/// <summary>
+/// Who took a photo, under what licence, and the page it is published on. A Commons
+/// photograph is CC BY or CC BY-SA or public domain, and the first two are only ours to
+/// show with the author's name, the licence and a link (Ley 65-00 makes the name a moral
+/// right besides); a Google place photo may only be shown with the attribution Google
+/// hands over with it. Stored on the media item (photoAuthor, photoLicense, photoSource),
+/// so the credit travels with the picture wherever a node points at it. The licence is
+/// null for Google, whose photos carry terms rather than one; the frontend names the
+/// provider from the address of the source.
+/// </summary>
+public record PhotoCredit(string? Author, string? License, string? Source)
+{
+    public bool IsEmpty =>
+        string.IsNullOrWhiteSpace(Author) && string.IsNullOrWhiteSpace(License) && string.IsNullOrWhiteSpace(Source);
+}
 
 /// <summary>
 /// The images that cost nothing, tried before Google's. A Google place photo is
@@ -61,14 +80,115 @@ public partial class FreePhotos(WebFiles web)
             if (await BestCommonsFileAsync(search, name, city, cityArea) is { } file
                 && await DownloadAsync(file.ThumbUrl) is (byte[] bytes, string contentType))
             {
-                return new FoundImage(bytes, contentType, $"Wikimedia Commons — {file.Title}");
+                return new FoundImage(bytes, contentType, $"{CommonsSource}{file.Title}", file.Credit);
             }
         }
 
         return null;
     }
 
-    private record CommonsFile(string Title, string ThumbUrl, int Width, int Height);
+    /// <summary>What a Commons media item's name carries before the file's own title
+    /// ("Parque Duarte — Wikimedia Commons — Park Duarte 212.jpg"), which is how the
+    /// credit backfill finds the file a picture was downloaded from.</summary>
+    public const string CommonsSource = "Wikimedia Commons — ";
+
+    /// <summary>
+    /// The credit of each Commons file named, by the title it was asked for ("Park Duarte
+    /// 212.jpg", with or without "File:"). One request per fifty titles, and free; a file
+    /// Commons no longer holds is simply missing from the answer.
+    /// </summary>
+    public async Task<Dictionary<string, PhotoCredit>> CommonsCreditsAsync(IEnumerable<string> fileTitles)
+    {
+        var credits = new Dictionary<string, PhotoCredit>(StringComparer.OrdinalIgnoreCase);
+        foreach (string[] batch in fileTitles.Distinct(StringComparer.OrdinalIgnoreCase).Chunk(50))
+        {
+            string titles = string.Join("|", batch.Select(t =>
+                t.StartsWith("File:", StringComparison.OrdinalIgnoreCase) ? t : "File:" + t));
+            string url = "https://commons.wikimedia.org/w/api.php?action=query"
+                + $"&titles={Uri.EscapeDataString(titles)}&prop=imageinfo&iiprop=url|extmetadata"
+                + $"&iiextmetadatafilter={CreditFields}&format=json";
+
+            using JsonDocument? doc = await GetJsonAsync(url);
+            if (doc is null || !doc.RootElement.TryGetProperty("query", out JsonElement result)
+                || !result.TryGetProperty("pages", out JsonElement pages))
+            {
+                continue;
+            }
+
+            // Commons answers under the title it normalised ("File:Park_Duarte.jpg" comes
+            // back as "File:Park Duarte.jpg"), so the answer is keyed back by the name
+            // both sides agree on: the title without its prefix, spaces for underscores.
+            foreach (JsonElement page in pages.EnumerateObject().Select(p => p.Value))
+            {
+                if (page.TryGetProperty("title", out JsonElement title)
+                    && page.TryGetProperty("imageinfo", out JsonElement infos)
+                    && infos.GetArrayLength() > 0
+                    && CreditOf(infos[0]) is { } credit)
+                {
+                    credits[BareTitle(title.GetString() ?? "")] = credit;
+                }
+            }
+        }
+
+        return credits;
+    }
+
+    /// <summary>A Commons title as both the media name and the API's answer spell it.</summary>
+    public static string BareTitle(string title) =>
+        (title.StartsWith("File:", StringComparison.OrdinalIgnoreCase) ? title[5..] : title).Replace('_', ' ').Trim();
+
+    /// <summary>The extmetadata fields a credit is read from.</summary>
+    private const string CreditFields = "Artist|LicenseShortName";
+
+    /// <summary>
+    /// The credit of one Commons file from its imageinfo: the author out of the "Artist"
+    /// HTML (a user link, a Flickr link, sometimes a whole paragraph), the licence's short
+    /// name and the file's own page. "No machine-readable author" is Commons saying it
+    /// does not know, and is stored as no author rather than printed as one — the page
+    /// the credit links to names whoever the uploader did.
+    /// </summary>
+    private static PhotoCredit? CreditOf(JsonElement info)
+    {
+        string? Field(string name) =>
+            info.TryGetProperty("extmetadata", out JsonElement meta)
+            && meta.TryGetProperty(name, out JsonElement field)
+            && field.TryGetProperty("value", out JsonElement value)
+                ? value.GetString()
+                : null;
+
+        string? author = Field("Artist") is string html ? AuthorOf(html) : null;
+        string? license = Field("LicenseShortName")?.Trim();
+        string? page = info.TryGetProperty("descriptionurl", out JsonElement d) ? d.GetString() : null;
+        var credit = new PhotoCredit(author, string.IsNullOrEmpty(license) ? null : license, page);
+        return credit.IsEmpty ? null : credit;
+    }
+
+    [GeneratedRegex("<[^>]+>")]
+    private static partial Regex HtmlTag();
+
+    [GeneratedRegex(@"\s+")]
+    private static partial Regex Whitespace();
+
+    private static string? AuthorOf(string html)
+    {
+        string text = Whitespace().Replace(WebUtility.HtmlDecode(HtmlTag().Replace(html, " ")), " ").Trim();
+        if (text.Length == 0 || text.StartsWith("No machine-readable author", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        // A Flickr import often names its author by the address of the account
+        // ("https://www.flickr.com/photos/bez_uk/"): the account is the name.
+        if (Uri.TryCreate(text, UriKind.Absolute, out Uri? profile) && profile.Scheme.StartsWith("http"))
+        {
+            text = profile.Segments.LastOrDefault(s => s.Trim('/').Length > 0)?.Trim('/') ?? profile.Host;
+        }
+
+        text = text.StartsWith("User:", StringComparison.OrdinalIgnoreCase) ? text[5..] : text;
+        return text.Length > 120 ? text[..117].TrimEnd() + "…" : text;
+    }
+
+    private record CommonsFile(string Title, string ThumbUrl, int Width, int Height, PhotoCredit? Credit);
 
     /// <summary>
     /// The best Commons file for one search: of those whose title carries the place's
@@ -85,8 +205,8 @@ public partial class FreePhotos(WebFiles web)
         // and another in the Zona Colonial, and only one of them belongs on this page.
         string url = "https://commons.wikimedia.org/w/api.php?action=query&generator=search"
             + $"&gsrsearch={Uri.EscapeDataString(search)}&gsrnamespace=6&gsrlimit=8"
-            + "&prop=imageinfo|coordinates|categories&cllimit=20&iiprop=url|size"
-            + "&iiurlwidth=1280&format=json";
+            + "&prop=imageinfo|coordinates|categories&cllimit=20&iiprop=url|size|extmetadata"
+            + $"&iiextmetadatafilter={CreditFields}&iiurlwidth=1280&format=json";
 
         using JsonDocument? doc = await GetJsonAsync(url);
         if (doc is null
@@ -127,7 +247,7 @@ public partial class FreePhotos(WebFiles web)
                 continue;
             }
 
-            candidates.Add(new CommonsFile(fileName, thumb, width, height));
+            candidates.Add(new CommonsFile(fileName, thumb, width, height, CreditOf(info)));
         }
 
         return candidates.OrderBy(Shape).ThenByDescending(f => (long)f.Width * f.Height).FirstOrDefault();

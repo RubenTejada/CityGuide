@@ -276,7 +276,7 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
     /// not see, and the backfill would never complete the ones past the cut.
     /// </summary>
     private async Task<List<JsonElement>> GetDeliveryItemsAsync(
-        string filter, Func<HttpResponseMessage, Exception>? onFailure = null)
+        string filter, Func<HttpResponseMessage, Exception>? onFailure = null, string? expand = null)
     {
         // The page the server actually returns decides the stride, so a deployment
         // that caps the page size smaller than this is paged correctly all the same.
@@ -287,7 +287,8 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         {
             HttpResponseMessage response = await http.GetAsync(
                 $"{config.BaseUrl}/umbraco/delivery/api/v2/content"
-                + $"?filter={filter}&skip={items.Count}&take={pageSize}");
+                + $"?filter={filter}&skip={items.Count}&take={pageSize}"
+                + (expand is null ? "" : $"&expand={Uri.EscapeDataString(expand)}"));
             if (!response.IsSuccessStatusCode)
             {
                 throw onFailure?.Invoke(response)
@@ -674,7 +675,7 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         string? Phone = null, string? Website = null, string? Hours = null,
         int RatingCount = 0, int GalleryCount = 0, int MenuCount = 0,
         string? PhotoUrl = null, bool HasMenuData = false, string? Instagram = null,
-        bool FacilitiesRead = false)
+        bool FacilitiesRead = false, MediaRef? PhotoMedia = null, IReadOnlyList<MediaRef>? GalleryMedia = null)
     {
         public bool HasPhoto => PhotoMediaKey is not null;
 
@@ -690,6 +691,34 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         public bool AgentMade => Source?.StartsWith("agent", StringComparison.OrdinalIgnoreCase) == true;
     }
 
+    /// <summary>A picked media item as the Delivery API serves it: its key, its name — which
+    /// says where the agent downloaded it from — and whether it carries a credit.</summary>
+    public record MediaRef(Guid Key, string Name, bool Credited);
+
+    private static List<MediaRef> MediaRefs(JsonElement props, string alias)
+    {
+        if (!props.TryGetProperty(alias, out JsonElement picked) || picked.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        var refs = new List<MediaRef>();
+        foreach (JsonElement media in picked.EnumerateArray())
+        {
+            if (media.TryGetProperty("id", out JsonElement id) && id.TryGetGuid(out Guid key))
+            {
+                bool credited = media.TryGetProperty("properties", out JsonElement mediaProps)
+                    && new[] { "photoAuthor", "photoLicense", "photoSource" }.Any(a =>
+                        mediaProps.TryGetProperty(a, out JsonElement v)
+                        && v.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(v.GetString()));
+                refs.Add(new MediaRef(
+                    key, media.TryGetProperty("name", out JsonElement n) ? n.GetString() ?? "" : "", credited));
+            }
+        }
+
+        return refs;
+    }
+
     /// <summary>
     /// Every published node of a document type with its coordinates — used by the
     /// rating and photo backfill. "mall" nodes carry the same latitude/longitude/photo
@@ -698,7 +727,10 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
     public async Task<List<PublishedPlace>> GetPublishedPlacesAsync(string contentType = "place")
     {
         var places = new List<PublishedPlace>();
-        foreach (JsonElement item in await GetDeliveryItemsAsync($"contentType%3A{contentType}"))
+        // The pictures are expanded because a media item's own properties — the credit
+        // the backfill looks for — only come back with an expanded picker.
+        foreach (JsonElement item in await GetDeliveryItemsAsync(
+            $"contentType%3A{contentType}", expand: "properties[photo,gallery]"))
         {
             JsonElement props = item.GetProperty("properties");
             double Coord(string alias) =>
@@ -743,7 +775,8 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
                 Text("phone"), Text("website"), Text("hours"),
                 (int)Coord("googleRatingCount"), Images("gallery"), Images("menu"),
                 photoAddress, Text("menuData") is not null, Text("instagram"),
-                Text("facilitiesUpdated") is not null));
+                Text("facilitiesUpdated") is not null,
+                MediaRefs(props, "photo").FirstOrDefault(), MediaRefs(props, "gallery")));
         }
 
         return places;
@@ -1121,13 +1154,24 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
     /// Replaces a place's photo gallery with the given media items, in order. Everything
     /// else the document holds survives, including the main "photo": the gallery is the
     /// extra a detail page rotates, not a replacement for the one image the cards use.
+    /// Returns the media keys the gallery held before and no longer does, for the caller
+    /// to recycle.
     /// </summary>
-    public async Task SetGalleryAsync(Guid id, IReadOnlyList<Guid> mediaKeys)
+    public async Task<IReadOnlyList<Guid>> SetGalleryAsync(Guid id, IReadOnlyList<Guid> mediaKeys)
     {
         (string name, string state, Dictionary<string, object?> values) = await ReadDocumentAsync(id);
+        List<Guid> previous = values.TryGetValue("gallery", out object? stored)
+            && stored is JsonElement { ValueKind: JsonValueKind.Array } list
+                ? [.. list.EnumerateArray()
+                    .Select(m => m.TryGetProperty("mediaKey", out JsonElement k) && k.TryGetGuid(out Guid g)
+                        ? g
+                        : Guid.Empty)
+                    .Where(g => g != Guid.Empty)]
+                : [];
         values["gallery"] = JsonSerializer.SerializeToElement(
             mediaKeys.Select(mediaKey => new { key = Guid.NewGuid(), mediaKey }));
         await WriteDocumentAsync(id, name, values, state);
+        return [.. previous.Except(mediaKeys)];
     }
 
     /// <summary>
@@ -1602,8 +1646,14 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         return folderId;
     }
 
+    /// <summary>Uploads a found image as a Media item, with the credit it has to be shown
+    /// with. Returns the media key.</summary>
+    public Task<Guid> CreateMediaImageAsync(string name, FoundImage image) =>
+        CreateMediaImageAsync(name, image.Bytes, image.ContentType, image.Credit);
+
     /// <summary>Uploads image bytes as a Media item (temporary file → media). Returns the media key.</summary>
-    public async Task<Guid> CreateMediaImageAsync(string name, byte[] bytes, string contentType)
+    public async Task<Guid> CreateMediaImageAsync(
+        string name, byte[] bytes, string contentType, PhotoCredit? credit = null)
     {
         Guid folderId = await EnsureAgentMediaFolderAsync();
 
@@ -1638,10 +1688,8 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
             id = mediaId,
             parent = new { id = folderId },
             mediaType = new { id = ImageMediaTypeKey },
-            values = new object[]
-            {
-                new { alias = "umbracoFile", value = new { temporaryFileId } },
-            },
+            values = new object[] { new { alias = "umbracoFile", value = (object?)new { temporaryFileId } } }
+                .Concat(CreditValues(credit)),
             variants = new[] { new { culture = (string?)null, segment = (string?)null, name } },
         });
         HttpResponseMessage createResponse = await http.SendAsync(create);
@@ -1652,6 +1700,58 @@ public class UmbracoClient(HttpClient http, UmbracoConfig config)
         }
 
         return mediaId;
+    }
+
+    /// <summary>The three credit properties of the Image media type (added by the CMS
+    /// seeder), as Management API values; nothing for an image that needs no credit.</summary>
+    private static IEnumerable<object> CreditValues(PhotoCredit? credit) =>
+        credit is null
+            ? []
+            :
+            [
+                new { alias = "photoAuthor", value = (object?)credit.Author },
+                new { alias = "photoLicense", value = (object?)credit.License },
+                new { alias = "photoSource", value = (object?)credit.Source },
+            ];
+
+    /// <summary>
+    /// Writes the credit of a media item already in the library, keeping every other value
+    /// it holds — the file above all, which a PUT would otherwise drop, since it replaces
+    /// the whole item.
+    /// </summary>
+    public async Task SetMediaCreditAsync(Guid id, PhotoCredit credit)
+    {
+        HttpRequestMessage read = await AuthorizedRequestAsync(
+            HttpMethod.Get, $"/umbraco/management/api/v1/media/{id}");
+        HttpResponseMessage readResponse = await http.SendAsync(read);
+        if (!readResponse.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException(
+                $"Read media {id} failed ({(int)readResponse.StatusCode}): {await readResponse.Content.ReadAsStringAsync()}");
+        }
+
+        using JsonDocument doc = JsonDocument.Parse(await readResponse.Content.ReadAsStringAsync());
+        string[] written = ["photoAuthor", "photoLicense", "photoSource"];
+        var values = doc.RootElement.GetProperty("values").EnumerateArray()
+            .Where(v => !written.Contains(v.GetProperty("alias").GetString()))
+            .Select(v => (object)new { alias = v.GetProperty("alias").GetString(), value = v.GetProperty("value").Clone() })
+            .Concat(CreditValues(credit))
+            .ToList();
+        string name = doc.RootElement.GetProperty("variants")[0].GetProperty("name").GetString() ?? "";
+
+        HttpRequestMessage update = await AuthorizedRequestAsync(
+            HttpMethod.Put, $"/umbraco/management/api/v1/media/{id}");
+        update.Content = JsonContent.Create(new
+        {
+            values,
+            variants = new[] { new { culture = (string?)null, segment = (string?)null, name } },
+        });
+        HttpResponseMessage response = await http.SendAsync(update);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException(
+                $"Update media '{name}' failed ({(int)response.StatusCode}): {await response.Content.ReadAsStringAsync()}");
+        }
     }
 
     private static string SafeFileName(string name)

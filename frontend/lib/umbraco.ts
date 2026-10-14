@@ -9,6 +9,9 @@ export interface MediaItem {
   url: string;
   name?: string;
   focalPoint?: FocalPoint | null;
+  /** The media item's own properties: the credit (photoAuthor, photoLicense,
+   *  photoSource) is the one the portal reads. */
+  properties?: Record<string, unknown>;
 }
 
 /**
@@ -21,10 +24,27 @@ export interface FocalPoint {
   top: number;
 }
 
-/** Una imagen elegida en un MediaPicker3, con el punto de interés que lleve. */
+/**
+ * Quién hizo una foto, bajo qué licencia y dónde está publicada. Una foto de Wikimedia
+ * Commons es CC BY o CC BY-SA (o de dominio público), y esas licencias piden el nombre
+ * del autor, la licencia y un enlace allí donde se publica — y la Ley 65-00 hace del
+ * nombre un derecho moral —; una foto de Google solo se enseña con la atribución que
+ * Google manda con ella. El agente lo guarda en el propio elemento de medios, así que
+ * viaja con la foto. La licencia va vacía en una de Google; el proveedor se lee de la
+ * dirección de la fuente.
+ */
+export interface PhotoCredit {
+  author: string;
+  license: string;
+  source: string;
+}
+
+/** Una imagen elegida en un MediaPicker3, con el punto de interés que lleve y el crédito
+ *  que haya que imprimir con ella — null para una foto del propio lugar o del portal. */
 export interface Photo {
   url: string;
   focalPoint: FocalPoint | null;
+  credit?: PhotoCredit | null;
 }
 
 export interface UmbracoItem {
@@ -94,7 +114,24 @@ export function photosOf(item: UmbracoItem, alias = "gallery"): Photo[] {
   if (!Array.isArray(value)) return [];
   return (value as MediaItem[])
     .filter((media): media is MediaItem => Boolean(media?.url))
-    .map((media) => ({ url: media.url, focalPoint: media.focalPoint ?? null }));
+    .map((media) => ({
+      url: media.url,
+      focalPoint: media.focalPoint ?? null,
+      credit: creditOf(media),
+    }));
+}
+
+function creditOf(media: MediaItem): PhotoCredit | null {
+  const read = (alias: string): string => {
+    const value = media.properties?.[alias];
+    return typeof value === "string" ? value.trim() : "";
+  };
+  const credit = {
+    author: read("photoAuthor"),
+    license: read("photoLicense"),
+    source: read("photoSource"),
+  };
+  return credit.author || credit.license || credit.source ? credit : null;
 }
 
 /** La primera imagen de la propiedad, con su punto de interés. */

@@ -31,7 +31,7 @@ export default function AttractionCard({
   const own = photoOf(place);
   const photo =
     own?.url ??
-    curatedPhoto(citySlug, slugOf(place)) ??
+    curatedPhoto(citySlug, slugOf(place))?.url ??
     sectionListImage(place.route.path);
   return (
     <Link

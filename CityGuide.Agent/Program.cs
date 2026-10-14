@@ -163,7 +163,7 @@ var web = new WebFiles(http);
 var photos = new PlacePhotos(google, new FreePhotos(web), umbraco);
 
 Task<Guid?> UploadPhotoAsync(DiscoveredPlace place, string routePath, GeoArea? cityArea) =>
-    photos.UploadAsync(place.Name, () => Task.FromResult(place.PhotoName), routePath, place.Types,
+    photos.UploadAsync(place.Name, () => Task.FromResult(place.Photo), routePath, place.Types,
         place.Website, routePath.Trim('/').Split('/').FirstOrDefault()?.Replace('-', ' '), cityArea);
 
 // Per-city agent config from the CMS ("Agente" tab on the city node), cached per city slug.
@@ -1290,8 +1290,6 @@ if (args.Contains("--reset-photo"))
         return 1;
     }
 
-    string resetCity = resetNode.Path.Trim('/').Split('/').First();
-    UmbracoClient.CityAgentConfig? resetCityConfig = await CityConfigAsync(resetCity);
     Console.WriteLine($"{resetNode.Name}: foto actual {resetNode.PhotoUrl ?? "(ninguna)"}");
     Console.WriteLine("  fuentes: " + (FreePhotos.IsLandmark(resetNode.Path) ? "Commons, " : "")
         + (resetNode.Website is not null ? "imagen del sitio, " : "")
@@ -1302,18 +1300,46 @@ if (args.Contains("--reset-photo"))
         return 0;
     }
 
-    UmbracoClient.Completion reset = await umbraco.CompletePlaceAsync(
-        resetNode.Id, rating: null, ratingCount: null,
-        photoFactory: () => photos.UploadAsync(
-            resetNode.Name,
-            paid && resetNode.GooglePlaceId is { } resetPlaceId ? () => google.GetPhotoByIdAsync(resetPlaceId) : null,
-            resetNode.Path, website: resetNode.Website,
-            cityName: resetCityConfig?.CityName ?? resetCity.Replace('-', ' '),
-            cityArea: resetCityConfig?.Area),
-        replacePhoto: true);
-    Console.WriteLine(reset.Photo
+    Console.WriteLine(await ResetPhotoAsync(resetNode)
         ? $"  * {resetNode.Name} +foto (la anterior, a la papelera de medios)"
         : $"  ? {resetNode.Name}: sin foto en ninguna fuente; se queda la que tenía");
+    return 0;
+}
+
+// Looks for a node's main photo again through the chain every pass uses and replaces the
+// one it has, which goes to the media recycle bin once the new one is written. Google is
+// only asked with --paid. Returns whether a new photo was written. Shared by
+// --reset-photo and the credit backfill, which redoes a Google photo stored without one.
+async Task<bool> ResetPhotoAsync(UmbracoClient.PublishedPlace node)
+{
+    string city = node.Path.Trim('/').Split('/').First();
+    UmbracoClient.CityAgentConfig? cityConfig = await CityConfigAsync(city);
+    UmbracoClient.Completion reset = await umbraco.CompletePlaceAsync(
+        node.Id, rating: null, ratingCount: null,
+        photoFactory: () => photos.UploadAsync(
+            node.Name,
+            paid && node.GooglePlaceId is { } placeId ? () => google.GetPhotoByIdAsync(placeId) : null,
+            node.Path, website: node.Website,
+            cityName: cityConfig?.CityName ?? city.Replace('-', ' '),
+            cityArea: cityConfig?.Area),
+        replacePhoto: true);
+    return reset.Photo;
+}
+
+// Maintenance: the credit of the photos downloaded before the agent kept one
+// ("--photo-credits"). Every upload now stores the author, the licence and the source on
+// the media item; this catches up with the library. A Commons photo is credited in place
+// for free, from the file its media name records; a Google photo cannot be traced back
+// to the photo that would carry its attribution, so it is downloaded again with it —
+// billed, so only with --paid — and the old one is recycled (see PhotoCredits). Scoped
+// by --section; plan until --apply.
+if (args.Contains("--photo-credits"))
+{
+    await new PhotoCredits(
+            new FreePhotos(web), umbraco,
+            new PlaceGalleries(google, umbraco, config.Google.GalleryPhotos, config.Google.GalleryMinReviews),
+            ResetPhotoAsync)
+        .RunAsync(args.Contains("--apply"), paid && google.Enabled, SectionSelected);
     return 0;
 }
 
@@ -2565,7 +2591,7 @@ if (!string.IsNullOrEmpty(config.Google.ApiKey))
                 node.Id, found.Rating, found.UserRatingCount,
                 node.GooglePlaceId is null ? found.GooglePlaceId : null,
                 () => photos.UploadAsync(
-                    node.Name, () => Task.FromResult(found.PhotoName), node.Path, found.Types,
+                    node.Name, () => Task.FromResult(found.Photo), node.Path, found.Types,
                     node.Website ?? found.Website, nodeCity?.CityName ?? citySlug.Replace('-', ' '),
                     nodeCity?.Area),
                 details: company is null ? found : null);

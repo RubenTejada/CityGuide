@@ -31,7 +31,7 @@ export default function TourCard({
   const own = photoOf(tour);
   const photo =
     own?.url ??
-    curatedPhoto(citySlug, slugOf(tour)) ??
+    curatedPhoto(citySlug, slugOf(tour))?.url ??
     sectionListImage(tour.route.path);
   const meta = tourMeta(tour, locale, words);
   const price = priceLabel(tour, locale);

@@ -12,7 +12,9 @@ import {
 } from "react";
 
 import { useLocale, useWords } from "@/components/LocaleProvider";
+import PhotoCreditLine from "@/components/PhotoCreditLine";
 import { INTL_LOCALE } from "@/lib/i18n";
+import type { Photo } from "@/lib/umbraco";
 
 /** Lo que el visor escribe. Lo pone quien lo abre, porque no es lo mismo pasar fotos
  *  de un lugar que pasar las páginas de su carta. Lo que es del propio visor — el
@@ -59,6 +61,9 @@ type Point = { x: number; y: number };
  * Lo comparten la galería de fotos y el menú: son las mismas imágenes en grande, y una
  * segunda copia de esto solo serviría para que las dos se separaran. Lo único que las
  * distingue es la nota al pie, que el menú lleva y la galería no.
+ *
+ * Una imagen que trae crédito — una foto de Google, una de Commons — lo lleva debajo
+ * mientras se ve; las páginas de una carta no traen ninguno.
  */
 export default function ImageViewer({
   images,
@@ -68,7 +73,7 @@ export default function ImageViewer({
   note,
   onClose,
 }: {
-  images: string[];
+  images: Photo[];
   name: string;
   start: number;
   labels: ViewerLabels;
@@ -257,8 +262,8 @@ export default function ImageViewer({
               }`}
             >
               <Image
-                key={images[index]}
-                src={images[index]}
+                key={images[index].url}
+                src={images[index].url}
                 alt={name}
                 fill
                 sizes="(min-width: 1024px) 64rem, 92vw"
@@ -272,10 +277,16 @@ export default function ImageViewer({
           <Arrow side="right" label={labels.next} onClick={() => go(1)} />
         </div>
 
+        <PhotoCreditLine
+          credit={images[index].credit}
+          words={words}
+          className="px-4 pt-2 text-right text-white/70"
+        />
+
         <div className="flex gap-2 overflow-x-auto px-4 py-3">
           {images.map((image, i) => (
             <button
-              key={image}
+              key={image.url}
               type="button"
               onClick={() => show(i)}
               aria-label={labels.open(i + 1, images.length)}
@@ -287,7 +298,7 @@ export default function ImageViewer({
               }`}
             >
               <Image
-                src={image}
+                src={image.url}
                 alt=""
                 fill
                 sizes="6rem"

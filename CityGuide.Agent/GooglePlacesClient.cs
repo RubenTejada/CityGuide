@@ -15,7 +15,15 @@ public record DiscoveredPlace(
     string[] Types,
     double? Rating,
     int? UserRatingCount,
-    string? PhotoName);
+    GooglePhoto? Photo);
+
+/// <summary>
+/// One of a place's Google photos: the name the download asks for, and the attribution
+/// Google hands over with it. The Maps Platform terms only let a photo be shown with its
+/// authors' names, and the download itself returns bytes and nothing else, so the credit
+/// has to be kept from the answer that named the photo.
+/// </summary>
+public record GooglePhoto(string Name, PhotoCredit? Credit);
 
 /// <summary>A rectangle a text search is confined to, corner to corner.</summary>
 public record GeoArea(double SouthLat, double WestLng, double NorthLat, double EastLng)
@@ -144,16 +152,17 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
                 p.Id!, p.DisplayName!.Text!, p.FormattedAddress, p.NationalPhoneNumber, p.WebsiteUri,
                 p.RegularOpeningHours?.WeekdayDescriptions ?? [],
                 p.Location!.Latitude, p.Location.Longitude, p.Types ?? [],
-                p.Rating, p.UserRatingCount, p.Photos?.FirstOrDefault()?.Name))
+                p.Rating, p.UserRatingCount, PhotoOf(p.Photos?.FirstOrDefault())))
             .ToList();
     }
 
     /// <summary>
     /// Downloads a place photo (Photo Media endpoint; follows Google's redirect
-    /// to the image bytes). Null when the photo is gone or the request fails —
-    /// a missing photo must never block creating the place.
+    /// to the image bytes), with the credit it has to be shown with. Null when the
+    /// photo is gone or the request fails — a missing photo must never block creating
+    /// the place.
     /// </summary>
-    public async Task<(byte[] Bytes, string ContentType)?> DownloadPhotoAsync(string photoName, int maxWidthPx = 1200)
+    public async Task<FoundImage?> DownloadPhotoAsync(GooglePhoto photo, int maxWidthPx = 1200)
     {
         if (!Enabled)
         {
@@ -163,7 +172,7 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
         HttpResponseMessage response = await SendAsync(() =>
         {
             var request = new HttpRequestMessage(
-                HttpMethod.Get, $"https://places.googleapis.com/v1/{photoName}/media?maxWidthPx={maxWidthPx}");
+                HttpMethod.Get, $"https://places.googleapis.com/v1/{photo.Name}/media?maxWidthPx={maxWidthPx}");
             request.Headers.Add("X-Goog-Api-Key", apiKey);
 
             return request;
@@ -176,7 +185,7 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
         byte[] bytes = await response.Content.ReadAsByteArrayAsync();
         return bytes.Length == 0
             ? null
-            : (bytes, response.Content.Headers.ContentType?.MediaType ?? "image/jpeg");
+            : new FoundImage(bytes, response.Content.Headers.ContentType?.MediaType ?? "image/jpeg", "Google", photo.Credit);
     }
 
     /// <summary>
@@ -185,7 +194,7 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
     /// the match has no photo. Asks for ids and photos alone, which is the free
     /// tier: the caller wants a picture, not a place.
     /// </summary>
-    public async Task<string?> FindPhotoAsync(string query)
+    public async Task<GooglePhoto?> FindPhotoAsync(string query)
     {
         if (!Enabled)
         {
@@ -209,7 +218,7 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
         }
 
         SearchResponse? data = await response.Content.ReadFromJsonAsync<SearchResponse>();
-        return (data?.Places ?? []).FirstOrDefault()?.Photos?.FirstOrDefault()?.Name;
+        return PhotoOf((data?.Places ?? []).FirstOrDefault()?.Photos?.FirstOrDefault());
     }
 
     /// <summary>
@@ -220,17 +229,17 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
     /// 1.000. Null when the place is gone or the request fails — a missing photo
     /// never blocks anything.
     /// </summary>
-    public async Task<string?> GetPhotoByIdAsync(string placeId) =>
-        (await GetPhotoNamesByIdAsync(placeId, 1)).FirstOrDefault();
+    public async Task<GooglePhoto?> GetPhotoByIdAsync(string placeId) =>
+        (await GetPhotosByIdAsync(placeId, 1)).FirstOrDefault();
 
     /// <summary>
-    /// Every photo name Google holds for a place, up to <paramref name="max"/> and in the
+    /// Every photo Google holds for a place, up to <paramref name="max"/> and in the
     /// order Google ranks them, on the same free tier as <see cref="GetPhotoByIdAsync"/> —
     /// naming the photos costs nothing however many come back, and only downloading one
     /// is billed. This is what fills a gallery. Empty when the place is gone, has no
     /// photos or the request fails.
     /// </summary>
-    public async Task<IReadOnlyList<string>> GetPhotoNamesByIdAsync(string placeId, int max)
+    public async Task<IReadOnlyList<GooglePhoto>> GetPhotosByIdAsync(string placeId, int max)
     {
         if (!Enabled)
         {
@@ -253,10 +262,9 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
 
         PlaceModel? place = await response.Content.ReadFromJsonAsync<PlaceModel>();
         return [.. (place?.Photos ?? [])
-            .Select(p => p.Name)
-            .Where(n => !string.IsNullOrEmpty(n))
-            .Take(max)
-            .Cast<string>()];
+            .Select(PhotoOf)
+            .OfType<GooglePhoto>()
+            .Take(max)];
     }
 
     /// <summary>
@@ -445,7 +453,31 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
         p.Id ?? "", p.DisplayName?.Text ?? "", p.FormattedAddress, p.NationalPhoneNumber, p.WebsiteUri,
         p.RegularOpeningHours?.WeekdayDescriptions ?? [],
         p.Location?.Latitude ?? 0, p.Location?.Longitude ?? 0, p.Types ?? [],
-        p.Rating, p.UserRatingCount, p.Photos?.FirstOrDefault()?.Name);
+        p.Rating, p.UserRatingCount, PhotoOf(p.Photos?.FirstOrDefault()));
+
+    /// <summary>
+    /// A photo of the answer with the credit Google attaches to it: every author's display
+    /// name, and the profile of the first one as the page the credit links to — the link
+    /// the terms ask for. Google states no licence; the frontend names it as the provider.
+    /// </summary>
+    private static GooglePhoto? PhotoOf(PhotoModel? photo)
+    {
+        if (string.IsNullOrEmpty(photo?.Name))
+        {
+            return null;
+        }
+
+        List<AuthorModel> authors = [.. (photo.AuthorAttributions ?? [])
+            .Where(a => !string.IsNullOrWhiteSpace(a.DisplayName))];
+        string? profile = authors.Select(a => a.Uri).FirstOrDefault(u => !string.IsNullOrWhiteSpace(u));
+        // Google has written the profile address without its scheme ("//maps.google.com/…").
+        profile = profile?.StartsWith("//", StringComparison.Ordinal) == true ? "https:" + profile : profile;
+        var credit = new PhotoCredit(
+            authors.Count == 0 ? null : string.Join(", ", authors.Select(a => a.DisplayName!.Trim())),
+            null,
+            profile);
+        return new GooglePhoto(photo.Name, credit.IsEmpty ? null : credit);
+    }
 
     private static double HaversineMeters(double lat1, double lng1, double lat2, double lng2)
     {
@@ -494,7 +526,13 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
         [property: JsonPropertyName("paidGarageParking")] bool? PaidGarageParking,
         [property: JsonPropertyName("valetParking")] bool? ValetParking);
 
-    private record PhotoModel([property: JsonPropertyName("name")] string? Name);
+    private record PhotoModel(
+        [property: JsonPropertyName("name")] string? Name,
+        [property: JsonPropertyName("authorAttributions")] List<AuthorModel>? AuthorAttributions);
+
+    private record AuthorModel(
+        [property: JsonPropertyName("displayName")] string? DisplayName,
+        [property: JsonPropertyName("uri")] string? Uri);
 
     private record DisplayName([property: JsonPropertyName("text")] string? Text);
 

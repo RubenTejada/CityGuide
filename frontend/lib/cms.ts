@@ -84,11 +84,20 @@ async function api<T>(path: string, locale?: Locale): Promise<T | null> {
   return read<T>(path, CULTURE[await activeLocale(locale)]);
 }
 
+/** The pictures a page's own item is fetched with (see getItem). */
+const MEDIA_EXPAND = "properties[photo,gallery]";
+
 /**
  * Fetch a single content item by its route path (e.g. "/santo-domingo/restaurantes").
  * `expand` asks the Delivery API to fill in the properties of the content a picker
  * references ("properties[establishments]"); without it those come back as bare
  * name-and-route stubs.
+ *
+ * Asked for nothing else, it expands the item's pictures: a picked media item only
+ * carries its own properties — the credit of a Commons or Google photo (photoAuthor,
+ * photoLicense, photoSource) — when the picker is expanded, and the detail page prints
+ * that credit under the photo and in the gallery. A caller expanding another property
+ * reads its pictures off the route's item, which this default already covers.
  */
 export async function getItem(
   path: string,
@@ -97,7 +106,7 @@ export async function getItem(
 ): Promise<UmbracoItem | null> {
   return api<UmbracoItem>(
     `/content/item${path.startsWith("/") ? path : `/${path}`}` +
-      (expand ? `?expand=${encodeURIComponent(expand)}` : ""),
+      `?expand=${encodeURIComponent(expand ?? MEDIA_EXPAND)}`,
     locale,
   );
 }
