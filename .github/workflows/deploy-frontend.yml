@@ -47,10 +47,14 @@ jobs:
 
       # Standalone output: server.js + minimal node_modules; static assets and
       # public/ are served by the same server but must be copied in manually.
+      # Next's server.js is started through deploy/server.cjs, which keeps the
+      # image cache off the /home share (see the comment there).
       - name: Package standalone build
         run: |
           cp -r .next/static .next/standalone/.next/static
           cp -r public .next/standalone/public
+          mv .next/standalone/server.js .next/standalone/next-server.js
+          cp deploy/server.cjs .next/standalone/server.js
 
       - uses: azure/login@v2
         with:
