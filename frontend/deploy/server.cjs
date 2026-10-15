@@ -17,37 +17,25 @@ async function start() {
   const os = await import("node:os");
   const path = await import("node:path");
 
-  const next = path.join(__dirname, ".next");
-  const cache = path.join(next, "cache");
+  const cache = path.join(__dirname, ".next", "cache");
   const local = path.join(os.tmpdir(), "next-cache");
 
   await moveCacheToLocalDisk(fs, cache, local).catch((error) =>
     console.error("Image cache left on /home:", error),
   );
   await import("./next-server.js");
-  deleteStaleCaches(fs, path, next).catch((error) =>
-    console.error("Stale image cache not deleted:", error),
-  );
 }
 
 async function moveCacheToLocalDisk(fs, cache, local) {
   await fs.mkdir(local, { recursive: true });
   const current = await fs.lstat(cache).catch(() => null);
   if (current?.isSymbolicLink()) return;
-  // The cache a boot before this one left on the share is set aside at once —
-  // a rename is one operation — and deleted in the background, since deleting
-  // it file by file takes as long as reading it. A deletion a restart cut
-  // short is picked up again here.
+  // The cache a boot before this one left on the share is set aside — a
+  // rename is one operation. It is not deleted from here: unlinking tens of
+  // thousands of files over the share fills libuv's thread pool, and the server
+  // then never finished booting inside App Service's 230-second startup probe.
   if (current) await fs.rename(cache, `${cache}-stale-${Date.now()}`);
   await fs.symlink(local, cache);
-}
-
-async function deleteStaleCaches(fs, path, next) {
-  for (const name of await fs.readdir(next)) {
-    if (name.startsWith("cache-stale-")) {
-      await fs.rm(path.join(next, name), { recursive: true, force: true });
-    }
-  }
 }
 
 start();
