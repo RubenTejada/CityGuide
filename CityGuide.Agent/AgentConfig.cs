@@ -266,6 +266,19 @@ public class GoogleConfig
     /// not turn into a bill nobody chose; what is skipped comes up on the next pass.</summary>
     public int MaxBackfillRequests { get; set; } = 400;
 
+    /// <summary>Text Search pages the daily discovery pass ("--daily-discovery") lets the
+    /// whole month spend, across every city. Google gives 1.000 Enterprise text searches
+    /// a month for free; the margin below that is for what the pass cannot see in the
+    /// query log — the backfill's searches by name and the event venues of a hand-run
+    /// paid pass. Each day spends an even share of what the month has left.</summary>
+    public int MonthlyTextSearches { get; set; } = 900;
+
+    /// <summary>Google photo downloads one daily discovery pass may cause, as a month's
+    /// worth spread over its days: a place the free sources cannot illustrate costs one
+    /// ($7 per 1.000, 1.000 free a month). The pass starts no new query once today's
+    /// share is spent.</summary>
+    public int MonthlyPhotoDownloads { get; set; } = 900;
+
     /// <summary>How many photos the gallery pass downloads per place. The detail page
     /// shows a strip of six and rotates them through the main image above it, so six is
     /// what it takes to fill one and the seventh is the one extra the viewer offers.

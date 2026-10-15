@@ -85,6 +85,19 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
     /// exactly what it is.</summary>
     public bool Enabled { get; } = !string.IsNullOrWhiteSpace(apiKey);
 
+    /// <summary>Text Search pages this process has been answered, every one of them on
+    /// the Enterprise tier (1.000 free a month). The daily discovery pass spends against
+    /// it.</summary>
+    public int TextSearchRequests { get; private set; }
+
+    /// <summary>Photos this process has downloaded from Google, the one billed photo
+    /// source (1.000 free a month).</summary>
+    public int PhotoDownloads { get; private set; }
+
+    /// <summary>The most Text Search pages <see cref="SearchAsync"/> can spend on one
+    /// query: 20 places a page and three pages at most, whatever the query asks.</summary>
+    public static int MaxPagesFor(int max) => Math.Clamp((max + 19) / 20, 1, 3);
+
     /// <summary>
     /// Text Search, paged. Google returns at most 20 results per page and up to
     /// three pages, so <paramref name="max"/> above 20 keeps paging until Google
@@ -137,6 +150,7 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
                     $"Google Places search failed ({(int)response.StatusCode}): {await response.Content.ReadAsStringAsync()}");
             }
 
+            TextSearchRequests++;
             SearchResponse? data = await response.Content.ReadFromJsonAsync<SearchResponse>();
             collected.AddRange(data?.Places ?? []);
             pageToken = string.IsNullOrEmpty(data?.NextPageToken) ? null : data.NextPageToken;
@@ -182,6 +196,7 @@ public class GooglePlacesClient(HttpClient http, string apiKey)
             return null;
         }
 
+        PhotoDownloads++;
         byte[] bytes = await response.Content.ReadAsByteArrayAsync();
         return bytes.Length == 0
             ? null
