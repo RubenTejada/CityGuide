@@ -1957,11 +1957,169 @@ if (args.Contains("--daily-articles"))
     return articleFailures == 0 ? 0 : 1;
 }
 
+// The daily share of Google's free tier, spent on establishments the portal does not
+// have yet. Google gives 1.000 Enterprise text searches a month for free, and every
+// page of a discovery query is one; so the scheduled workflow runs this after the free
+// pass and each day it asks only what the month has left divided by the days the month
+// has left (Google:MonthlyTextSearches), and stops before a query whose pages would not
+// fit. What the month has spent is read from the query logs of every city — the same
+// "Consultas ya hechas" that keep a query from being asked twice inside its cooldown —
+// so a paid pass run by hand, an article's lookup and the second cron of the same day
+// all count, and a day the schedule missed is spread over the days after it. The
+// queries Google has never answered go first, then the ones whose cooldown ran out the
+// longest ago, one city at a time in turn so every city grows; inside a city the
+// config's order is kept, chain runs before the broad ones. The photos the new places
+// cost from Google are the other free tier it watches (Google:MonthlyPhotoDownloads):
+// once today's share is downloaded no new query starts. --section picks the cities.
+// Plan until --apply: the plan reads only the CMS and prints today's queries in order.
+if (args.Contains("--daily-discovery"))
+{
+    bool applyDaily = args.Contains("--apply");
+    if (applyDaily && !discoveryEnabled)
+    {
+        Console.Error.WriteLine("--daily-discovery busca en Google y describe con el modelo. Añade --paid.");
+        return 1;
+    }
+
+    List<RunConfig> selectedRuns = [.. config.Runs.Where(r => SectionSelected(r.ParentPath) && QuerySelected(r))];
+
+    // Every city's log, not only the selected ones': the free tier is the account's.
+    // A query is costed at the most pages its run can take, a search no run owns (the
+    // article of the day looking an establishment up by name) at one.
+    var pagesOf = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+    foreach (RunConfig run in config.Runs)
+    {
+        (string query, _) = await QueryOfAsync(run);
+        pagesOf[$"{CitySlugOf(run)}\n{query}"] = GooglePlacesClient.MaxPagesFor(run.MaxPlaces);
+    }
+
+    var monthStart = new DateOnly(today.Year, today.Month, 1);
+    int spentBefore = 0, spentToday = 0;
+    foreach ((string city, Dictionary<string, DateOnly> log) in queryLogs)
+    {
+        foreach ((string query, DateOnly asked) in log.Where(entry => entry.Value >= monthStart))
+        {
+            int pages = pagesOf.GetValueOrDefault($"{city}\n{query}", 1);
+            if (asked == today)
+            {
+                spentToday += pages;
+            }
+            else
+            {
+                spentBefore += pages;
+            }
+        }
+    }
+
+    int daysInMonth = DateTime.DaysInMonth(today.Year, today.Month);
+    int searchShare = Math.Max(0,
+        (config.Google.MonthlyTextSearches - spentBefore) / (daysInMonth - today.Day + 1) - spentToday);
+    int photoShare = config.Google.MonthlyPhotoDownloads / daysInMonth;
+    Console.WriteLine($"\n== Descubrimiento diario: {searchShare} búsqueda(s) de texto y {photoShare} foto(s) de Google hoy"
+        + $" (el mes lleva {spentBefore + spentToday} de {config.Google.MonthlyTextSearches} búsquedas)");
+
+    // One queue per city of what is due, never asked first.
+    var queues = new List<Queue<RunConfig>>();
+    foreach (IGrouping<string, RunConfig> city in selectedRuns.GroupBy(CitySlugOf, StringComparer.OrdinalIgnoreCase))
+    {
+        var due = new List<(RunConfig Run, DateOnly Asked)>();
+        foreach (RunConfig run in city)
+        {
+            (string query, Dictionary<string, DateOnly>? log) = await QueryOfAsync(run);
+            DateOnly asked = log?.GetValueOrDefault(query) ?? default;
+            if (forceQueries || cooldownDays == 0 || asked == default || today.DayNumber - asked.DayNumber >= cooldownDays)
+            {
+                due.Add((run, asked));
+            }
+        }
+
+        Console.WriteLine($"  {city.Key}: {due.Count} consulta(s) pendiente(s)");
+        queues.Add(new Queue<RunConfig>(due.OrderBy(d => d.Asked).Select(d => d.Run)));
+    }
+
+    // A plan cannot know how many pages Google will really answer, so it counts the most.
+    var planned = 0;
+    int Spent() => applyDaily ? google.TextSearchRequests : planned;
+    var dailyFailures = 0;
+    while (searchShare - Spent() > 0
+        && google.PhotoDownloads < photoShare
+        && queues.Any(q => q.Count > 0))
+    {
+        foreach (Queue<RunConfig> queue in queues.Where(q => q.Count > 0))
+        {
+            RunConfig run = queue.Dequeue();
+            int pages = GooglePlacesClient.MaxPagesFor(run.MaxPlaces);
+            if (google.PhotoDownloads >= photoShare || pages > searchShare - Spent())
+            {
+                continue;
+            }
+
+            if (!applyDaily)
+            {
+                planned += pages;
+                Console.WriteLine($"  ? \"{(await QueryOfAsync(run)).Query}\" -> {run.ParentPath} (hasta {pages} página(s))");
+                continue;
+            }
+
+            try
+            {
+                await DiscoverAsync(run);
+            }
+            catch (Exception ex)
+            {
+                dailyFailures++;
+                Console.Error.WriteLine($"  ! \"{run.Query}\" -> {run.ParentPath}: {ex.Message}");
+            }
+        }
+    }
+
+    if (!applyDaily)
+    {
+        Console.WriteLine($"\nPlan: hasta {planned} búsqueda(s) de texto. Nada se pidió a Google; --apply lo ejecuta.");
+        return 0;
+    }
+
+    await SaveQueryLogsAsync();
+    Console.WriteLine($"\nDescubrimiento diario: {created} lugar(es) nuevo(s), "
+        + $"{google.TextSearchRequests} búsqueda(s) de texto y {google.PhotoDownloads} foto(s) de Google.");
+
+    try
+    {
+        Console.WriteLine("\n== Establecimientos dentro de plazas");
+        Console.WriteLine($"  {await LinkEstablishmentsAsync(apply: true)} enlace(s) nuevo(s)");
+    }
+    catch (Exception ex)
+    {
+        dailyFailures++;
+        Console.Error.WriteLine($"\n! Mall establishment linking failed: {ex.Message}");
+    }
+
+    return dailyFailures == 0 ? 0 : 1;
+}
+
 foreach (RunConfig run in discoveryEnabled
     ? config.Runs.Where(r => SectionSelected(r.ParentPath) && QuerySelected(r))
     : [])
 {
     await DiscoverAsync(run);
+}
+
+static string CitySlugOf(RunConfig run) => run.ParentPath.Trim('/').Split('/')[0];
+
+// The text a run asks Google in its city — "{city}" read off the city node — and that
+// city's log of what it has asked and when, loaded from the node the first time a run
+// of the city needs it: the node is where the pass writes today's dates back.
+async Task<(string Query, Dictionary<string, DateOnly>? Log)> QueryOfAsync(RunConfig run)
+{
+    string citySlug = CitySlugOf(run);
+    UmbracoClient.CityAgentConfig? cityConfig = await CityConfigAsync(citySlug);
+    if (cityConfig is not null && !queryLogs.ContainsKey(citySlug))
+    {
+        queryLogs[citySlug] = new Dictionary<string, DateOnly>(cityConfig.QueryLog, StringComparer.OrdinalIgnoreCase);
+    }
+
+    return (run.Query.Replace("{city}", cityConfig?.CityName ?? citySlug.Replace('-', ' ')),
+        queryLogs.GetValueOrDefault(citySlug));
 }
 
 // One discovery run: the query asked of Google and every place of its answer created,
@@ -1975,20 +2133,13 @@ async Task<List<Guid>> DiscoverAsync(RunConfig run, Func<DiscoveredPlace, bool>?
 
     // /santo-domingo/bares-y-clubes → city slug "santo-domingo", category slug "bares-y-clubes".
     string[] segments = run.ParentPath.Trim('/').Split('/');
-    UmbracoClient.CityAgentConfig? cityConfig = segments.Length > 0 ? await CityConfigAsync(segments[0]) : null;
-    string query = run.Query.Replace("{city}", cityConfig?.CityName ?? segments[0].Replace('-', ' '));
+    UmbracoClient.CityAgentConfig? cityConfig = await CityConfigAsync(segments[0]);
+    (string query, Dictionary<string, DateOnly>? cityLog) = await QueryOfAsync(run);
 
     // Google answers the same query with the same places for weeks, and every page of
-    // it is billed, so a query asked recently is left alone. The date comes from the
-    // city node, which is where this pass will write today's back.
-    if (segments.Length > 0 && cityConfig is not null
-        && !queryLogs.ContainsKey(segments[0]))
-    {
-        queryLogs[segments[0]] = new Dictionary<string, DateOnly>(cityConfig.QueryLog, StringComparer.OrdinalIgnoreCase);
-    }
-
-    if (!forceQueries && cooldownDays > 0 && segments.Length > 0
-        && queryLogs.TryGetValue(segments[0], out Dictionary<string, DateOnly>? cityLog)
+    // it is billed, so a query asked recently is left alone.
+    if (!forceQueries && cooldownDays > 0
+        && cityLog is not null
         && cityLog.TryGetValue(query, out DateOnly asked)
         && today.DayNumber - asked.DayNumber < cooldownDays)
     {

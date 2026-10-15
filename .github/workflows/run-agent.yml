@@ -2,8 +2,10 @@ name: Run agent
 
 # The scheduled runs are the free pass: a run with no inputs has "paid" empty, so the
 # agent leaves Google and the enrichment model alone — what it refreshes is the cartelera
-# and the events, which cost nothing. Discovery and the rating backfill are dispatched by
-# hand with "paid", after the fortnightly rotation made them cheap.
+# and the events, which cost nothing. What spends comes after it as steps of its own and
+# stays inside Google's free tier: the article of the day and, on the morning cron, a
+# day's share of discovery. A full discovery pass and the rating backfill are dispatched
+# by hand with "paid".
 #
 # Two runs a day, not one, because one is not reliably daily. GitHub fires a scheduled run
 # hours after its cron (the 08:23 one has been starting between 11:50 and 14:50 UTC), and
@@ -474,6 +476,30 @@ jobs:
           Umbraco__ClientSecret: ${{ secrets.UMBRACO_AGENT_CLIENT_SECRET }}
           Google__ApiKey: ${{ secrets.GOOGLE_API_KEY }}
         run: dotnet run -c Release -- --paid --daily-articles --apply
+
+      # A share of Google's free tier spent every day on establishments the portal does
+      # not have yet (--daily-discovery): what the month has left of
+      # Google:MonthlyTextSearches divided by the days it has left, read from each
+      # city's "Consultas ya hechas", plus a day's share of Google photo downloads. Only
+      # the morning cron runs it — a second run the same day would find the searches
+      # spent but start its photo share afresh — and a day the schedule misses is spread
+      # over the days after it by the same arithmetic. Logged in again: the passes above
+      # can outlive the token the last login bought, and this one calls the model.
+      - uses: azure/login@v2
+        if: ${{ !cancelled() && github.event_name == 'schedule' && github.event.schedule == '23 8 * * *' }}
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Discover new establishments
+        if: ${{ !cancelled() && github.event_name == 'schedule' && github.event.schedule == '23 8 * * *' }}
+        working-directory: CityGuide.Agent
+        env:
+          Umbraco__BaseUrl: https://quehacerrd-cms.azurewebsites.net
+          Umbraco__ClientSecret: ${{ secrets.UMBRACO_AGENT_CLIENT_SECRET }}
+          Google__ApiKey: ${{ secrets.GOOGLE_API_KEY }}
+        run: dotnet run -c Release -- --paid --daily-discovery --apply
 
       # The one post a day per city. Only the 20:23 cron posts — it lands in the
       # Dominican afternoon or evening, and the morning one fires before dawn there —
