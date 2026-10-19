@@ -11,7 +11,28 @@ public class AgentConfig
     public EventsConfig Events { get; set; } = new();
     public MenusConfig Menus { get; set; } = new();
     public SocialConfig Social { get; set; } = new();
+    public ReportConfig Report { get; set; } = new();
     public ThrottleConfig Throttle { get; set; } = new();
+}
+
+/// <summary>
+/// The daily report email (<c>--daily-report</c>). The SMTP account is the one the CMS
+/// sends its notifications with; its password is a secret and belongs in user-secrets
+/// locally and in the repository secrets in Azure. Without it the report is printed and
+/// written to the workflow run's summary, and no email goes out.
+/// </summary>
+public class ReportConfig
+{
+    /// <summary>Who receives the report.</summary>
+    public string To { get; set; } = "";
+
+    /// <summary>The sender; empty means the SMTP account itself, which is what Gmail requires.</summary>
+    public string From { get; set; } = "";
+
+    public string SmtpHost { get; set; } = "";
+    public int SmtpPort { get; set; } = 587;
+    public string SmtpUsername { get; set; } = "";
+    public string SmtpPassword { get; set; } = "";
 }
 
 /// <summary>
