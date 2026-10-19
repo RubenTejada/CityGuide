@@ -285,6 +285,8 @@ on:
 permissions:
   id-token: write
   contents: read
+  # The daily report lists the day's runs and reads their logs for errors.
+  actions: read
 
 concurrency:
   group: run-agent
@@ -355,6 +357,8 @@ jobs:
           COUNT: ${{ inputs.count }}
           PAID: ${{ inputs.paid }}
         run: |
+          # Every error line the agent prints also lands here, for the daily report.
+          exec 2> >(tee -a "$RUNNER_TEMP/agent-errors.log" >&2)
           # Everything the agent uses is free except Google Places and the enrichment
           # model. Without this flag it leaves both alone and the run cannot be billed.
           paid_flag=""
@@ -475,7 +479,27 @@ jobs:
           Umbraco__BaseUrl: https://quehacerrd-cms.azurewebsites.net
           Umbraco__ClientSecret: ${{ secrets.UMBRACO_AGENT_CLIENT_SECRET }}
           Google__ApiKey: ${{ secrets.GOOGLE_API_KEY }}
-        run: dotnet run -c Release -- --paid --daily-articles --apply
+        run: |
+          # Every error line the agent prints also lands here, for the daily report.
+          exec 2> >(tee -a "$RUNNER_TEMP/agent-errors.log" >&2)
+          dotnet run -c Release -- --paid --daily-articles --apply
+
+      # The article just written, on Facebook and Instagram while it is news. Free. Both
+      # crons run it: "Publicaciones ya hechas" keeps the article from going out twice,
+      # and the second run posts the one the first could not.
+      - name: Announce the article of the day
+        if: ${{ !cancelled() && github.event_name == 'schedule' }}
+        working-directory: CityGuide.Agent
+        env:
+          Umbraco__BaseUrl: https://quehacerrd-cms.azurewebsites.net
+          Umbraco__ClientSecret: ${{ secrets.UMBRACO_AGENT_CLIENT_SECRET }}
+          Social__PageId: ${{ secrets.META_PAGE_ID }}
+          Social__InstagramUserId: ${{ secrets.META_INSTAGRAM_USER_ID }}
+          Social__AccessToken: ${{ secrets.META_ACCESS_TOKEN }}
+        run: |
+          # Every error line the agent prints also lands here, for the daily report.
+          exec 2> >(tee -a "$RUNNER_TEMP/agent-errors.log" >&2)
+          dotnet run -c Release -- --social-articles --apply
 
       # A share of Google's free tier spent every day on establishments the portal does
       # not have yet (--daily-discovery): what the month has left of
@@ -499,7 +523,10 @@ jobs:
           Umbraco__BaseUrl: https://quehacerrd-cms.azurewebsites.net
           Umbraco__ClientSecret: ${{ secrets.UMBRACO_AGENT_CLIENT_SECRET }}
           Google__ApiKey: ${{ secrets.GOOGLE_API_KEY }}
-        run: dotnet run -c Release -- --paid --daily-discovery --apply
+        run: |
+          # Every error line the agent prints also lands here, for the daily report.
+          exec 2> >(tee -a "$RUNNER_TEMP/agent-errors.log" >&2)
+          dotnet run -c Release -- --paid --daily-discovery --apply
 
       # The one post a day per city. Only the 20:23 cron posts — it lands in the
       # Dominican afternoon or evening, and the morning one fires before dawn there —
@@ -516,4 +543,43 @@ jobs:
           Social__PageId: ${{ secrets.META_PAGE_ID }}
           Social__InstagramUserId: ${{ secrets.META_INSTAGRAM_USER_ID }}
           Social__AccessToken: ${{ secrets.META_ACCESS_TOKEN }}
-        run: dotnet run -c Release -- --social 1 --apply
+        run: |
+          # Every error line the agent prints also lands here, for the daily report.
+          exec 2> >(tee -a "$RUNNER_TEMP/agent-errors.log" >&2)
+          dotnet run -c Release -- --social 1 --apply
+
+      # The day in one email: what the CMS gained in the last 24 hours, what went out on
+      # the networks, the Google searches spent and every error the day's runs printed.
+      # Sent by the evening cron, the last run of the day, whether or not the steps above
+      # succeeded. The errors of this run come from the file the steps above write; the
+      # earlier runs' from their logs. Free. Without the SMTP secrets it is only written
+      # to this run's summary.
+      - name: Send the daily report
+        if: ${{ !cancelled() && github.event_name == 'schedule' && github.event.schedule == '23 20 * * *' }}
+        working-directory: CityGuide.Agent
+        env:
+          GH_TOKEN: ${{ github.token }}
+          Umbraco__BaseUrl: https://quehacerrd-cms.azurewebsites.net
+          Umbraco__ClientSecret: ${{ secrets.UMBRACO_AGENT_CLIENT_SECRET }}
+          Report__SmtpHost: ${{ secrets.SMTP_HOST }}
+          Report__SmtpUsername: ${{ secrets.SMTP_USERNAME }}
+          Report__SmtpPassword: ${{ secrets.SMTP_PASSWORD }}
+          Report__From: ${{ secrets.SMTP_FROM }}
+        run: |
+          since=$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+          errors="$RUNNER_TEMP/agent-errors.log"
+          runs="$RUNNER_TEMP/agent-runs.log"
+          touch "$errors" "$runs"
+          for workflow in run-agent.yml agent-articles.yml; do
+            gh run list --repo "$GITHUB_REPOSITORY" --workflow "$workflow" --created ">=$since" --limit 20 \
+              --json databaseId,status,conclusion,event,createdAt,url \
+              --jq '.[] | "\(.createdAt) \(.event) \(.status)/\(.conclusion // "-") \(.url)"' >> "$runs" || true
+            for id in $(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$workflow" --created ">=$since" --limit 20 \
+                --json databaseId,status --jq '.[] | select(.status == "completed") | .databaseId'); do
+              gh run view "$id" --repo "$GITHUB_REPOSITORY" --log 2>/dev/null \
+                | grep -E '  +! |Unhandled exception|##\[error\]' | cut -f3- >> "$errors" || true
+            done
+          done
+          send=""
+          if [ -n "$Report__SmtpPassword" ]; then send="--apply"; fi
+          dotnet run -c Release -- --daily-report --since "$since" --errors "$errors" --runs "$runs" $send

@@ -3,9 +3,9 @@ using System.Globalization;
 namespace CityGuide.Agent;
 
 /// <summary>
-/// Announces the portal's own content on Facebook and Instagram: the events of the
-/// week, the films that just reached the cartelera, and the best-rated places a
-/// discovery run has added. It writes nothing to the CMS except its own memory of what
+/// Announces the portal's own content on Facebook and Instagram: the article of the
+/// day, the events of the week, the films that just reached the cartelera, and the
+/// best-rated places a discovery run has added. It writes nothing to the CMS except its own memory of what
 /// it has already posted.
 ///
 /// Nothing here is written by a model and nothing is asked of Google, so the pass is
@@ -32,7 +32,13 @@ public class SocialSync(
     private record Post(
         Guid Id, string Kind, string Name, string Url, string? ImageUrl, string Caption, bool Instagram);
 
-    public async Task<int> RunAsync(bool apply, int maxPosts)
+    /// <summary>
+    /// Posts up to <paramref name="maxPosts"/> items. <paramref name="articlesOnly"/> is
+    /// the step that runs right after the article of the day is written, so the article
+    /// goes out while it is news; the daily pass offers it too (first), which is what
+    /// catches one that step failed to post.
+    /// </summary>
+    public async Task<int> RunAsync(bool apply, int maxPosts, bool articlesOnly = false)
     {
         Console.WriteLine(apply
             ? $"\n== Redes sociales ({city.CityPath})"
@@ -47,12 +53,17 @@ public class SocialSync(
         UmbracoClient.CityAgentConfig? agent = await umbraco.GetCityAgentConfigAsync(city.CityPath);
         Dictionary<Guid, UmbracoClient.SocialLogEntry> log = agent?.SocialLog ?? [];
 
-        List<Post> candidates = Interleave(
-            await UpcomingEventsAsync(log),
-            await NewMoviesAsync(log, cityNode.Name),
-            await BestPlacesAsync(log, cityNode.Name))
-            .Take(maxPosts)
-            .ToList();
+        List<Post> articles = await NewArticlesAsync(log);
+        List<Post> candidates = articlesOnly
+            ? articles
+            :
+            [
+                .. articles.Concat(Interleave(
+                        await UpcomingEventsAsync(log),
+                        await NewMoviesAsync(log, cityNode.Name),
+                        await BestPlacesAsync(log, cityNode.Name)))
+                    .Take(maxPosts),
+            ];
 
         if (candidates.Count == 0)
         {
@@ -137,6 +148,29 @@ public class SocialSync(
     }
 
     // ---- what is worth a post ----
+
+    /// <summary>
+    /// The article of the day, while it is still about today: the last thirty hours cover
+    /// a step that failed in the morning and is retried by the evening pass. Its cover is the agent's own 16:9 crop, inside what Instagram
+    /// accepts, so it goes to both networks.
+    /// </summary>
+    private async Task<List<Post>> NewArticlesAsync(Dictionary<Guid, UmbracoClient.SocialLogEntry> log)
+    {
+        DateTime since = DateTime.UtcNow.AddHours(-30);
+        return
+        [
+            .. Mine(await umbraco.GetPublishedItemsAsync("article"))
+                .Where(a => !log.ContainsKey(a.Id) && a.CreateDate >= since)
+                .OrderByDescending(a => a.CreateDate)
+                .Select(a => new Post(
+                    a.Id, "artículo", a.Name, Link(a.Path), Image(a.Text.GetValueOrDefault("heroImageUrl")),
+                    Caption(
+                        $"📰 {a.Name}",
+                        Lead(a.Text.GetValueOrDefault("summary")),
+                        $"Lee el artículo completo 👉 {Link(a.Path)}"),
+                    Instagram: true)),
+        ];
+    }
 
     /// <summary>
     /// The events happening within the next few days. Soonest first: an event announced
@@ -344,13 +378,14 @@ public class SocialSync(
     /// <summary>
     /// Meta downloads the picture itself, so a CMS-relative /media path is served
     /// through the portal's own origin — which is public, branded, and the same proxy
-    /// the site's own pages use.
+    /// the site's own pages use. An accented file name ("…-artículo.jpg") is sent
+    /// percent-encoded, which is the one form every downloader agrees on.
     /// </summary>
     private string? Image(string? url) => url switch
     {
         null or "" => null,
-        _ when url.StartsWith("http", StringComparison.OrdinalIgnoreCase) => url,
-        _ => $"{config.SiteUrl.TrimEnd('/')}/{url.TrimStart('/')}",
+        _ when url.StartsWith("http", StringComparison.OrdinalIgnoreCase) => new Uri(url).AbsoluteUri,
+        _ => new Uri($"{config.SiteUrl.TrimEnd('/')}/{url.TrimStart('/')}").AbsoluteUri,
     };
 
     private static string Indent(string caption) =>

@@ -223,6 +223,17 @@ cd CityGuide.Agent && dotnet run -- --add-article /santiago Articulos/santiago/r
 # prints the whole article. The "Run agent" workflow runs it after both scheduled passes.
 cd CityGuide.Agent && dotnet run -- --paid --daily-articles --section santiago
 cd CityGuide.Agent && dotnet run -- --paid --daily-articles --apply
+# The article of the day on Facebook and Instagram: the social pass reduced to the
+# articles of the last 30 hours not yet posted. Free; the workflow runs it right after
+# the article step. Plan until --apply.
+cd CityGuide.Agent && dotnet run -- --social-articles --section santiago
+
+# The daily report: what the CMS gained in the last 24 hours (articles, establishments,
+# events, films), what went out on the networks, the Google searches spent, plus the
+# error lines in --errors and the runs in --runs (the workflow gathers both from the
+# day's logs). Free. Prints it; --apply emails it to Report:To through the SMTP in
+# Report:Smtp* (the CMS's own account). The evening cron of "Run agent" sends it.
+cd CityGuide.Agent && dotnet run -- --daily-report
 
 # The menu of the best-rated restaurants, read from their own site: Google's Places
 # API states no menu, only the address of the site, so that is the one source there
@@ -810,7 +821,23 @@ photo untouched, and the article frames (16:9 in the body, the cover 16:9 on a p
 `ArticleWriter`, the same path as `--add-article`. A city with an article dated today on
 the Dominican calendar is skipped, which is what lets both crons run the step: the second
 writes only what the first did not. A plan (no `--apply`) still calls the model, uploads
-nothing and prints the whole article.
+nothing and prints the whole article. Right after it the workflow posts the article on
+Facebook and Instagram (`--social-articles`: `SocialSync` reduced to the articles of the
+last 30 hours, captioned with title and summary, its 16:9 cover inside what Instagram
+accepts); the "Publicaciones ya hechas" log keeps it from going out twice, and the daily
+social pass offers an unposted article first, so a failed morning post is retried.
+
+**The daily report** (`--daily-report`, `DailyReport`) is one email a day to `Report:To`,
+sent by the evening cron's last step whatever the steps before it did. It reads back from
+the CMS what was created in the last 24 hours — articles, places and plazas, events,
+films — and each city node's social and query logs, because the day is several runs in
+separate containers and the CMS is the one place that saw all of them. Errors are the one
+thing the CMS never sees: every step tees its stderr into `$RUNNER_TEMP/agent-errors.log`,
+and the report step adds the error lines of the day's earlier runs from their logs
+(`gh run view --log`, hence `actions: read`) and lists the runs; repeated lines are
+counted once. It sends through the CMS's own SMTP account, copied into the repository
+secrets `SMTP_HOST`, `SMTP_USERNAME`, `SMTP_PASSWORD` and `SMTP_FROM` (port 587); without
+them the report only goes to the run's summary page.
 
 Every external request goes through `ThrottlingHandler` (min interval + jitter per host, `Throttle:SecondsBetweenRequests`) so the agent is slow on purpose and never trips rate limiters.
 

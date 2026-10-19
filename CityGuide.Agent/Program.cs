@@ -661,8 +661,51 @@ if (args.Contains("--menus"))
 // sentence, with no Google request and no model token — so it needs no --paid. It is also
 // the one pass that publishes outside the portal, so nothing goes out without --apply;
 // the scheduled "Run agent" passes it, one post per city a day after its 20:23 UTC run.
-if (args.Contains("--social"))
+// The daily report (DailyReport): everything created in the CMS since --since (24 hours
+// ago by default) — articles, establishments, events, films — what went out on the
+// networks and the Google searches spent, read back from the CMS, plus the error lines
+// of the day's runs the workflow gathers into --errors and the runs it lists in --runs.
+// Free. It prints the report, adds it to the workflow run's summary and, with --apply
+// and the SMTP of "Report", emails it.
+if (args.Contains("--daily-report"))
 {
+    string? Option(string name) => args.SkipWhile(a => a != name).Skip(1).FirstOrDefault();
+    static string[] Lines(string? path) => path is not null && File.Exists(path) ? File.ReadAllLines(path) : [];
+    DateTime since = DateTime.TryParse(Option("--since"), System.Globalization.CultureInfo.InvariantCulture,
+        System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal,
+        out DateTime asked)
+        ? asked
+        : DateTime.UtcNow.AddDays(-1);
+    var report = new DailyReport(umbraco, config.Report, config.Social.SiteUrl);
+    DailyReport.Report built = await report.BuildAsync(since, Lines(Option("--errors")), Lines(Option("--runs")));
+    Console.WriteLine($"{built.Subject}\n\n{built.Body}");
+    if (Environment.GetEnvironmentVariable("GITHUB_STEP_SUMMARY") is { Length: > 0 } summary)
+    {
+        await File.AppendAllTextAsync(summary, $"## {built.Subject}\n\n```text\n{built.Body}\n```\n");
+    }
+
+    if (!args.Contains("--apply"))
+    {
+        return 0;
+    }
+
+    if (!report.CanSend)
+    {
+        Console.Error.WriteLine(
+            "El reporte no se envió: falta Report:To o el SMTP (Report:SmtpHost, SmtpUsername, SmtpPassword).");
+        return 1;
+    }
+
+    await report.SendAsync(built);
+    Console.WriteLine($"Reporte enviado a {config.Report.To}.");
+    return 0;
+}
+
+// "--social-articles" is the same pass reduced to the article of the day, run right
+// after it is written so it goes out while it is news.
+if (args.Contains("--social") || args.Contains("--social-articles"))
+{
+    bool articlesOnly = args.Contains("--social-articles");
     int socialPosts =
         int.TryParse(args.SkipWhile(a => a != "--social").Skip(1).FirstOrDefault(), out int askedPosts)
             ? askedPosts
@@ -682,7 +725,7 @@ if (args.Contains("--social"))
         try
         {
             await new SocialSync(umbraco, metaClient, config.Social, socialCity)
-                .RunAsync(applySocial, socialPosts);
+                .RunAsync(applySocial, socialPosts, articlesOnly);
         }
         catch (Exception ex)
         {
